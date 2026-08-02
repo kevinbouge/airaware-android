@@ -1,14 +1,16 @@
 import { useMemo } from 'react';
 import { deriveEnvironmentState } from '../state/derivedEnvironment';
 import { useAppStore } from '../state/useAppStore';
+import { useCapabilities } from './useCapabilities';
 
 export function useDerivedEnvironment() {
   const environment = useAppStore((state) => state.environment);
   const profile = useAppStore((state) => state.profile);
   const duration = useAppStore((state) => state.settings.outdoorWindowDurationHours);
+  const capabilities = useCapabilities();
 
   return useMemo(
-    () => deriveEnvironmentState(environment, profile, duration),
-    [duration, environment, profile],
+    () => deriveEnvironmentState(environment, profile, duration, capabilities),
+    [capabilities, duration, environment, profile],
   );
 }

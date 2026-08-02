@@ -93,6 +93,53 @@ function next24Hours<T extends { timestamp: string }>(hourly: T[], now: Date): T
     .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp));
 }
 
+function pad(value: number): string {
+  return String(value).padStart(2, '0');
+}
+
+function addOneHourPreservingTimestampStyle(timestamp: string | undefined): string | null {
+  if (!timestamp) return null;
+
+  const match = timestamp.match(
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?(Z|[+-]\d{2}:\d{2})?$/,
+  );
+
+  if (!match) {
+    const time = Date.parse(timestamp);
+    if (!Number.isFinite(time)) return null;
+    return new Date(time + 60 * 60 * 1000).toISOString();
+  }
+
+  const [, year, month, day, hour, minute, second, offset] = match;
+  const offsetMinutes =
+    offset && offset !== 'Z'
+      ? Number(offset.slice(0, 3)) * 60 + Number(offset[0] + offset.slice(4, 6))
+      : 0;
+  const utcTime =
+    Date.UTC(
+      Number(year),
+      Number(month) - 1,
+      Number(day),
+      Number(hour),
+      Number(minute),
+      Number(second ?? '0'),
+    ) -
+    offsetMinutes * 60 * 1000 +
+    60 * 60 * 1000;
+  const localTime = new Date(utcTime + offsetMinutes * 60 * 1000);
+  const formatted = `${localTime.getUTCFullYear()}-${pad(localTime.getUTCMonth() + 1)}-${pad(
+    localTime.getUTCDate(),
+  )}T${pad(localTime.getUTCHours())}:${pad(localTime.getUTCMinutes())}`;
+
+  if (offset === undefined) {
+    return second === undefined ? formatted : `${formatted}:${pad(localTime.getUTCSeconds())}`;
+  }
+
+  const withSeconds =
+    second === undefined ? formatted : `${formatted}:${pad(localTime.getUTCSeconds())}`;
+  return `${withSeconds}${offset}`;
+}
+
 export function calculatePersonalizedForecast(
   hourly: HourlyEnvironmentalReading[],
   profile: PersonalAllergyProfile,
@@ -222,12 +269,11 @@ function selectBestOutdoorWindow(
 
   const start = hours[best.startIndex];
   const end = hours[best.startIndex + durationHours - 1];
-  const endDate = new Date(Date.parse(end?.timestamp ?? '') + 60 * 60 * 1000);
 
   return {
     available: true,
     startTime: start?.timestamp ?? null,
-    endTime: Number.isFinite(endDate.getTime()) ? endDate.toISOString() : null,
+    endTime: addOneHourPreservingTimestampStyle(end?.timestamp),
     durationHours,
     averageScore: best.average,
     maximumScore: best.maximum,
@@ -284,12 +330,11 @@ function selectBestEnvironmentalOutdoorWindow(
 
   const start = hours[best.startIndex];
   const end = hours[best.startIndex + durationHours - 1];
-  const endDate = new Date(Date.parse(end?.timestamp ?? '') + 60 * 60 * 1000);
 
   return {
     available: true,
     startTime: start?.timestamp ?? null,
-    endTime: Number.isFinite(endDate.getTime()) ? endDate.toISOString() : null,
+    endTime: addOneHourPreservingTimestampStyle(end?.timestamp),
     durationHours,
     averageScore: best.average,
     maximumScore: best.maximum,

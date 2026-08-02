@@ -8,7 +8,7 @@
     "userInterfaceStyle": "automatic",
     "android": {
       "package": "com.airaware.android",
-      "permissions": ["ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION"],
+      "permissions": ["ACCESS_COARSE_LOCATION"],
       "adaptiveIcon": {
         "backgroundColor": "#F2F5F1",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -21,7 +21,15 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "AirAware uses your approximate location to retrieve local environmental conditions."
+          "locationWhenInUsePermission": "AirAware uses your approximate foreground location to retrieve local environmental conditions."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/android-icon-monochrome.png",
+          "color": "#2F7D46",
+          "defaultChannel": "risk-changes"
         }
       ]
     ]

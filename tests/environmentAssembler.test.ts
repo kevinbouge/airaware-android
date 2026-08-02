@@ -5,6 +5,31 @@ import { assembleEnvironment } from '../src/services/environmentAssembler';
 import type { NormalizedEnvironment, WeatherContext } from '../src/models/environment';
 
 const coordinates = { latitude: 50.0755, longitude: 14.4378 };
+const extendedAirQuality = {
+  carbonDioxide: null,
+  ammonia: null,
+  methane: null,
+  nitrogenMonoxide: null,
+  formaldehyde: null,
+  nonMethaneVolatileOrganicCompounds: null,
+};
+const extendedWeather = {
+  pressureMsl: null,
+  surfacePressure: null,
+  visibility: null,
+  cloudCover: null,
+  cloudCoverLow: null,
+  cloudCoverMid: null,
+  cloudCoverHigh: null,
+  dewPoint: null,
+  wetBulbTemperature: null,
+  windGusts: null,
+  shortwaveRadiation: null,
+  directNormalIrradiance: null,
+  diffuseRadiation: null,
+  sunshineDuration: null,
+  cape: null,
+};
 
 const weatherContext: WeatherContext = {
   temperature: 20,
@@ -41,9 +66,22 @@ function airQuality(fetchedAt: string): NormalizedAirQuality {
         dust: 10,
         wildfirePm10: null,
       },
+      extended: extendedAirQuality,
     },
     hourly: [],
     partial: true,
+  };
+}
+
+function airQualityWithDailyHours(dayCount: number): NormalizedAirQuality {
+  const base = airQuality('2026-08-01T12:00:00Z');
+  return {
+    ...base,
+    hourly: Array.from({ length: dayCount }, (_, index) => ({
+      ...base.current,
+      timestamp: `2026-08-0${index + 1}T12:00:00+02:00`,
+    })),
+    partial: false,
   };
 }
 
@@ -56,6 +94,7 @@ function weather(fetchedAt: string): NormalizedWeather {
       timestamp: '2026-08-01T12:00:00+02:00',
       ...weatherContext,
       uvIndex: 6,
+      extended: extendedWeather,
     },
     hourly: [],
     daily: [],
@@ -89,6 +128,7 @@ function fallbackEnvironment(): NormalizedEnvironment {
         wildfirePm10: null,
       },
       weather: fallbackWeather.current,
+      extended: { airQuality: extendedAirQuality, weather: extendedWeather },
       moldPotential: calculateMoldPotential(fallbackWeather.current),
       uvIndex: 4,
     },
@@ -120,5 +160,22 @@ describe('environment assembler', () => {
     expect(environment.metadata.airQualityFetchedAt).toBe('2026-08-01T12:00:00Z');
     expect(environment.metadata.weatherFetchedAt).toBe('2026-08-01T06:00:00Z');
     expect(environment.current.weather.temperature).toBe(20);
+  });
+
+  it('keeps all provider forecast days before entitlement display limits are applied', () => {
+    const environment = assembleEnvironment({
+      coordinates,
+      placeName: 'Prague',
+      airQuality: airQualityWithDailyHours(4),
+      weather: null,
+    });
+
+    expect(environment.forecastDays.map((day) => day.date)).toEqual([
+      '2026-08-01',
+      '2026-08-02',
+      '2026-08-03',
+      '2026-08-04',
+    ]);
+    expect(environment.forecastDays.every((day) => day.score?.available)).toBe(true);
   });
 });

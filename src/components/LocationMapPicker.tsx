@@ -293,9 +293,9 @@ export function LocationMapPicker({ coordinates, onSelect }: LocationMapPickerPr
             }),
           )}
           <View
-            pointerEvents="none"
             style={[
               styles.marker,
+              styles.noPointerEvents,
               {
                 left: markerLeft,
                 top: markerTop,
@@ -368,6 +368,9 @@ const styles = StyleSheet.create({
     marginTop: -9,
     position: 'absolute',
     width: 18,
+  },
+  noPointerEvents: {
+    pointerEvents: 'none',
   },
   tile: {
     position: 'absolute',

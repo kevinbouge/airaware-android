@@ -1,4 +1,5 @@
-import type { Coordinates, WeatherContext } from '../models/environment';
+import { FORECAST_DAY_LIMITS } from '../capabilities/config';
+import type { Coordinates, ExtendedWeatherReadings, WeatherContext } from '../models/environment';
 import { fetchJson } from './http';
 import { coordinateNumber, nullableNumber } from '../utils/number';
 
@@ -13,6 +14,18 @@ const VARIABLES = [
   'wind_gusts_10m',
   'visibility',
   'uv_index',
+  'pressure_msl',
+  'surface_pressure',
+  'cloud_cover',
+  'cloud_cover_low',
+  'cloud_cover_mid',
+  'cloud_cover_high',
+  'wet_bulb_temperature_2m',
+  'shortwave_radiation',
+  'direct_normal_irradiance',
+  'diffuse_radiation',
+  'sunshine_duration',
+  'cape',
 ];
 const DAILY_VARIABLES = [
   'leaf_wetness_probability_mean',
@@ -35,8 +48,16 @@ export interface NormalizedWeather {
   coordinates: Coordinates;
   fetchedAt: string;
   timezone: string | null;
-  current: WeatherContext & { timestamp: string | null; uvIndex: number | null };
-  hourly: (WeatherContext & { timestamp: string; uvIndex: number | null })[];
+  current: WeatherContext & {
+    timestamp: string | null;
+    uvIndex: number | null;
+    extended: ExtendedWeatherReadings;
+  };
+  hourly: (WeatherContext & {
+    timestamp: string;
+    uvIndex: number | null;
+    extended: ExtendedWeatherReadings;
+  })[];
   daily: {
     date: string;
     leafWetnessProbability: number | null;
@@ -90,6 +111,32 @@ function contextFrom(
   };
 }
 
+function extendedFrom(
+  source: Record<string, unknown> | undefined,
+  index?: number,
+): ExtendedWeatherReadings {
+  const from = (key: string) =>
+    index === undefined ? value(source, key) : arrayValue(source, key, index);
+
+  return {
+    pressureMsl: from('pressure_msl'),
+    surfacePressure: from('surface_pressure'),
+    visibility: from('visibility'),
+    cloudCover: from('cloud_cover'),
+    cloudCoverLow: from('cloud_cover_low'),
+    cloudCoverMid: from('cloud_cover_mid'),
+    cloudCoverHigh: from('cloud_cover_high'),
+    dewPoint: from('dew_point_2m'),
+    wetBulbTemperature: from('wet_bulb_temperature_2m'),
+    windGusts: from('wind_gusts_10m'),
+    shortwaveRadiation: from('shortwave_radiation'),
+    directNormalIrradiance: from('direct_normal_irradiance'),
+    diffuseRadiation: from('diffuse_radiation'),
+    sunshineDuration: from('sunshine_duration'),
+    cape: from('cape'),
+  };
+}
+
 function dailyAt(source: Record<string, unknown> | undefined, index: number) {
   return {
     leafWetnessProbability: arrayValue(source, 'leaf_wetness_probability_mean', index),
@@ -111,7 +158,7 @@ export function buildWeatherUrl(coordinates: Coordinates): string {
     current: VARIABLES.join(','),
     hourly: VARIABLES.join(','),
     daily: DAILY_VARIABLES.join(','),
-    forecast_days: '4',
+    forecast_days: String(FORECAST_DAY_LIMITS.providerRequest),
     timezone: 'auto',
   });
 
@@ -128,6 +175,7 @@ export function normalizeWeather(payload: OpenMeteoWeatherPayload): NormalizedWe
 
   const timezone = typeof payload.timezone === 'string' ? payload.timezone : null;
   const current = contextFrom(payload.current);
+  const currentExtended = extendedFrom(payload.current);
   const currentTimestamp = typeof payload.current?.time === 'string' ? payload.current.time : null;
   const dailyTime = Array.isArray(payload.daily?.time) ? payload.daily.time : [];
   const daily = dailyTime
@@ -149,12 +197,16 @@ export function normalizeWeather(payload: OpenMeteoWeatherPayload): NormalizedWe
         timestamp,
         ...values,
         leafWetnessProbability: matchingDaily?.leafWetnessProbability ?? null,
+        extended: extendedFrom(payload.hourly, index),
       };
     })
     .filter((item): item is NormalizedWeather['hourly'][number] => item !== null);
 
   const hasUsableWeatherData =
-    hasAnyNumeric(current) || hourly.some(hasAnyNumeric) || daily.some(hasAnyNumeric);
+    hasAnyNumeric(current) ||
+    hasAnyNumeric(currentExtended) ||
+    hourly.some((hour) => hasAnyNumeric(hour) || hasAnyNumeric(hour.extended)) ||
+    daily.some(hasAnyNumeric);
 
   if (!hasUsableWeatherData) {
     throw new Error('Open-Meteo weather response has no usable readings');
@@ -168,6 +220,7 @@ export function normalizeWeather(payload: OpenMeteoWeatherPayload): NormalizedWe
       timestamp: currentTimestamp,
       ...current,
       leafWetnessProbability: today?.leafWetnessProbability ?? null,
+      extended: currentExtended,
     },
     hourly,
     daily,

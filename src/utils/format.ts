@@ -17,6 +17,32 @@ export function formatNumber(value: number | null, unit = '', precision = 0): st
   return unit.length > 0 ? `${formatted} ${unit}` : formatted;
 }
 
+function formatLocalizedNumber(value: number | null, precision = 0): string {
+  if (!isFiniteNumber(value)) return 'Unavailable';
+  return new Intl.NumberFormat(undefined, {
+    maximumFractionDigits: precision,
+    minimumFractionDigits: precision > 0 ? 0 : undefined,
+  }).format(value);
+}
+
+export function formatMeasurement(value: number | null, unit = '', precision = 0): string {
+  if (!isFiniteNumber(value)) return 'Unavailable';
+  const formatted = formatLocalizedNumber(value, precision);
+  if (unit === '%') return `${formatted}%`;
+  return unit.length > 0 ? `${formatted} ${unit}` : formatted;
+}
+
+export function formatVisibilityMeters(value: number | null): string {
+  if (!isFiniteNumber(value)) return 'Unavailable';
+  return formatMeasurement(value / 1000, 'km', 1);
+}
+
+export function formatDurationSeconds(value: number | null): string {
+  if (!isFiniteNumber(value)) return 'Unavailable';
+  if (value >= 3600) return formatMeasurement(value / 3600, 'h', 1);
+  return formatMeasurement(value, 's');
+}
+
 export function formatCoordinates(coordinates: Coordinates | null): string | null {
   if (!coordinates) return null;
   return `${coordinates.latitude.toFixed(3)}, ${coordinates.longitude.toFixed(3)}`;

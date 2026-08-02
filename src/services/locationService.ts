@@ -3,7 +3,7 @@ import { Platform } from 'react-native';
 import type { Coordinates, LocationInfo } from '../models/environment';
 import type { AppSettings } from '../models/profile';
 
-type PermissionStatus = 'granted' | 'denied';
+type PermissionStatus = 'granted' | 'denied' | 'unknown';
 
 interface ReverseGeocodeResult {
   city?: string | null;
@@ -15,6 +15,7 @@ interface ReverseGeocodeResult {
 
 export interface LocationDependencies {
   platform: string;
+  getPermission: () => Promise<PermissionStatus>;
   requestPermission: () => Promise<PermissionStatus>;
   getCurrentCoordinates: () => Promise<Coordinates>;
   reverseGeocode: (coordinates: Coordinates) => Promise<ReverseGeocodeResult[]>;
@@ -33,9 +34,19 @@ export function parseManualCoordinates(settings: AppSettings): Coordinates | nul
 function defaultDependencies(): LocationDependencies {
   return {
     platform: Platform.OS,
+    getPermission: async () => {
+      const permission = await Location.getForegroundPermissionsAsync();
+
+      if (permission.status === 'granted') return 'granted';
+      if (permission.status === 'denied') return 'denied';
+      return 'unknown';
+    },
     requestPermission: async () => {
       const permission = await Location.requestForegroundPermissionsAsync();
-      return permission.status === 'granted' ? 'granted' : 'denied';
+
+      if (permission.status === 'granted') return 'granted';
+      if (permission.status === 'denied') return 'denied';
+      return 'unknown';
     },
     getCurrentCoordinates: async () => {
       const location = await Location.getCurrentPositionAsync({
@@ -100,7 +111,9 @@ export async function resolveLocation(
   }
 
   try {
-    const permission = await dependencies.requestPermission();
+    const currentPermission = await dependencies.getPermission();
+    const permission =
+      currentPermission === 'unknown' ? await dependencies.requestPermission() : currentPermission;
 
     if (permission !== 'granted') {
       return manualLocation(settings, dependencies, 'denied', 'automatic');

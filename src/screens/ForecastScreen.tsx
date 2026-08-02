@@ -1,8 +1,10 @@
 import { ScrollView, StyleSheet } from 'react-native';
+import { forecastDaysForCapabilities } from '../capabilities/forecast';
 import { RiskForecastTimeline } from '../components/RiskForecastTimeline';
 import { ReadingRow } from '../components/ReadingRow';
 import { SectionCard } from '../components/SectionCard';
 import { StateView } from '../components/StateView';
+import { useCapabilities } from '../hooks/useCapabilities';
 import { useDerivedEnvironment } from '../hooks/useDerivedEnvironment';
 import { useAppStore } from '../state/useAppStore';
 import { colors, spacing } from '../theme/theme';
@@ -11,6 +13,7 @@ import { formatCategoryScore } from '../utils/format';
 export function ForecastScreen() {
   const environment = useAppStore((state) => state.environment);
   const settings = useAppStore((state) => state.settings);
+  const capabilities = useCapabilities();
   const {
     environmentalScore,
     personalizedScore,
@@ -25,6 +28,7 @@ export function ForecastScreen() {
 
   const usePersonalized = settings.forecastScore === 'personalized';
   const personalizedByDate = new Map(personalizedForecastDays.map((day) => [day.date, day.score]));
+  const visibleForecastDays = forecastDaysForCapabilities(environment.forecastDays, capabilities);
   const currentScore = usePersonalized ? personalizedScore : environmentalScore;
   const hourlyScores = usePersonalized ? personalizedForecast?.hours : environmentalForecast?.hours;
   const bestWindow = usePersonalized
@@ -64,7 +68,7 @@ export function ForecastScreen() {
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <SectionCard title={title}>
-        {environment.forecastDays.map((day) => (
+        {visibleForecastDays.map((day) => (
           <ReadingRow key={day.date} label={day.label} value={dailyScoreLabel(day.date)} />
         ))}
       </SectionCard>

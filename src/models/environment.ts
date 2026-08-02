@@ -44,6 +44,38 @@ export interface AtmosphericIrritants {
   wildfirePm10: number | null;
 }
 
+export interface ExtendedAirQualityReadings {
+  carbonDioxide: number | null;
+  ammonia: number | null;
+  methane: number | null;
+  nitrogenMonoxide: number | null;
+  formaldehyde: number | null;
+  nonMethaneVolatileOrganicCompounds: number | null;
+}
+
+export interface ExtendedWeatherReadings {
+  pressureMsl: number | null;
+  surfacePressure: number | null;
+  visibility: number | null;
+  cloudCover: number | null;
+  cloudCoverLow: number | null;
+  cloudCoverMid: number | null;
+  cloudCoverHigh: number | null;
+  dewPoint: number | null;
+  wetBulbTemperature: number | null;
+  windGusts: number | null;
+  shortwaveRadiation: number | null;
+  directNormalIrradiance: number | null;
+  diffuseRadiation: number | null;
+  sunshineDuration: number | null;
+  cape: number | null;
+}
+
+export interface ExtendedEnvironmentalReadings {
+  airQuality: ExtendedAirQualityReadings;
+  weather: ExtendedWeatherReadings;
+}
+
 export interface WeatherInputs {
   temperature: number | null;
   relativeHumidity: number | null;
@@ -78,6 +110,7 @@ export interface CurrentEnvironmentalReadings {
   aqiLabel: 'US AQI' | 'EU AQI';
   atmosphericIrritants: AtmosphericIrritants;
   weather: WeatherContext;
+  extended?: ExtendedEnvironmentalReadings | undefined;
   moldPotential: MoldPotential;
   uvIndex: number | null;
 }
@@ -90,6 +123,7 @@ export interface HourlyEnvironmentalReading {
   aqiLabel: 'US AQI' | 'EU AQI';
   atmosphericIrritants: AtmosphericIrritants;
   weather: WeatherContext;
+  extended?: ExtendedEnvironmentalReadings | undefined;
   moldPotential: MoldPotential;
   uvIndex: number | null;
 }

@@ -102,4 +102,20 @@ describe('personalized forecast and outdoor window', () => {
     expect(window.available).toBe(true);
     expect(window.startTime).toBe(hour(2, 10, 1).timestamp);
   });
+
+  it('preserves provider-local timestamp style for outdoor-window end times', () => {
+    const localHour = {
+      ...hour(0, 10, 1),
+      timestamp: '2026-08-01T23:00:00+02:00',
+    };
+    const window = calculateEnvironmentalOutdoorWindow(
+      [localHour],
+      1,
+      new Date('2026-08-01T21:00:00Z'),
+    );
+
+    expect(window.available).toBe(true);
+    expect(window.startTime).toBe('2026-08-01T23:00:00+02:00');
+    expect(window.endTime).toBe('2026-08-02T00:00:00+02:00');
+  });
 });

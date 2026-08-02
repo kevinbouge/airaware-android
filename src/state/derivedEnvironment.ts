@@ -1,10 +1,11 @@
 import {
   calculateEnvironmentalForecast,
-  calculateEnvironmentalOutdoorWindow,
   calculatePersonalizedForecast,
   type EnvironmentalForecast,
   type PersonalizedForecast,
 } from '../core/outdoorWindow';
+import type { AppCapabilities } from '../capabilities/types';
+import { profileForCapabilities } from '../capabilities/variables';
 import { calculatePersonalizedScore } from '../core/profileScoring';
 import { calculateEnvironmentalScore } from '../core/scoring';
 import type {
@@ -39,7 +40,6 @@ export interface DerivedEnvironmentState {
   personalizedForecastDays: PersonalizedForecastDay[];
   environmentalBestOutdoorWindow: OutdoorWindow | null;
   personalizedBestOutdoorWindow: OutdoorWindow | null;
-  bestOutdoorWindow: OutdoorWindow | null;
 }
 
 interface PersonalizedForecastDay {
@@ -57,6 +57,7 @@ function toCurrentReading(hour: HourlyEnvironmentalReading): CurrentEnvironmenta
     aqiLabel: hour.aqiLabel,
     atmosphericIrritants: hour.atmosphericIrritants,
     weather: hour.weather,
+    extended: hour.extended,
     moldPotential: hour.moldPotential,
     uvIndex: hour.uvIndex,
   };
@@ -85,26 +86,22 @@ export function deriveEnvironmentState(
   environment: NormalizedEnvironment | null,
   profile: PersonalAllergyProfile,
   duration: 1 | 2 | 3,
+  capabilities?: AppCapabilities,
 ): DerivedEnvironmentState {
+  const effectiveProfile = capabilities ? profileForCapabilities(capabilities, profile) : profile;
   const environmentalScore = environment ? calculateEnvironmentalScore(environment.current) : null;
   const personalizedScore = environment
-    ? calculatePersonalizedScore(environment.current, profile)
+    ? calculatePersonalizedScore(environment.current, effectiveProfile)
     : unavailablePersonalized;
   const environmentalForecast = environment
     ? calculateEnvironmentalForecast(environment.hourly, duration)
     : null;
   const personalizedForecast = environment
-    ? calculatePersonalizedForecast(environment.hourly, profile, duration)
+    ? calculatePersonalizedForecast(environment.hourly, effectiveProfile, duration)
     : null;
   const personalizedForecastDays = environment
-    ? calculatePersonalizedForecastDays(environment, profile)
+    ? calculatePersonalizedForecastDays(environment, effectiveProfile)
     : [];
-  const bestOutdoorWindow =
-    personalizedForecast?.bestWindow.available === true
-      ? personalizedForecast.bestWindow
-      : environment
-        ? calculateEnvironmentalOutdoorWindow(environment.hourly, duration)
-        : null;
   const environmentalBestOutdoorWindow = environmentalForecast?.bestWindow ?? null;
   const personalizedBestOutdoorWindow =
     personalizedForecast?.bestWindow.available === true ? personalizedForecast.bestWindow : null;
@@ -117,6 +114,5 @@ export function deriveEnvironmentState(
     personalizedForecastDays,
     environmentalBestOutdoorWindow,
     personalizedBestOutdoorWindow,
-    bestOutdoorWindow,
   };
 }

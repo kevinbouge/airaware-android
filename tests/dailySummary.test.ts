@@ -1,8 +1,16 @@
-import { buildDailySummary, formatDailySummary } from '../src/core/dailySummary';
+import {
+  buildDailySummary,
+  formatDailySummary,
+  selectDailySummaryOutdoorWindow,
+} from '../src/core/dailySummary';
 import { calculateMoldPotential } from '../src/core/moldPotential';
 import { calculatePersonalizedScore } from '../src/core/profileScoring';
 import { calculateEnvironmentalScore } from '../src/core/scoring';
-import type { NormalizedEnvironment } from '../src/models/environment';
+import type {
+  NormalizedEnvironment,
+  OutdoorWindow,
+  PersonalizedScoreResult,
+} from '../src/models/environment';
 import { DEFAULT_PROFILE, DEFAULT_SETTINGS } from '../src/models/profile';
 
 const weather = {
@@ -102,6 +110,43 @@ const environment: NormalizedEnvironment = {
 };
 
 describe('daily summary', () => {
+  function uvPersonalizedScore(): PersonalizedScoreResult {
+    return {
+      available: true,
+      score: 90,
+      displayScore: 90,
+      category: 'veryHigh',
+      components: {
+        uv: {
+          available: true,
+          score: 90,
+          displayScore: 90,
+          category: 'veryHigh',
+          missing: [],
+          completeness: 1,
+        },
+      },
+      effectiveWeights: { uv: 1 },
+      missingComponents: [],
+      selectedGroupCount: 1,
+      availableGroupCount: 1,
+      dominantComponent: 'uv',
+    };
+  }
+
+  function windowAt(startTime: string): OutdoorWindow {
+    return {
+      available: true,
+      startTime,
+      endTime: '2026-08-01T21:00:00+02:00',
+      durationHours: 2,
+      averageScore: 28,
+      maximumScore: 31,
+      category: 'low',
+      completeness: 1,
+    };
+  }
+
   it('formats a compact privacy-safe text summary', () => {
     const profile = { ...DEFAULT_PROFILE, enabled: true };
     const summary = buildDailySummary({
@@ -137,6 +182,58 @@ describe('daily summary', () => {
     expect(text).not.toContain('14.4378');
     expect(text).not.toContain('undefined');
     expect(text).not.toContain('NaN');
+  });
+
+  it('uses the selected summary score for the main factor', () => {
+    const summary = buildDailySummary({
+      environment,
+      personalizedScore: uvPersonalizedScore(),
+      bestOutdoorWindow: null,
+      settings: { ...DEFAULT_SETTINGS, summaryScore: 'environmental' },
+      stale: false,
+    });
+
+    expect(summary?.scoreLabel).toBe('Environmental burden');
+    expect(summary?.mainFactorLabel).toBe('Grass pollen');
+    expect(summary?.mainFactorGroup).toBe('pollen');
+  });
+
+  it('omits the UV peak when UV is unavailable to the active capabilities', () => {
+    const summary = buildDailySummary({
+      environment,
+      personalizedScore: calculatePersonalizedScore(environment.current, DEFAULT_PROFILE),
+      bestOutdoorWindow: null,
+      settings: { ...DEFAULT_SETTINGS, summaryScore: 'environmental' },
+      stale: false,
+      includeUvPeak: false,
+    });
+    const text = formatDailySummary(summary!);
+
+    expect(summary?.uvPeak).toBeNull();
+    expect(text).not.toContain('UV peak');
+  });
+
+  it('selects the outdoor window from the selected summary score mode', () => {
+    const environmentalWindow = windowAt('2026-08-01T18:00:00+02:00');
+    const personalizedWindow = windowAt('2026-08-01T20:00:00+02:00');
+
+    expect(
+      selectDailySummaryOutdoorWindow({
+        settings: { ...DEFAULT_SETTINGS, summaryScore: 'environmental' },
+        personalizedScore: uvPersonalizedScore(),
+        environmentalBestOutdoorWindow: environmentalWindow,
+        personalizedBestOutdoorWindow: personalizedWindow,
+      }),
+    ).toBe(environmentalWindow);
+
+    expect(
+      selectDailySummaryOutdoorWindow({
+        settings: { ...DEFAULT_SETTINGS, summaryScore: 'personalized' },
+        personalizedScore: uvPersonalizedScore(),
+        environmentalBestOutdoorWindow: environmentalWindow,
+        personalizedBestOutdoorWindow: personalizedWindow,
+      }),
+    ).toBe(personalizedWindow);
   });
 
   it('hides location when requested and marks cached data', () => {

@@ -1,6 +1,8 @@
+import { FORECAST_DAY_LIMITS } from '../capabilities/config';
 import type {
   AtmosphericIrritants,
   Coordinates,
+  ExtendedAirQualityReadings,
   PollenReadings,
   PollutantAqi,
   RegulatedPollutants,
@@ -17,6 +19,12 @@ const VARIABLES = [
   'ozone',
   'sulphur_dioxide',
   'carbon_monoxide',
+  'carbon_dioxide',
+  'ammonia',
+  'methane',
+  'nitrogen_monoxide',
+  'formaldehyde',
+  'non_methane_volatile_organic_compounds',
   'aerosol_optical_depth',
   'dust',
   'european_aqi',
@@ -51,6 +59,7 @@ export interface NormalizedAirQuality {
     pollutantAqi: PollutantAqi;
     aqiLabel: 'US AQI' | 'EU AQI';
     atmosphericIrritants: AtmosphericIrritants;
+    extended: ExtendedAirQualityReadings;
   };
   hourly: {
     timestamp: string;
@@ -59,6 +68,7 @@ export interface NormalizedAirQuality {
     pollutantAqi: PollutantAqi;
     aqiLabel: 'US AQI' | 'EU AQI';
     atmosphericIrritants: AtmosphericIrritants;
+    extended: ExtendedAirQualityReadings;
   }[];
   partial: boolean;
 }
@@ -187,6 +197,23 @@ function irritantsFrom(
   };
 }
 
+function extendedFrom(
+  source: Record<string, unknown> | undefined,
+  index?: number,
+): ExtendedAirQualityReadings {
+  const from = (key: string) =>
+    index === undefined ? value(source, key) : arrayValue(source, key, index);
+
+  return {
+    carbonDioxide: from('carbon_dioxide'),
+    ammonia: from('ammonia'),
+    methane: from('methane'),
+    nitrogenMonoxide: from('nitrogen_monoxide'),
+    formaldehyde: from('formaldehyde'),
+    nonMethaneVolatileOrganicCompounds: from('non_methane_volatile_organic_compounds'),
+  };
+}
+
 function hasAnyNumeric(values: object): boolean {
   return Object.values(values).some((item) => typeof item === 'number' && Number.isFinite(item));
 }
@@ -197,7 +224,7 @@ export function buildAirQualityUrl(coordinates: Coordinates): string {
     longitude: String(coordinates.longitude),
     current: VARIABLES.join(','),
     hourly: VARIABLES.join(','),
-    forecast_days: '4',
+    forecast_days: String(FORECAST_DAY_LIMITS.providerRequest),
     timezone: 'auto',
   });
 
@@ -220,6 +247,7 @@ export function normalizeAirQuality(payload: OpenMeteoPayload): NormalizedAirQua
   const currentPollutants = pollutantsFrom(current);
   const currentAqi = aqiFrom(current, selectedSource);
   const currentIrritants = irritantsFrom(current);
+  const currentExtended = extendedFrom(current);
   const hourlyTime = Array.isArray(payload.hourly?.time) ? payload.hourly.time : [];
   const hourly = hourlyTime
     .map((timestamp, index) => {
@@ -234,6 +262,7 @@ export function normalizeAirQuality(payload: OpenMeteoPayload): NormalizedAirQua
         pollutantAqi: aqiFrom(payload.hourly, selectedSource, index),
         aqiLabel: aqiLabel(selectedSource),
         atmosphericIrritants: irritantsFrom(payload.hourly, index),
+        extended: extendedFrom(payload.hourly, index),
       };
     })
     .filter((item): item is NormalizedAirQuality['hourly'][number] => item !== null);
@@ -242,7 +271,8 @@ export function normalizeAirQuality(payload: OpenMeteoPayload): NormalizedAirQua
     !hasAnyNumeric(currentPollen) &&
     !hasAnyNumeric(currentPollutants) &&
     !hasAnyNumeric(currentAqi) &&
-    !hasAnyNumeric(currentIrritants)
+    !hasAnyNumeric(currentIrritants) &&
+    !hasAnyNumeric(currentExtended)
   ) {
     throw new Error('Open-Meteo air-quality response has no usable current readings');
   }
@@ -258,6 +288,7 @@ export function normalizeAirQuality(payload: OpenMeteoPayload): NormalizedAirQua
       pollutantAqi: currentAqi,
       aqiLabel: aqiLabel(selectedSource),
       atmosphericIrritants: currentIrritants,
+      extended: currentExtended,
     },
     hourly,
     partial: hourly.length === 0,

@@ -29,7 +29,7 @@ export const DEFAULT_PROFILE: PersonalAllergyProfile = {
     pollen_mugwort: true,
     pollen_olive: true,
     pollen_ragweed: true,
-    mold: true,
+    mold: false,
     pm25: true,
     pm10: true,
     nitrogen_dioxide: true,
@@ -53,6 +53,8 @@ export interface AppSettings {
   forecastScore: 'environmental' | 'personalized';
   summaryScore: 'environmental' | 'personalized';
   summaryLocation: 'place' | 'hidden';
+  riskTransitionNotificationsEnabled: boolean;
+  riskTransitionNotificationThreshold: 'highAndVeryHigh' | 'veryHighOnly';
   collapsedSections: Record<string, boolean>;
   locationOnboardingComplete: boolean;
 }
@@ -67,6 +69,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   forecastScore: 'environmental',
   summaryScore: 'environmental',
   summaryLocation: 'place',
+  riskTransitionNotificationsEnabled: false,
+  riskTransitionNotificationThreshold: 'highAndVeryHigh',
   collapsedSections: {},
   locationOnboardingComplete: false,
 };

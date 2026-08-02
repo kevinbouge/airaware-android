@@ -1,6 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CACHE_SCHEMA_VERSION } from '../core/constants';
-import type { CachedEnvironment } from '../models/environment';
+import type {
+  CachedEnvironment,
+  CurrentEnvironmentalReadings,
+  ExtendedAirQualityReadings,
+  ExtendedEnvironmentalReadings,
+  ExtendedWeatherReadings,
+  HourlyEnvironmentalReading,
+} from '../models/environment';
+import type { RiskNotificationTransitionState } from '../models/notifications';
 import {
   DEFAULT_PROFILE,
   DEFAULT_SETTINGS,
@@ -13,6 +21,7 @@ import { isFiniteNumber } from '../utils/number';
 const SETTINGS_KEY = 'airaware.settings.v1';
 const PROFILE_KEY = 'airaware.profile.v1';
 const ENVIRONMENT_CACHE_KEY = 'airaware.environment-cache.v1';
+const RISK_NOTIFICATION_TRANSITION_KEY = 'airaware.risk-notification-transition.v1';
 
 function readObject(value: string | null): Record<string, unknown> | null {
   if (value === null) return null;
@@ -65,6 +74,14 @@ function validSummaryLocation(value: unknown): AppSettings['summaryLocation'] {
   return value === 'place' || value === 'hidden' ? value : DEFAULT_SETTINGS.summaryLocation;
 }
 
+function validRiskTransitionThreshold(
+  value: unknown,
+): AppSettings['riskTransitionNotificationThreshold'] {
+  return value === 'highAndVeryHigh' || value === 'veryHighOnly'
+    ? value
+    : DEFAULT_SETTINGS.riskTransitionNotificationThreshold;
+}
+
 function stringOrDefault(value: unknown, fallback: string): string {
   return typeof value === 'string' ? value : fallback;
 }
@@ -99,9 +116,108 @@ function isValidCachedEnvironment(value: unknown): value is CachedEnvironment['d
   );
 }
 
+function isRiskCategory(
+  value: unknown,
+): value is RiskNotificationTransitionState['previousCategory'] {
+  return value === 'low' || value === 'moderate' || value === 'high' || value === 'veryHigh';
+}
+
+function isRiskNotificationTransitionState(
+  value: unknown,
+): value is RiskNotificationTransitionState {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+
+  const object = value as Record<string, unknown>;
+  return (
+    object.version === 1 &&
+    isRiskCategory(object.previousCategory) &&
+    (object.previousScoreType === 'environmental' || object.previousScoreType === 'personalized') &&
+    typeof object.locationKey === 'string' &&
+    (typeof object.profileFingerprint === 'string' || object.profileFingerprint === null) &&
+    typeof object.lastObservationKey === 'string' &&
+    (typeof object.lastDeliveredObservationKey === 'string' ||
+      object.lastDeliveredObservationKey === null) &&
+    typeof object.evaluatedAt === 'string' &&
+    Number.isFinite(Date.parse(object.evaluatedAt))
+  );
+}
+
+const EMPTY_EXTENDED_AIR_QUALITY: ExtendedAirQualityReadings = {
+  carbonDioxide: null,
+  ammonia: null,
+  methane: null,
+  nitrogenMonoxide: null,
+  formaldehyde: null,
+  nonMethaneVolatileOrganicCompounds: null,
+};
+
+const EMPTY_EXTENDED_WEATHER: ExtendedWeatherReadings = {
+  pressureMsl: null,
+  surfacePressure: null,
+  visibility: null,
+  cloudCover: null,
+  cloudCoverLow: null,
+  cloudCoverMid: null,
+  cloudCoverHigh: null,
+  dewPoint: null,
+  wetBulbTemperature: null,
+  windGusts: null,
+  shortwaveRadiation: null,
+  directNormalIrradiance: null,
+  diffuseRadiation: null,
+  sunshineDuration: null,
+  cape: null,
+};
+
+function normalizeExtendedReadings(value: unknown): ExtendedEnvironmentalReadings {
+  const object =
+    value !== null && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  const airQuality =
+    object.airQuality !== null &&
+    typeof object.airQuality === 'object' &&
+    !Array.isArray(object.airQuality)
+      ? (object.airQuality as Partial<ExtendedAirQualityReadings>)
+      : {};
+  const weather =
+    object.weather !== null && typeof object.weather === 'object' && !Array.isArray(object.weather)
+      ? (object.weather as Partial<ExtendedWeatherReadings>)
+      : {};
+
+  return {
+    airQuality: {
+      ...EMPTY_EXTENDED_AIR_QUALITY,
+      ...airQuality,
+    },
+    weather: {
+      ...EMPTY_EXTENDED_WEATHER,
+      ...weather,
+    },
+  };
+}
+
+function normalizeCurrentReading(
+  reading: CurrentEnvironmentalReadings,
+): CurrentEnvironmentalReadings {
+  return {
+    ...reading,
+    extended: normalizeExtendedReadings(reading.extended),
+  };
+}
+
+function normalizeHourlyReading(reading: HourlyEnvironmentalReading): HourlyEnvironmentalReading {
+  return {
+    ...reading,
+    extended: normalizeExtendedReadings(reading.extended),
+  };
+}
+
 function normalizedCachedEnvironment(data: CachedEnvironment['data']): CachedEnvironment['data'] {
   return {
     ...data,
+    current: normalizeCurrentReading(data.current),
+    hourly: data.hourly.map(normalizeHourlyReading),
     metadata: {
       ...data.metadata,
       airQualitySource: data.metadata.airQualitySource ?? 'fresh',
@@ -123,6 +239,10 @@ export async function loadSettings(): Promise<AppSettings> {
     forecastScore: validScorePreference(object?.forecastScore, DEFAULT_SETTINGS.forecastScore),
     summaryScore: validScorePreference(object?.summaryScore, DEFAULT_SETTINGS.summaryScore),
     summaryLocation: validSummaryLocation(object?.summaryLocation),
+    riskTransitionNotificationsEnabled: object?.riskTransitionNotificationsEnabled === true,
+    riskTransitionNotificationThreshold: validRiskTransitionThreshold(
+      object?.riskTransitionNotificationThreshold,
+    ),
     collapsedSections: booleanRecord(object?.collapsedSections),
     locationOnboardingComplete: object?.locationOnboardingComplete === true,
   };
@@ -172,4 +292,15 @@ export async function loadEnvironmentCache(): Promise<CachedEnvironment | null> 
 
 export async function saveEnvironmentCache(cache: CachedEnvironment): Promise<void> {
   await AsyncStorage.setItem(ENVIRONMENT_CACHE_KEY, JSON.stringify(cache));
+}
+
+export async function loadRiskNotificationTransitionState(): Promise<RiskNotificationTransitionState | null> {
+  const object = readObject(await AsyncStorage.getItem(RISK_NOTIFICATION_TRANSITION_KEY));
+  return isRiskNotificationTransitionState(object) ? object : null;
+}
+
+export async function saveRiskNotificationTransitionState(
+  state: RiskNotificationTransitionState,
+): Promise<void> {
+  await AsyncStorage.setItem(RISK_NOTIFICATION_TRANSITION_KEY, JSON.stringify(state));
 }

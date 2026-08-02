@@ -1,10 +1,26 @@
 import { Share } from 'react-native';
 import { create } from 'zustand';
-import { fetchAirQuality } from '../api/openMeteoAirQuality';
-import { fetchWeather } from '../api/openMeteoWeather';
+import { capabilitiesForEntitlement } from '../capabilities/config';
+import { FREE_ENTITLEMENT, type EntitlementState } from '../capabilities/entitlements';
+import { isFeatureAvailable } from '../capabilities/features';
+import { isEnvironmentalVariableAvailable } from '../capabilities/variables';
 import { CACHE_SCHEMA_VERSION, CACHE_STALE_AFTER_MS } from '../core/constants';
-import { buildDailySummary, formatDailySummary } from '../core/dailySummary';
+import {
+  buildDailySummary,
+  formatDailySummary,
+  selectDailySummaryOutdoorWindow,
+} from '../core/dailySummary';
+import {
+  evaluateRiskTransition,
+  formatRiskTransitionNotification,
+  riskNotificationObservationKey,
+  riskTransitionStateAfterDeliveryAttempt,
+} from '../core/riskTransitionNotifications';
 import type { LocationInfo, NormalizedEnvironment } from '../models/environment';
+import type {
+  NotificationPermissionStatus,
+  RiskNotificationTransitionState,
+} from '../models/notifications';
 import {
   DEFAULT_PROFILE,
   DEFAULT_SETTINGS,
@@ -14,15 +30,26 @@ import {
 import { deriveEnvironmentState } from './derivedEnvironment';
 import { parseManualCoordinates, resolveLocation } from '../services/locationService';
 import { assembleEnvironment } from '../services/environmentAssembler';
+import { activeEnvironmentalProvider } from '../services/environmentProviders';
+import { createBillingGateway } from '../services/billingGateway';
 import { cacheForCoordinates } from '../services/cacheCompatibility';
 import {
   loadEnvironmentCache,
   loadProfile,
+  loadRiskNotificationTransitionState,
   loadSettings,
   saveEnvironmentCache,
   saveProfile,
+  saveRiskNotificationTransitionState,
   saveSettings,
 } from '../storage/storage';
+import {
+  deliverRiskTransitionNotification,
+  deliverRiskTestNotification,
+  getRiskNotificationPermissionStatus,
+  openSystemNotificationSettings,
+  requestRiskNotificationPermission,
+} from '../services/notificationService';
 import { settingsForProfileState } from './settingsPolicy';
 
 interface AppStore {
@@ -32,16 +59,22 @@ interface AppStore {
   stale: boolean;
   error: string | null;
   shareMessage: string | null;
+  notificationMessage: string | null;
+  notificationPermissionStatus: NotificationPermissionStatus;
   location: LocationInfo;
   settings: AppSettings;
   profile: PersonalAllergyProfile;
+  entitlement: EntitlementState;
   environment: NormalizedEnvironment | null;
+  riskNotificationTransitionState: RiskNotificationTransitionState | null;
   hydrate: () => Promise<void>;
   refresh: () => Promise<void>;
   updateSettings: (settings: Partial<AppSettings>) => Promise<void>;
   updateProfile: (profile: Partial<PersonalAllergyProfile>) => Promise<void>;
   toggleProfileFactor: (factor: keyof PersonalAllergyProfile['factors']) => Promise<void>;
   shareDailySummary: () => Promise<void>;
+  sendTestRiskNotification: () => Promise<void>;
+  openNotificationSettings: () => Promise<void>;
 }
 
 const emptyLocation: LocationInfo = {
@@ -72,6 +105,30 @@ let profileSaveQueue = Promise.resolve();
 let pendingSettings: AppSettings | null = null;
 let settingsSaveTimeout: ReturnType<typeof setTimeout> | null = null;
 
+function enqueueSettingsSave(settings: AppSettings): Promise<void> {
+  settingsSaveQueue = settingsSaveQueue
+    .catch((error) => console.warn('AirAware: previous settings save failed', error))
+    .then(() => saveSettings(settings))
+    .catch((error) => console.warn('AirAware: settings save failed', error));
+  return settingsSaveQueue;
+}
+
+export function flushPendingSettingsSave(): Promise<void> {
+  if (settingsSaveTimeout) {
+    clearTimeout(settingsSaveTimeout);
+    settingsSaveTimeout = null;
+  }
+
+  const settingsToSave = pendingSettings;
+  pendingSettings = null;
+
+  if (!settingsToSave) {
+    return settingsSaveQueue;
+  }
+
+  return enqueueSettingsSave(settingsToSave);
+}
+
 function scheduleSettingsSave(settings: AppSettings): void {
   pendingSettings = settings;
   if (settingsSaveTimeout) {
@@ -79,16 +136,8 @@ function scheduleSettingsSave(settings: AppSettings): void {
   }
 
   settingsSaveTimeout = setTimeout(() => {
-    const settingsToSave = pendingSettings;
-    pendingSettings = null;
     settingsSaveTimeout = null;
-
-    if (!settingsToSave) return;
-
-    settingsSaveQueue = settingsSaveQueue
-      .catch((error) => console.warn('AirAware: previous settings save failed', error))
-      .then(() => saveSettings(settingsToSave))
-      .catch((error) => console.warn('AirAware: settings save failed', error));
+    void flushPendingSettingsSave();
   }, 300);
 }
 
@@ -106,16 +155,23 @@ export const useAppStore = create<AppStore>((set, get) => ({
   stale: false,
   error: null,
   shareMessage: null,
+  notificationMessage: null,
+  notificationPermissionStatus: 'unknown',
   location: emptyLocation,
   settings: DEFAULT_SETTINGS,
   profile: DEFAULT_PROFILE,
+  entitlement: FREE_ENTITLEMENT,
   environment: null,
+  riskNotificationTransitionState: null,
 
   hydrate: async () => {
-    const [storedSettings, profile, cache] = await Promise.all([
+    const billingGateway = createBillingGateway();
+    const [storedSettings, profile, cache, entitlement, notificationState] = await Promise.all([
       loadSettings(),
       loadProfile(),
       loadEnvironmentCache(),
+      billingGateway.currentEntitlement(),
+      loadRiskNotificationTransitionState(),
     ]);
     const settings = settingsForProfileState(storedSettings, profile);
     const environment = cache?.data ?? null;
@@ -128,7 +184,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
       hydrated: true,
       settings,
       profile,
+      entitlement,
       environment,
+      riskNotificationTransitionState: notificationState,
       stale: staleFrom(cache?.metadata.savedAt ?? null),
       location: environment
         ? {
@@ -156,10 +214,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
       }
 
       const cachedForLocation = cacheForCoordinates(cached, location.coordinates);
+      const capabilities = capabilitiesForEntitlement(get().entitlement);
+      const provider = activeEnvironmentalProvider(capabilities);
 
       const [airResult, weatherResult] = await Promise.allSettled([
-        fetchAirQuality(location.coordinates),
-        fetchWeather(location.coordinates),
+        provider.fetchAirQuality(location.coordinates),
+        provider.fetchWeather(location.coordinates),
       ]);
       const airQuality = airResult.status === 'fulfilled' ? airResult.value : null;
       const weather = weatherResult.status === 'fulfilled' ? weatherResult.value : null;
@@ -177,11 +237,65 @@ export const useAppStore = create<AppStore>((set, get) => ({
       });
 
       await persistSuccessfulEnvironment(environment);
+      const derived = deriveEnvironmentState(
+        environment,
+        get().profile,
+        settings.outdoorWindowDurationHours,
+        capabilities,
+      );
+      const canNotify = isFeatureAvailable(capabilities, 'basic_transition_notifications');
+      const permissionStatus =
+        canNotify && settings.riskTransitionNotificationsEnabled
+          ? await getRiskNotificationPermissionStatus()
+          : get().notificationPermissionStatus;
+      const transitionEvaluation = canNotify
+        ? evaluateRiskTransition({
+            settings,
+            capabilityAvailable: canNotify,
+            permissionStatus,
+            environmentalScore: derived.environmentalScore,
+            personalizedScore: derived.personalizedScore,
+            previousState: get().riskNotificationTransitionState,
+            coordinates: environment.coordinates,
+            placeName: environment.placeName,
+            profile: get().profile,
+            observationKey: riskNotificationObservationKey({
+              fetchedAt: environment.fetchedAt,
+              currentTimestamp: environment.current.timestamp,
+              airQualityFetchedAt: environment.metadata.airQualityFetchedAt,
+              weatherFetchedAt: environment.metadata.weatherFetchedAt,
+            }),
+            now: new Date().toISOString(),
+          })
+        : null;
+
+      let delivered = false;
+      if (transitionEvaluation?.transition) {
+        delivered = await deliverRiskTransitionNotification(
+          formatRiskTransitionNotification(transitionEvaluation.transition),
+        );
+      }
+      const nextNotificationState = transitionEvaluation
+        ? riskTransitionStateAfterDeliveryAttempt({
+            nextState: transitionEvaluation.nextState,
+            previousState: get().riskNotificationTransitionState,
+            transition: transitionEvaluation.transition,
+            delivered,
+          })
+        : null;
+
+      if (nextNotificationState) {
+        await saveRiskNotificationTransitionState(nextNotificationState);
+      }
+
       set({
         loading: false,
         stale: airQuality === null || weather === null,
         location,
         environment,
+        notificationPermissionStatus: permissionStatus,
+        riskNotificationTransitionState:
+          nextNotificationState ?? get().riskNotificationTransitionState,
       });
     } catch (error) {
       console.warn('AirAware: refresh failed', error);
@@ -207,11 +321,51 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   updateSettings: async (settingsPatch) => {
+    const capabilities = capabilitiesForEntitlement(get().entitlement);
+    const currentSettings = get().settings;
+    let notificationPermissionStatus = get().notificationPermissionStatus;
+    let notificationMessage: string | null = null;
+    let normalizedPatch = settingsPatch;
+
+    if (
+      settingsPatch.riskTransitionNotificationsEnabled === true &&
+      currentSettings.riskTransitionNotificationsEnabled !== true
+    ) {
+      if (!isFeatureAvailable(capabilities, 'basic_transition_notifications')) {
+        normalizedPatch = { ...settingsPatch, riskTransitionNotificationsEnabled: false };
+        notificationMessage = 'Risk transition notifications are unavailable in this build.';
+      } else if (notificationPermissionStatus === 'denied') {
+        notificationPermissionStatus = await getRiskNotificationPermissionStatus();
+        if (notificationPermissionStatus === 'granted') {
+          normalizedPatch = { ...settingsPatch, riskTransitionNotificationsEnabled: true };
+        } else {
+          normalizedPatch = { ...settingsPatch, riskTransitionNotificationsEnabled: false };
+          notificationMessage =
+            'Notification permission is denied. Open Android settings to allow notifications.';
+        }
+      } else {
+        notificationPermissionStatus = await requestRiskNotificationPermission();
+
+        if (notificationPermissionStatus !== 'granted') {
+          normalizedPatch = { ...settingsPatch, riskTransitionNotificationsEnabled: false };
+          notificationMessage =
+            notificationPermissionStatus === 'denied'
+              ? 'Notification permission was denied. You can retry from Settings.'
+              : 'Notifications are unavailable on this device.';
+        }
+      }
+    }
+
+    if (settingsPatch.riskTransitionNotificationsEnabled === false) {
+      notificationMessage = null;
+    }
+
     const settings = settingsForProfileState(
-      { ...get().settings, ...settingsPatch },
+      { ...currentSettings, ...normalizedPatch },
       get().profile,
     );
     set({ settings });
+    set({ notificationPermissionStatus, notificationMessage });
     scheduleSettingsSave(settings);
   },
 
@@ -240,18 +394,33 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   shareDailySummary: async () => {
+    const capabilities = capabilitiesForEntitlement(get().entitlement);
+
+    if (!isFeatureAvailable(capabilities, 'daily_summary')) {
+      set({ sharing: false, shareMessage: 'Daily summary sharing is unavailable.' });
+      return;
+    }
+
     set({ sharing: true, shareMessage: null });
     const derived = deriveEnvironmentState(
       get().environment,
       get().profile,
       get().settings.outdoorWindowDurationHours,
+      capabilities,
     );
+    const bestOutdoorWindow = selectDailySummaryOutdoorWindow({
+      settings: get().settings,
+      personalizedScore: derived.personalizedScore,
+      environmentalBestOutdoorWindow: derived.environmentalBestOutdoorWindow,
+      personalizedBestOutdoorWindow: derived.personalizedBestOutdoorWindow,
+    });
     const summary = buildDailySummary({
       environment: get().environment,
       personalizedScore: derived.personalizedScore,
-      bestOutdoorWindow: derived.bestOutdoorWindow,
+      bestOutdoorWindow,
       settings: get().settings,
       stale: get().stale,
+      includeUvPeak: isEnvironmentalVariableAvailable(capabilities, 'uvIndex'),
     });
 
     if (!summary) {
@@ -266,5 +435,36 @@ export const useAppStore = create<AppStore>((set, get) => ({
       console.warn('AirAware: native share failed', error);
       set({ sharing: false, shareMessage: 'Could not open the share sheet.' });
     }
+  },
+
+  sendTestRiskNotification: async () => {
+    const permissionStatus = await getRiskNotificationPermissionStatus();
+    set({ notificationPermissionStatus: permissionStatus, notificationMessage: null });
+
+    if (permissionStatus !== 'granted') {
+      set({
+        notificationMessage:
+          permissionStatus === 'denied'
+            ? 'Notification permission is denied. Open Android settings to allow notifications.'
+            : 'Enable notification permission before sending a test notification.',
+      });
+      return;
+    }
+
+    const delivered = await deliverRiskTestNotification();
+    set({
+      notificationMessage: delivered
+        ? 'Test notification sent.'
+        : 'Could not send the test notification.',
+    });
+  },
+
+  openNotificationSettings: async () => {
+    const opened = await openSystemNotificationSettings();
+    set({
+      notificationMessage: opened
+        ? 'Android notification settings opened.'
+        : 'Could not open Android notification settings.',
+    });
   },
 }));

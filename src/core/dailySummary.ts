@@ -29,12 +29,9 @@ function scoreChoice(input: {
 }
 
 function mainFactor(
-  environmentalScore: EnvironmentalScoreResult,
-  personalizedScore: PersonalizedScoreResult,
+  score: EnvironmentalScoreResult | PersonalizedScoreResult,
 ): Pick<DailySummary, 'mainFactorLabel' | 'mainFactorGroup'> {
-  const contributor = contributorFromScore(
-    personalizedScore.available ? personalizedScore : environmentalScore,
-  );
+  const contributor = contributorFromScore(score);
 
   return {
     mainFactorLabel: contributor.label,
@@ -79,6 +76,7 @@ export function buildDailySummary(input: {
   bestOutdoorWindow: OutdoorWindow | null;
   settings: AppSettings;
   stale: boolean;
+  includeUvPeak?: boolean;
 }): DailySummary | null {
   if (!input.environment) return null;
 
@@ -91,7 +89,7 @@ export function buildDailySummary(input: {
     personalizedScore: input.personalizedScore,
     settings: input.settings,
   });
-  const factor = mainFactor(environmentalScore, input.personalizedScore);
+  const factor = mainFactor(selectedScore.score);
   const title =
     input.settings.summaryLocation === 'place' && input.environment.placeName
       ? `AirAware — ${input.environment.placeName}`
@@ -106,10 +104,23 @@ export function buildDailySummary(input: {
     mainFactorLabel: factor.mainFactorLabel,
     mainFactorGroup: factor.mainFactorGroup,
     bestOutdoorWindow: input.bestOutdoorWindow,
-    uvPeak: uvPeak(input.environment, referenceTime),
+    uvPeak: input.includeUvPeak === false ? null : uvPeak(input.environment, referenceTime),
     stale: input.stale,
     attribution: ['Open-Meteo'],
   };
+}
+
+export function selectDailySummaryOutdoorWindow(input: {
+  settings: AppSettings;
+  personalizedScore: PersonalizedScoreResult;
+  environmentalBestOutdoorWindow: OutdoorWindow | null;
+  personalizedBestOutdoorWindow: OutdoorWindow | null;
+}): OutdoorWindow | null {
+  if (input.settings.summaryScore === 'personalized' && input.personalizedScore.available) {
+    return input.personalizedBestOutdoorWindow;
+  }
+
+  return input.environmentalBestOutdoorWindow;
 }
 
 function factorEmoji(group: DailySummary['mainFactorGroup']): string {

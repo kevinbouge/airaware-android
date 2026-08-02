@@ -4,6 +4,7 @@ import { DEFAULT_SETTINGS } from '../src/models/profile';
 function dependencies(overrides = {}) {
   return {
     platform: 'android',
+    getPermission: jest.fn(async () => 'unknown' as const),
     requestPermission: jest.fn(async () => 'granted' as const),
     getCurrentCoordinates: jest.fn(async () => ({ latitude: 50.0755, longitude: 14.4378 })),
     reverseGeocode: jest.fn(async () => [{ city: 'Prague' }]),
@@ -57,6 +58,7 @@ describe('location service', () => {
 
   it('reverse geocodes manual fallback coordinates when automatic permission is denied', async () => {
     const deps = dependencies({
+      getPermission: jest.fn(async () => 'unknown' as const),
       requestPermission: jest.fn(async () => 'denied' as const),
     });
     const location = await resolveLocation(
@@ -70,6 +72,36 @@ describe('location service', () => {
     );
 
     expect(location.permissionStatus).toBe('denied');
+    expect(location.placeName).toBe('Prague');
+  });
+
+  it('does not request automatic location permission again after denial', async () => {
+    const deps = dependencies({
+      getPermission: jest.fn(async () => 'denied' as const),
+    });
+    const location = await resolveLocation(
+      {
+        ...DEFAULT_SETTINGS,
+        locationMode: 'automatic',
+        manualLatitude: '50.0755',
+        manualLongitude: '14.4378',
+      },
+      deps,
+    );
+
+    expect(location.permissionStatus).toBe('denied');
+    expect(deps.requestPermission).not.toHaveBeenCalled();
+    expect(location.coordinates).toEqual({ latitude: 50.0755, longitude: 14.4378 });
+  });
+
+  it('uses existing automatic location permission without prompting', async () => {
+    const deps = dependencies({
+      getPermission: jest.fn(async () => 'granted' as const),
+    });
+    const location = await resolveLocation(DEFAULT_SETTINGS, deps);
+
+    expect(deps.requestPermission).not.toHaveBeenCalled();
+    expect(deps.getCurrentCoordinates).toHaveBeenCalledTimes(1);
     expect(location.placeName).toBe('Prague');
   });
 });

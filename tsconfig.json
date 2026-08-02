@@ -4,7 +4,7 @@
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
-    "types": ["jest"]
+    "types": ["jest", "node"]
   },
   "include": ["App.tsx", "index.ts", "src", "tests"]
 }

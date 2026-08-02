@@ -5,6 +5,7 @@ import { ScoreCard } from '../components/ScoreCard';
 import { SectionCard } from '../components/SectionCard';
 import { StateView } from '../components/StateView';
 import { GasMaskIcon } from '../components/icons/GasMaskIcon';
+import { useCapabilities } from '../hooks/useCapabilities';
 import { useDerivedEnvironment } from '../hooks/useDerivedEnvironment';
 import { useAppStore } from '../state/useAppStore';
 import { colors, riskColor, spacing } from '../theme/theme';
@@ -47,6 +48,7 @@ export function TodayScreen() {
   const refresh = useAppStore((state) => state.refresh);
   const updateSettings = useAppStore((state) => state.updateSettings);
   const shareDailySummary = useAppStore((state) => state.shareDailySummary);
+  const capabilities = useCapabilities();
   const { environmentalScore, personalizedScore } = useDerivedEnvironment();
 
   const startLocationRefresh = async () => {
@@ -122,6 +124,7 @@ export function TodayScreen() {
       {environment ? (
         <>
           <CurrentReadingsSections
+            capabilities={capabilities}
             collapsedSections={settings.collapsedSections}
             current={environment.current}
             onToggleSection={toggleSection}

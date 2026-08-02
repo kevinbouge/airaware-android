@@ -5,6 +5,9 @@ import { calculateEnvironmentalScore } from '../core/scoring';
 import type {
   Coordinates,
   CurrentEnvironmentalReadings,
+  ExtendedAirQualityReadings,
+  ExtendedEnvironmentalReadings,
+  ExtendedWeatherReadings,
   ForecastDay,
   HourlyEnvironmentalReading,
   NormalizedEnvironment,
@@ -21,6 +24,38 @@ const EMPTY_WEATHER: WeatherContext = {
   windGusts: null,
   visibility: null,
   leafWetnessProbability: null,
+};
+
+const EMPTY_EXTENDED_AIR_QUALITY: ExtendedAirQualityReadings = {
+  carbonDioxide: null,
+  ammonia: null,
+  methane: null,
+  nitrogenMonoxide: null,
+  formaldehyde: null,
+  nonMethaneVolatileOrganicCompounds: null,
+};
+
+const EMPTY_EXTENDED_WEATHER: ExtendedWeatherReadings = {
+  pressureMsl: null,
+  surfacePressure: null,
+  visibility: null,
+  cloudCover: null,
+  cloudCoverLow: null,
+  cloudCoverMid: null,
+  cloudCoverHigh: null,
+  dewPoint: null,
+  wetBulbTemperature: null,
+  windGusts: null,
+  shortwaveRadiation: null,
+  directNormalIrradiance: null,
+  diffuseRadiation: null,
+  sunshineDuration: null,
+  cape: null,
+};
+
+const EMPTY_EXTENDED: ExtendedEnvironmentalReadings = {
+  airQuality: EMPTY_EXTENDED_AIR_QUALITY,
+  weather: EMPTY_EXTENDED_WEATHER,
 };
 
 function dayLabel(date: string, index: number): string {
@@ -44,6 +79,14 @@ function mergeCurrent(
   fallback: NormalizedEnvironment | null = null,
 ): CurrentEnvironmentalReadings {
   const weatherContext = weather?.current ?? fallback?.current.weather ?? EMPTY_WEATHER;
+  const extended: ExtendedEnvironmentalReadings = {
+    airQuality:
+      airQuality?.current.extended ??
+      fallback?.current.extended?.airQuality ??
+      EMPTY_EXTENDED.airQuality,
+    weather:
+      weather?.current.extended ?? fallback?.current.extended?.weather ?? EMPTY_EXTENDED.weather,
+  };
 
   return {
     timestamp: chooseCurrentTimestamp(airQuality, weather),
@@ -81,6 +124,7 @@ function mergeCurrent(
         wildfirePm10: null,
       },
     weather: weatherContext,
+    extended,
     moldPotential: calculateMoldPotential(weatherContext),
     uvIndex: weather?.current.uvIndex ?? fallback?.current.uvIndex ?? null,
   };
@@ -108,6 +152,10 @@ function mergeHourly(
     const weatherHour = weatherByTime.get(timestamp);
     const fallbackHour = fallbackByTime.get(timestamp);
     const weatherContext = weatherHour ?? fallbackHour?.weather ?? EMPTY_WEATHER;
+    const extended: ExtendedEnvironmentalReadings = {
+      airQuality: air?.extended ?? fallbackHour?.extended?.airQuality ?? EMPTY_EXTENDED.airQuality,
+      weather: weatherHour?.extended ?? fallbackHour?.extended?.weather ?? EMPTY_EXTENDED.weather,
+    };
 
     return {
       timestamp,
@@ -145,6 +193,7 @@ function mergeHourly(
           wildfirePm10: null,
         },
       weather: weatherContext,
+      extended,
       moldPotential: calculateMoldPotential(weatherContext),
       uvIndex: weatherHour?.uvIndex ?? fallbackHour?.uvIndex ?? null,
     };
@@ -160,20 +209,18 @@ function buildForecastDays(hourly: HourlyEnvironmentalReading[]): ForecastDay[] 
     grouped.set(date, [...(grouped.get(date) ?? []), hour]);
   }
 
-  return Array.from(grouped.entries())
-    .slice(0, 3)
-    .map(([date, hours], index) => {
-      const peak = hours
-        .map((hour) => calculateEnvironmentalScore(hour))
-        .filter((score) => score.available)
-        .sort((left, right) => (right.score ?? 0) - (left.score ?? 0))[0];
+  return Array.from(grouped.entries()).map(([date, hours], index) => {
+    const peak = hours
+      .map((hour) => calculateEnvironmentalScore(hour))
+      .filter((score) => score.available)
+      .sort((left, right) => (right.score ?? 0) - (left.score ?? 0))[0];
 
-      return {
-        date,
-        label: dayLabel(date, index),
-        score: peak ?? null,
-      };
-    });
+    return {
+      date,
+      label: dayLabel(date, index),
+      score: peak ?? null,
+    };
+  });
 }
 
 export function assembleEnvironment(input: {
