@@ -19,6 +19,7 @@ type CapabilityCategory =
 type EnvironmentalVariableGroupId = 'standard' | 'extended';
 export type NotificationCapabilityId =
   'basic_transition_notifications' | 'advanced_environment_notifications';
+export type WidgetCapabilityId = 'compact_home_widget' | 'advanced_home_widget';
 
 export type ProviderId = 'open-meteo';
 
@@ -66,6 +67,7 @@ export type FeatureId =
   | 'automatic_location'
   | 'manual_location'
   | 'daily_summary'
+  | WidgetCapabilityId
   | NotificationCapabilityId;
 
 interface ForecastCapability {
@@ -93,7 +95,7 @@ interface HistoryCapability {
 }
 
 interface WidgetCapability {
-  androidWidgets: boolean;
+  availableWidgets: readonly WidgetCapabilityId[];
 }
 
 interface ProviderCapability {

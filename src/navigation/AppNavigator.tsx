@@ -17,6 +17,17 @@ export type RootTabParamList = {
 };
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
+const linking = {
+  prefixes: ['airaware://'],
+  config: {
+    screens: {
+      Today: 'today',
+      Forecast: 'forecast',
+      Profile: 'profile',
+      Settings: 'settings',
+    },
+  },
+};
 
 function iconNameForRoute(routeName: keyof RootTabParamList): TabIconName {
   switch (routeName) {
@@ -41,7 +52,7 @@ export function AppNavigator() {
   const todayIconColor = headlineCategory ? riskColor(headlineCategory) : colors.unavailable;
 
   return (
-    <NavigationContainer>
+    <NavigationContainer linking={linking}>
       <Tab.Navigator
         screenOptions={({ route }) => ({
           headerStyle: { backgroundColor: colors.surface },

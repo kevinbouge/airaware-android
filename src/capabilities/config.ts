@@ -28,7 +28,7 @@ const BASE_CAPABILITIES = {
     retentionDays: 0,
   },
   widgets: {
-    androidWidgets: false,
+    availableWidgets: ['compact_home_widget'],
   },
   providers: {
     availableProviders: ['open-meteo'],
@@ -54,6 +54,9 @@ export const PRO_LIFETIME_CAPABILITIES: AppCapabilities = {
   },
   notifications: {
     availableGroups: ['basic_transition_notifications', 'advanced_environment_notifications'],
+  },
+  widgets: {
+    availableWidgets: ['compact_home_widget', 'advanced_home_widget'],
   },
 };
 

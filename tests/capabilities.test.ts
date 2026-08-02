@@ -32,6 +32,8 @@ describe('capabilities', () => {
     expect(isFeatureAvailable(FREE_CAPABILITIES, 'extended_forecast')).toBe(false);
     expect(isFeatureAvailable(FREE_CAPABILITIES, 'manual_location')).toBe(true);
     expect(isFeatureAvailable(FREE_CAPABILITIES, 'daily_summary')).toBe(true);
+    expect(isFeatureAvailable(FREE_CAPABILITIES, 'compact_home_widget')).toBe(true);
+    expect(isFeatureAvailable(FREE_CAPABILITIES, 'advanced_home_widget')).toBe(false);
     expect(isFeatureAvailable(FREE_CAPABILITIES, 'basic_transition_notifications')).toBe(true);
     expect(isFeatureAvailable(FREE_CAPABILITIES, 'advanced_environment_notifications')).toBe(false);
     expect(isFeatureAvailable(FREE_CAPABILITIES, 'extended_environmental_data')).toBe(false);
@@ -77,12 +79,12 @@ describe('capabilities', () => {
 
     expect(isEnvironmentalVariableAvailable(standardOnly, 'pm25')).toBe(true);
     expect(isEnvironmentalVariableAvailable(standardOnly, 'aerosolOpticalDepth')).toBe(true);
-    expect(isEnvironmentalVariableAvailable(standardOnly, 'moldPotential')).toBe(false);
-    expect(isEnvironmentalVariableAvailable(standardOnly, 'uvIndex')).toBe(false);
+    expect(isEnvironmentalVariableAvailable(standardOnly, 'moldPotential')).toBe(true);
+    expect(isEnvironmentalVariableAvailable(standardOnly, 'uvIndex')).toBe(true);
     expect(isEnvironmentalVariableAvailable(standardOnly, 'carbonDioxide')).toBe(false);
     expect(
       availableEnvironmentalVariables(standardOnly).some((item) => item.id === 'uvIndex'),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it('filters profile factors through variable capabilities', () => {
@@ -95,10 +97,10 @@ describe('capabilities', () => {
 
     expect(
       availableProfileFactorOptions(standardOnly, ['pm25', 'aerosol_optical_depth', 'uv_index']),
-    ).toEqual(['pm25', 'aerosol_optical_depth']);
+    ).toEqual(['pm25', 'aerosol_optical_depth', 'uv_index']);
   });
 
-  it('removes Pro-only profile factors from Free personalized calculations', () => {
+  it('keeps Mold and UV profile factors available in Free personalized calculations', () => {
     const profile = {
       enabled: true,
       factors: {
@@ -110,8 +112,8 @@ describe('capabilities', () => {
     const freeProfile = profileForCapabilities(FREE_CAPABILITIES, profile);
     const proProfile = profileForCapabilities(PRO_LIFETIME_CAPABILITIES, profile);
 
-    expect(freeProfile.factors.mold).toBe(false);
-    expect(freeProfile.factors.uv_index).toBe(false);
+    expect(freeProfile.factors.mold).toBe(true);
+    expect(freeProfile.factors.uv_index).toBe(true);
     expect(proProfile.factors.mold).toBe(true);
     expect(proProfile.factors.uv_index).toBe(true);
   });
@@ -130,6 +132,8 @@ describe('capabilities', () => {
       'automatic_location',
       'manual_location',
       'daily_summary',
+      'compact_home_widget',
+      'advanced_home_widget',
       'basic_transition_notifications',
       'advanced_environment_notifications',
     ]);
@@ -151,10 +155,22 @@ describe('capabilities', () => {
           (feature) =>
             feature.id !== 'extended_forecast' &&
             feature.id !== 'extended_environmental_data' &&
+            feature.id !== 'advanced_home_widget' &&
             feature.id !== 'advanced_environment_notifications',
         )
         .every((feature) => feature.available),
     ).toBe(true);
+  });
+
+  it('splits Free and Pro Android home-screen widget capabilities', () => {
+    expect(isFeatureAvailable(FREE_CAPABILITIES, 'compact_home_widget')).toBe(true);
+    expect(isFeatureAvailable(PRO_LIFETIME_CAPABILITIES, 'compact_home_widget')).toBe(true);
+    expect(isFeatureAvailable(FREE_CAPABILITIES, 'advanced_home_widget')).toBe(false);
+    expect(isFeatureAvailable(PRO_LIFETIME_CAPABILITIES, 'advanced_home_widget')).toBe(true);
+    expect(PRO_LIFETIME_CAPABILITIES.widgets.availableWidgets).toEqual([
+      'compact_home_widget',
+      'advanced_home_widget',
+    ]);
   });
 
   it('splits Free and Pro notification capabilities', () => {

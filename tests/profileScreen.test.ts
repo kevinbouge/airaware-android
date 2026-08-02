@@ -8,7 +8,7 @@ describe('Profile screen factor sections', () => {
     expect(DEFAULT_PROFILE.factors.uv_index).toBe(false);
   });
 
-  it('shows Pro-only profile factors in meaningful sections', () => {
+  it('shows profile factors in meaningful sections', () => {
     const sections = profileFactorSections(PRO_LIFETIME_CAPABILITIES);
 
     expect(sections.extendedAvailable).toBe(true);
@@ -25,8 +25,8 @@ describe('Profile screen factor sections', () => {
       ['dust', 'Atmospheric dust'],
       ['wildfire_pm10', 'Smoke-related particulate context'],
     ]);
-    expect(sections.proSections.map((section) => section.title)).toEqual(['Mold and sun']);
-    expect(sections.proSections[0]?.rows).toEqual([
+    expect(sections.additionalSections.map((section) => section.title)).toEqual(['Mold and sun']);
+    expect(sections.additionalSections[0]?.rows).toEqual([
       {
         id: 'mold',
         label: 'Mold potential',
@@ -38,13 +38,17 @@ describe('Profile screen factor sections', () => {
         profileFactorId: 'uv_index',
       },
     ]);
-    expect(sections.proSections).toHaveLength(1);
+    expect(sections.additionalSections).toHaveLength(1);
   });
 
-  it('hides Pro-only profile factors for Free capabilities', () => {
+  it('shows Mold and UV profile factors for Free capabilities', () => {
     const sections = profileFactorSections(FREE_CAPABILITIES);
 
     expect(sections.extendedAvailable).toBe(false);
-    expect(sections.proSections).toEqual([]);
+    expect(sections.additionalSections.map((section) => section.title)).toEqual(['Mold and sun']);
+    expect(sections.additionalSections[0]?.rows.map((row) => row.profileFactorId)).toEqual([
+      'mold',
+      'uv_index',
+    ]);
   });
 });

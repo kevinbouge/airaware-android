@@ -4,8 +4,10 @@ import {
   loadProfile,
   loadRiskNotificationTransitionState,
   loadSettings,
+  loadWidgetSnapshot,
   saveRiskNotificationTransitionState,
   saveSettings,
+  saveWidgetSnapshot,
 } from '../src/storage/storage';
 import { DEFAULT_SETTINGS } from '../src/models/profile';
 
@@ -271,5 +273,78 @@ describe('settings storage', () => {
     );
 
     await expect(loadRiskNotificationTransitionState()).resolves.toBeNull();
+  });
+
+  it('persists and validates widget snapshots separately from the environment cache', async () => {
+    await saveWidgetSnapshot({
+      version: 1,
+      generatedAt: '2026-08-01T12:00:00Z',
+      entitlementKind: 'free',
+      compactAvailable: true,
+      advancedAvailable: false,
+      forecastDayLimit: 3,
+      placeName: 'Prague',
+      showPlaceName: true,
+      stale: false,
+      lastUpdatedAt: '2026-08-01T12:00:00Z',
+      headlineScore: {
+        type: 'environmental',
+        label: 'Environmental burden',
+        category: 'high',
+        categoryLabel: 'High',
+        score: 68,
+        scoreLabel: '68%',
+      },
+      mainFactorLabel: 'Grass pollen',
+      uvCategoryLabel: 'High',
+      bestOutdoorWindowLabel: '19:00–21:00',
+      forecastDays: [
+        {
+          label: 'Today',
+          category: 'high',
+          categoryLabel: 'High',
+          scoreLabel: '68%',
+        },
+      ],
+    });
+
+    await expect(loadWidgetSnapshot()).resolves.toMatchObject({
+      version: 1,
+      data: {
+        placeName: 'Prague',
+        headlineScore: {
+          categoryLabel: 'High',
+        },
+      },
+    });
+  });
+
+  it('rejects corrupt widget snapshots', async () => {
+    await AsyncStorage.setItem(
+      'airaware.widget-snapshot.v1',
+      JSON.stringify({
+        version: 1,
+        savedAt: '2026-08-01T12:00:00Z',
+        data: {
+          version: 1,
+          generatedAt: '2026-08-01T12:00:00Z',
+          entitlementKind: 'free',
+          compactAvailable: true,
+          advancedAvailable: false,
+          forecastDayLimit: 3,
+          placeName: { raw: 'Prague' },
+          showPlaceName: true,
+          stale: false,
+          lastUpdatedAt: null,
+          headlineScore: null,
+          mainFactorLabel: null,
+          uvCategoryLabel: null,
+          bestOutdoorWindowLabel: null,
+          forecastDays: [],
+        },
+      }),
+    );
+
+    await expect(loadWidgetSnapshot()).resolves.toBeNull();
   });
 });

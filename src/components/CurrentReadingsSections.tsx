@@ -1,3 +1,4 @@
+import { Text, StyleSheet } from 'react-native';
 import { ReadingRow } from './ReadingRow';
 import { SectionCard } from './SectionCard';
 import { isFeatureAvailable } from '../capabilities/features';
@@ -24,6 +25,7 @@ import {
   formatVisibilityMeters,
 } from '../utils/format';
 import { IRRITANT_LABELS, POLLEN_LABELS, POLLUTANT_LABELS } from '../utils/readingLabels';
+import { colors } from '../theme/theme';
 
 const CURRENT_READING_SECTION_IDS = {
   pollen: 'today.pollen',
@@ -37,6 +39,8 @@ const CURRENT_READING_SECTION_IDS = {
   wind: 'today.wind',
 } as const;
 
+export const NO_DATA_AVAILABLE_LABEL = 'No data available';
+
 interface ExtendedReadingRow {
   id: EnvironmentalVariableId;
   label: string;
@@ -48,6 +52,29 @@ interface ProReadingSection {
   title: string;
   rows: ExtendedReadingRow[];
 }
+
+const EXTENDED_SECTION_DEFINITIONS = [
+  {
+    id: CURRENT_READING_SECTION_IDS.atmosphericComposition,
+    title: 'Atmospheric composition',
+  },
+  {
+    id: CURRENT_READING_SECTION_IDS.pressureVisibility,
+    title: 'Pressure and visibility',
+  },
+  {
+    id: CURRENT_READING_SECTION_IDS.cloudsMoisture,
+    title: 'Clouds and moisture',
+  },
+  {
+    id: CURRENT_READING_SECTION_IDS.solarConvection,
+    title: 'Solar and convection',
+  },
+  {
+    id: CURRENT_READING_SECTION_IDS.wind,
+    title: 'Wind',
+  },
+] as const;
 
 const EXTENDED_AIR_QUALITY_ROWS: {
   id: ExtendedEnvironmentalVariableId;
@@ -226,11 +253,117 @@ function isFiniteReading(value: number | null | undefined): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
+function NoDataMessage() {
+  return <Text style={styles.empty}>{NO_DATA_AVAILABLE_LABEL}</Text>;
+}
+
 export function extendedEnvironmentalReadingRows(
   current: CurrentEnvironmentalReadings,
   capabilities: AppCapabilities,
 ): ExtendedReadingRow[] {
   return proCurrentReadingSections(current, capabilities).flatMap((section) => section.rows);
+}
+
+export function pollenReadingRows(
+  current: CurrentEnvironmentalReadings,
+  capabilities: AppCapabilities,
+): ExtendedReadingRow[] {
+  return Object.entries(POLLEN_LABELS)
+    .filter(
+      ([key]) =>
+        isEnvironmentalVariableAvailable(
+          capabilities,
+          pollenVariableId(key as keyof typeof current.pollen),
+        ) && current.pollen[key as keyof typeof current.pollen] !== null,
+    )
+    .map(([key, label]) => ({
+      id: pollenVariableId(key as keyof typeof current.pollen),
+      label,
+      value: formatNumber(current.pollen[key as keyof typeof current.pollen], 'grains/m³'),
+    }));
+}
+
+function pollutantReadingRows(
+  current: CurrentEnvironmentalReadings,
+  capabilities: AppCapabilities,
+): (ExtendedReadingRow & { detail?: string })[] {
+  return Object.entries(POLLUTANT_LABELS)
+    .filter(
+      ([key]) =>
+        isEnvironmentalVariableAvailable(
+          capabilities,
+          pollutantVariableId(key as keyof typeof current.regulatedPollutants),
+        ) && current.regulatedPollutants[key as keyof typeof current.regulatedPollutants] !== null,
+    )
+    .map(([key, label]) => {
+      const detail =
+        current.pollutantAqi[key as keyof typeof current.pollutantAqi] !== null
+          ? `AQI ${formatNumber(current.pollutantAqi[key as keyof typeof current.pollutantAqi])}`
+          : undefined;
+      const row = {
+        id: pollutantVariableId(key as keyof typeof current.regulatedPollutants),
+        label,
+        value: formatNumber(
+          current.regulatedPollutants[key as keyof typeof current.regulatedPollutants],
+          'µg/m³',
+        ),
+      };
+
+      return detail ? { ...row, detail } : row;
+    });
+}
+
+function irritantReadingRows(
+  current: CurrentEnvironmentalReadings,
+  capabilities: AppCapabilities,
+): ExtendedReadingRow[] {
+  return Object.entries(IRRITANT_LABELS)
+    .filter(
+      ([key]) =>
+        isEnvironmentalVariableAvailable(
+          capabilities,
+          irritantVariableId(key as keyof typeof current.atmosphericIrritants),
+        ) &&
+        current.atmosphericIrritants[key as keyof typeof current.atmosphericIrritants] !== null,
+    )
+    .map(([key, label]) => ({
+      id: irritantVariableId(key as keyof typeof current.atmosphericIrritants),
+      label,
+      value: formatNumber(
+        current.atmosphericIrritants[key as keyof typeof current.atmosphericIrritants],
+        key === 'aerosolOpticalDepth' ? '' : 'µg/m³',
+        key === 'aerosolOpticalDepth' ? 2 : 0,
+      ),
+    }));
+}
+
+function moldAndSunRows(
+  current: CurrentEnvironmentalReadings,
+  capabilities: AppCapabilities,
+): ExtendedReadingRow[] {
+  return [
+    ...(isEnvironmentalVariableAvailable(capabilities, 'moldPotential') &&
+    current.moldPotential.available &&
+    isFiniteReading(current.moldPotential.score)
+      ? [
+          {
+            id: 'moldPotential' as const,
+            label: 'Mold potential',
+            value: formatMeasurement(current.moldPotential.score, '%'),
+          },
+        ]
+      : []),
+    ...(isEnvironmentalVariableAvailable(capabilities, 'uvIndex') &&
+    isFiniteReading(current.uvIndex)
+      ? [
+          {
+            id: 'uvIndex' as const,
+            label: 'UV index',
+            value: formatNumber(current.uvIndex, '', 1),
+          },
+        ]
+      : []),
+  ];
 }
 
 function airQualityRows(
@@ -291,63 +424,30 @@ export function proCurrentReadingSections(
 ): ProReadingSection[] {
   if (!isFeatureAvailable(capabilities, 'extended_environmental_data')) return [];
 
-  const proStandardRows: ExtendedReadingRow[] = [
-    ...(isEnvironmentalVariableAvailable(capabilities, 'moldPotential') &&
-    current.moldPotential.available &&
-    isFiniteReading(current.moldPotential.score)
-      ? [
-          {
-            id: 'moldPotential' as const,
-            label: 'Mold potential',
-            value: formatMeasurement(current.moldPotential.score, '%'),
-          },
-        ]
-      : []),
-    ...(isEnvironmentalVariableAvailable(capabilities, 'uvIndex') &&
-    isFiniteReading(current.uvIndex)
-      ? [
-          {
-            id: 'uvIndex' as const,
-            label: 'UV index',
-            value: formatNumber(current.uvIndex, '', 1),
-          },
-        ]
-      : []),
-  ];
   const sections: ProReadingSection[] = [
     {
-      id: CURRENT_READING_SECTION_IDS.moldAndSun,
-      title: 'Mold and sun',
-      rows: proStandardRows,
-    },
-    {
-      id: CURRENT_READING_SECTION_IDS.atmosphericComposition,
-      title: 'Atmospheric composition',
+      ...EXTENDED_SECTION_DEFINITIONS[0],
       rows: airQualityRows(current, capabilities),
     },
     {
-      id: CURRENT_READING_SECTION_IDS.pressureVisibility,
-      title: 'Pressure and visibility',
+      ...EXTENDED_SECTION_DEFINITIONS[1],
       rows: weatherRows(current, capabilities, PRESSURE_VISIBILITY_ROWS),
     },
     {
-      id: CURRENT_READING_SECTION_IDS.cloudsMoisture,
-      title: 'Clouds and moisture',
+      ...EXTENDED_SECTION_DEFINITIONS[2],
       rows: weatherRows(current, capabilities, CLOUDS_MOISTURE_ROWS),
     },
     {
-      id: CURRENT_READING_SECTION_IDS.solarConvection,
-      title: 'Solar and convection',
+      ...EXTENDED_SECTION_DEFINITIONS[3],
       rows: weatherRows(current, capabilities, SOLAR_CONVECTION_ROWS),
     },
     {
-      id: CURRENT_READING_SECTION_IDS.wind,
-      title: 'Wind',
+      ...EXTENDED_SECTION_DEFINITIONS[4],
       rows: weatherRows(current, capabilities, WIND_ROWS),
     },
   ];
 
-  return sections.filter((section) => section.rows.length > 0);
+  return sections;
 }
 
 export function CurrentReadingsSections({
@@ -356,7 +456,11 @@ export function CurrentReadingsSections({
   collapsedSections,
   onToggleSection,
 }: CurrentReadingsSectionsProps) {
+  const moldSunRows = moldAndSunRows(current, capabilities);
   const proSections = proCurrentReadingSections(current, capabilities);
+  const pollenRows = pollenReadingRows(current, capabilities);
+  const pollutantRows = pollutantReadingRows(current, capabilities);
+  const irritantRows = irritantReadingRows(current, capabilities);
 
   return (
     <>
@@ -366,21 +470,11 @@ export function CurrentReadingsSections({
         collapsed={collapsedSections[CURRENT_READING_SECTION_IDS.pollen] === true}
         onToggle={() => onToggleSection(CURRENT_READING_SECTION_IDS.pollen)}
       >
-        {Object.entries(POLLEN_LABELS)
-          .filter(
-            ([key]) =>
-              isEnvironmentalVariableAvailable(
-                capabilities,
-                pollenVariableId(key as keyof typeof current.pollen),
-              ) && current.pollen[key as keyof typeof current.pollen] !== null,
-          )
-          .map(([key, label]) => (
-            <ReadingRow
-              key={key}
-              label={label}
-              value={formatNumber(current.pollen[key as keyof typeof current.pollen], 'grains/m³')}
-            />
-          ))}
+        {pollenRows.length > 0 ? (
+          pollenRows.map((row) => <ReadingRow key={row.id} label={row.label} value={row.value} />)
+        ) : (
+          <NoDataMessage />
+        )}
       </SectionCard>
 
       <SectionCard
@@ -390,30 +484,13 @@ export function CurrentReadingsSections({
         collapsed={collapsedSections[CURRENT_READING_SECTION_IDS.regulatedPollution] === true}
         onToggle={() => onToggleSection(CURRENT_READING_SECTION_IDS.regulatedPollution)}
       >
-        {Object.entries(POLLUTANT_LABELS)
-          .filter(
-            ([key]) =>
-              isEnvironmentalVariableAvailable(
-                capabilities,
-                pollutantVariableId(key as keyof typeof current.regulatedPollutants),
-              ) &&
-              current.regulatedPollutants[key as keyof typeof current.regulatedPollutants] !== null,
-          )
-          .map(([key, label]) => (
-            <ReadingRow
-              key={key}
-              label={label}
-              value={formatNumber(
-                current.regulatedPollutants[key as keyof typeof current.regulatedPollutants],
-                'µg/m³',
-              )}
-              detail={
-                current.pollutantAqi[key as keyof typeof current.pollutantAqi] !== null
-                  ? `AQI ${formatNumber(current.pollutantAqi[key as keyof typeof current.pollutantAqi])}`
-                  : undefined
-              }
-            />
-          ))}
+        {pollutantRows.length > 0 ? (
+          pollutantRows.map((row) => (
+            <ReadingRow key={row.id} label={row.label} value={row.value} detail={row.detail} />
+          ))
+        ) : (
+          <NoDataMessage />
+        )}
       </SectionCard>
 
       <SectionCard
@@ -422,27 +499,24 @@ export function CurrentReadingsSections({
         collapsed={collapsedSections[CURRENT_READING_SECTION_IDS.atmosphericIrritants] === true}
         onToggle={() => onToggleSection(CURRENT_READING_SECTION_IDS.atmosphericIrritants)}
       >
-        {Object.entries(IRRITANT_LABELS)
-          .filter(
-            ([key]) =>
-              isEnvironmentalVariableAvailable(
-                capabilities,
-                irritantVariableId(key as keyof typeof current.atmosphericIrritants),
-              ) &&
-              current.atmosphericIrritants[key as keyof typeof current.atmosphericIrritants] !==
-                null,
-          )
-          .map(([key, label]) => (
-            <ReadingRow
-              key={key}
-              label={label}
-              value={formatNumber(
-                current.atmosphericIrritants[key as keyof typeof current.atmosphericIrritants],
-                key === 'aerosolOpticalDepth' ? '' : 'µg/m³',
-                key === 'aerosolOpticalDepth' ? 2 : 0,
-              )}
-            />
-          ))}
+        {irritantRows.length > 0 ? (
+          irritantRows.map((row) => <ReadingRow key={row.id} label={row.label} value={row.value} />)
+        ) : (
+          <NoDataMessage />
+        )}
+      </SectionCard>
+
+      <SectionCard
+        title="Mold and sun"
+        collapsible
+        collapsed={collapsedSections[CURRENT_READING_SECTION_IDS.moldAndSun] === true}
+        onToggle={() => onToggleSection(CURRENT_READING_SECTION_IDS.moldAndSun)}
+      >
+        {moldSunRows.length > 0 ? (
+          moldSunRows.map((row) => <ReadingRow key={row.id} label={row.label} value={row.value} />)
+        ) : (
+          <NoDataMessage />
+        )}
       </SectionCard>
 
       {proSections.map((section) => (
@@ -453,11 +527,23 @@ export function CurrentReadingsSections({
           collapsed={collapsedSections[section.id] === true}
           onToggle={() => onToggleSection(section.id)}
         >
-          {section.rows.map((row) => (
-            <ReadingRow key={row.id} label={row.label} value={row.value} />
-          ))}
+          {section.rows.length > 0 ? (
+            section.rows.map((row) => (
+              <ReadingRow key={row.id} label={row.label} value={row.value} />
+            ))
+          ) : (
+            <NoDataMessage />
+          )}
         </SectionCard>
       ))}
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  empty: {
+    color: colors.muted,
+    fontSize: 14,
+    fontStyle: 'italic',
+  },
+});

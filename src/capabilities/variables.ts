@@ -83,10 +83,10 @@ const ENVIRONMENTAL_VARIABLES: readonly EnvironmentalVariableDefinition[] = [
   {
     id: 'moldPotential',
     displayName: 'Mold potential',
-    group: 'extended',
+    group: 'standard',
     profileFactorId: 'mold',
   },
-  { id: 'uvIndex', displayName: 'UV index', group: 'extended', profileFactorId: 'uv_index' },
+  { id: 'uvIndex', displayName: 'UV index', group: 'standard', profileFactorId: 'uv_index' },
   { id: 'carbonDioxide', displayName: 'CO₂', group: 'extended' },
   { id: 'ammonia', displayName: 'NH₃', group: 'extended' },
   { id: 'methane', displayName: 'CH₄', group: 'extended' },

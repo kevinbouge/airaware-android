@@ -31,7 +31,7 @@ export function ProfileScreen() {
     pollen: pollenFactors,
     regulatedPollution: regulatedPollutionFactors,
     atmosphericIrritants: atmosphericIrritantFactors,
-    proSections,
+    additionalSections,
   } = profileFactorSections(capabilities);
 
   return (
@@ -80,7 +80,7 @@ export function ProfileScreen() {
         ))}
       </SectionCard>
 
-      {proSections.map((section) => (
+      {additionalSections.map((section) => (
         <SectionCard key={section.id} title={section.title}>
           {section.rows.map((row) =>
             row.profileFactorId ? (

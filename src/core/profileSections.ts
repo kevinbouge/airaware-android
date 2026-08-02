@@ -1,4 +1,3 @@
-import { isFeatureAvailable } from '../capabilities/features';
 import { availableProfileFactorOptions } from '../capabilities/variables';
 import type { AppCapabilities } from '../capabilities/types';
 import type { ProfileFactorId } from '../models/profile';
@@ -39,7 +38,7 @@ const ATMOSPHERIC_IRRITANT_FACTORS: [ProfileFactorId, string][] = [
   ['wildfire_pm10', 'Smoke-related particulate context'],
 ];
 
-const PRO_PROFILE_SECTIONS: ProfileSectionDefinition[] = [
+const ADDITIONAL_PROFILE_SECTIONS: ProfileSectionDefinition[] = [
   {
     id: 'profile.moldAndSun',
     title: 'Mold and sun',
@@ -55,24 +54,23 @@ export function profileFactorSections(capabilities: AppCapabilities) {
     factors.filter(([factor]) =>
       availableProfileFactorOptions(capabilities, [factor]).includes(factor),
     );
-  const extendedAvailable = isFeatureAvailable(capabilities, 'extended_environmental_data');
+  const extendedAvailable =
+    capabilities.environmentalVariables.availableGroups.includes('extended');
 
   return {
     pollen: profileFactors(POLLEN_FACTORS),
     regulatedPollution: profileFactors(POLLUTION_FACTORS),
     atmosphericIrritants: profileFactors(ATMOSPHERIC_IRRITANT_FACTORS),
-    proSections: extendedAvailable
-      ? PRO_PROFILE_SECTIONS.map((section) => ({
-          ...section,
-          rows: section.rows.filter(
-            (row) =>
-              row.profileFactorId === undefined ||
-              availableProfileFactorOptions(capabilities, [row.profileFactorId]).includes(
-                row.profileFactorId,
-              ),
+    additionalSections: ADDITIONAL_PROFILE_SECTIONS.map((section) => ({
+      ...section,
+      rows: section.rows.filter(
+        (row) =>
+          row.profileFactorId === undefined ||
+          availableProfileFactorOptions(capabilities, [row.profileFactorId]).includes(
+            row.profileFactorId,
           ),
-        }))
-      : [],
+      ),
+    })).filter((section) => section.rows.length > 0),
     extendedAvailable,
   };
 }

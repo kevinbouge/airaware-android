@@ -10,6 +10,11 @@ import type {
 } from '../models/environment';
 import type { RiskNotificationTransitionState } from '../models/notifications';
 import {
+  WIDGET_SNAPSHOT_SCHEMA_VERSION,
+  type WidgetSnapshot,
+  type WidgetSnapshotEnvelope,
+} from '../models/widgets';
+import {
   DEFAULT_PROFILE,
   DEFAULT_SETTINGS,
   type AppSettings,
@@ -22,6 +27,7 @@ const SETTINGS_KEY = 'airaware.settings.v1';
 const PROFILE_KEY = 'airaware.profile.v1';
 const ENVIRONMENT_CACHE_KEY = 'airaware.environment-cache.v1';
 const RISK_NOTIFICATION_TRANSITION_KEY = 'airaware.risk-notification-transition.v1';
+const WIDGET_SNAPSHOT_KEY = 'airaware.widget-snapshot.v1';
 
 function readObject(value: string | null): Record<string, unknown> | null {
   if (value === null) return null;
@@ -139,6 +145,48 @@ function isRiskNotificationTransitionState(
       object.lastDeliveredObservationKey === null) &&
     typeof object.evaluatedAt === 'string' &&
     Number.isFinite(Date.parse(object.evaluatedAt))
+  );
+}
+
+function isRiskCategoryValue(value: unknown): boolean {
+  return (
+    value === 'low' ||
+    value === 'moderate' ||
+    value === 'high' ||
+    value === 'veryHigh' ||
+    value === 'unavailable'
+  );
+}
+
+function isWidgetSnapshot(value: unknown): value is WidgetSnapshot {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+
+  const object = value as Record<string, unknown>;
+  const score = object.headlineScore as Record<string, unknown> | null;
+  return (
+    object.version === WIDGET_SNAPSHOT_SCHEMA_VERSION &&
+    typeof object.generatedAt === 'string' &&
+    (object.entitlementKind === 'free' || object.entitlementKind === 'pro_lifetime') &&
+    typeof object.compactAvailable === 'boolean' &&
+    typeof object.advancedAvailable === 'boolean' &&
+    isFiniteNumber(object.forecastDayLimit) &&
+    (typeof object.placeName === 'string' || object.placeName === null) &&
+    typeof object.showPlaceName === 'boolean' &&
+    typeof object.stale === 'boolean' &&
+    (typeof object.lastUpdatedAt === 'string' || object.lastUpdatedAt === null) &&
+    (score === null ||
+      (typeof score === 'object' &&
+        !Array.isArray(score) &&
+        (score.type === 'environmental' || score.type === 'personalized') &&
+        (score.label === 'Environmental burden' || score.label === 'Personalized risk') &&
+        isRiskCategoryValue(score.category) &&
+        typeof score.categoryLabel === 'string' &&
+        isFiniteNumber(score.score) &&
+        typeof score.scoreLabel === 'string')) &&
+    (typeof object.mainFactorLabel === 'string' || object.mainFactorLabel === null) &&
+    (typeof object.uvCategoryLabel === 'string' || object.uvCategoryLabel === null) &&
+    (typeof object.bestOutdoorWindowLabel === 'string' || object.bestOutdoorWindowLabel === null) &&
+    Array.isArray(object.forecastDays)
   );
 }
 
@@ -303,4 +351,32 @@ export async function saveRiskNotificationTransitionState(
   state: RiskNotificationTransitionState,
 ): Promise<void> {
   await AsyncStorage.setItem(RISK_NOTIFICATION_TRANSITION_KEY, JSON.stringify(state));
+}
+
+export async function loadWidgetSnapshot(): Promise<WidgetSnapshotEnvelope | null> {
+  const object = readObject(await AsyncStorage.getItem(WIDGET_SNAPSHOT_KEY));
+
+  if (
+    object?.version !== WIDGET_SNAPSHOT_SCHEMA_VERSION ||
+    typeof object.savedAt !== 'string' ||
+    !isWidgetSnapshot(object.data)
+  ) {
+    return null;
+  }
+
+  return {
+    version: WIDGET_SNAPSHOT_SCHEMA_VERSION,
+    savedAt: object.savedAt,
+    data: object.data,
+  };
+}
+
+export async function saveWidgetSnapshot(snapshot: WidgetSnapshot): Promise<void> {
+  const envelope: WidgetSnapshotEnvelope = {
+    version: WIDGET_SNAPSHOT_SCHEMA_VERSION,
+    savedAt: new Date().toISOString(),
+    data: snapshot,
+  };
+
+  await AsyncStorage.setItem(WIDGET_SNAPSHOT_KEY, JSON.stringify(envelope));
 }

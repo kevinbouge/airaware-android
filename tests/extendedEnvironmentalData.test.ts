@@ -1,4 +1,5 @@
 import { FREE_CAPABILITIES, PRO_LIFETIME_CAPABILITIES } from '../src/capabilities/config';
+import { isEnvironmentalVariableAvailable } from '../src/capabilities/variables';
 import {
   extendedEnvironmentalReadingRows,
   proCurrentReadingSections,
@@ -83,7 +84,6 @@ describe('extended environmental data display model', () => {
     const sections = proCurrentReadingSections(currentReading(), PRO_LIFETIME_CAPABILITIES);
 
     expect(sections.map((section) => section.title)).toEqual([
-      'Mold and sun',
       'Atmospheric composition',
       'Pressure and visibility',
       'Clouds and moisture',
@@ -96,8 +96,6 @@ describe('extended environmental data display model', () => {
     const rows = extendedEnvironmentalReadingRows(currentReading(), PRO_LIFETIME_CAPABILITIES);
     const labels = rows.map((row) => row.label);
 
-    expect(labels).toContain('Mold potential');
-    expect(labels).toContain('UV index');
     expect(labels).toContain('CO₂');
     expect(labels).toContain('CH₄');
     expect(labels).toContain('NO');
@@ -111,43 +109,43 @@ describe('extended environmental data display model', () => {
   });
 
   it('hides unavailable Pro measurements when cached data has no extended values yet', () => {
-    const rows = extendedEnvironmentalReadingRows(
-      currentReading({
-        extended: {
-          airQuality: {
-            carbonDioxide: null,
-            ammonia: null,
-            methane: null,
-            nitrogenMonoxide: null,
-            formaldehyde: null,
-            nonMethaneVolatileOrganicCompounds: null,
-          },
-          weather: {
-            pressureMsl: null,
-            surfacePressure: null,
-            visibility: null,
-            cloudCover: null,
-            cloudCoverLow: null,
-            cloudCoverMid: null,
-            cloudCoverHigh: null,
-            dewPoint: null,
-            wetBulbTemperature: null,
-            windGusts: null,
-            shortwaveRadiation: null,
-            directNormalIrradiance: null,
-            diffuseRadiation: null,
-            sunshineDuration: null,
-            cape: null,
-          },
+    const reading = currentReading({
+      extended: {
+        airQuality: {
+          carbonDioxide: null,
+          ammonia: null,
+          methane: null,
+          nitrogenMonoxide: null,
+          formaldehyde: null,
+          nonMethaneVolatileOrganicCompounds: null,
         },
-        uvIndex: null,
-      }),
-      PRO_LIFETIME_CAPABILITIES,
-    );
+        weather: {
+          pressureMsl: null,
+          surfacePressure: null,
+          visibility: null,
+          cloudCover: null,
+          cloudCoverLow: null,
+          cloudCoverMid: null,
+          cloudCoverHigh: null,
+          dewPoint: null,
+          wetBulbTemperature: null,
+          windGusts: null,
+          shortwaveRadiation: null,
+          directNormalIrradiance: null,
+          diffuseRadiation: null,
+          sunshineDuration: null,
+          cape: null,
+        },
+      },
+      uvIndex: null,
+    });
+    const rows = extendedEnvironmentalReadingRows(reading, PRO_LIFETIME_CAPABILITIES);
+    const sections = proCurrentReadingSections(reading, PRO_LIFETIME_CAPABILITIES);
 
     const labels = rows.map((row) => row.label);
 
-    expect(labels).toContain('Mold potential');
+    expect(sections).toHaveLength(5);
+    expect(sections.every((section) => section.rows.length === 0)).toBe(true);
     expect(labels).not.toContain('CO₂');
     expect(labels).not.toContain('Mean sea-level pressure');
     expect(labels).not.toContain('UV index');
@@ -157,8 +155,6 @@ describe('extended environmental data display model', () => {
   it('formats extended measurements with compact units', () => {
     const rows = extendedEnvironmentalReadingRows(currentReading(), PRO_LIFETIME_CAPABILITIES);
 
-    expect(rows.find((row) => row.id === 'moldPotential')?.value).toMatch(/%$/);
-    expect(rows.find((row) => row.id === 'uvIndex')?.value).toBe('7.0');
     expect(rows.find((row) => row.id === 'carbonDioxide')?.value).toBe('418 ppm');
     expect(rows.find((row) => row.id === 'nitrogenMonoxide')?.value).toBe('3 µg/m³');
     expect(rows.find((row) => row.id === 'formaldehyde')?.value).toBe('1 µg/m³');
@@ -174,11 +170,13 @@ describe('extended environmental data display model', () => {
     expect(rows.find((row) => row.id === 'cape')?.value).toBe('250 J/kg');
   });
 
-  it('keeps scored air-quality variables free while Mold and UV are Pro capability variables', () => {
+  it('keeps Mold and UV in the Free standard variable set', () => {
     expect(PRO_LIFETIME_CAPABILITIES.environmentalVariables.availableGroups).toEqual([
       'standard',
       'extended',
     ]);
     expect(FREE_CAPABILITIES.environmentalVariables.availableGroups).toEqual(['standard']);
+    expect(isEnvironmentalVariableAvailable(FREE_CAPABILITIES, 'moldPotential')).toBe(true);
+    expect(isEnvironmentalVariableAvailable(FREE_CAPABILITIES, 'uvIndex')).toBe(true);
   });
 });

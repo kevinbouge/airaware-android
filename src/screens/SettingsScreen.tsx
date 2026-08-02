@@ -60,6 +60,9 @@ export function SettingsScreen() {
   const extendedEnvironmentalDataFeature = featureDefinitions(capabilities).find(
     (feature) => feature.id === 'extended_environmental_data',
   );
+  const advancedWidgetFeature = featureDefinitions(capabilities).find(
+    (feature) => feature.id === 'advanced_home_widget',
+  );
 
   const updateManualCoordinates = (coordinates: typeof manualCoordinates) => {
     void updateSettings({
@@ -256,6 +259,11 @@ export function SettingsScreen() {
           {extendedEnvironmentalDataFeature
             ? featureStatusMessage(extendedEnvironmentalDataFeature)
             : 'Extended Environmental Data is not available in this build.'}
+        </Text>
+        <Text style={styles.body}>
+          {advancedWidgetFeature
+            ? featureStatusMessage(advancedWidgetFeature)
+            : 'Advanced home-screen widget is not available in this build.'}
         </Text>
       </SectionCard>
 

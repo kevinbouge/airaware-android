@@ -2,12 +2,13 @@
   "expo": {
     "name": "AirAware",
     "slug": "airaware-android",
+    "scheme": "airaware",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "android": {
-      "package": "com.airaware.android",
+      "package": "eu.euroempire.airaware",
       "permissions": ["ACCESS_COARSE_LOCATION"],
       "adaptiveIcon": {
         "backgroundColor": "#F2F5F1",
@@ -31,7 +32,8 @@
           "color": "#2F7D46",
           "defaultChannel": "risk-changes"
         }
-      ]
+      ],
+      "./plugins/withAirAwareAndroidWidgets"
     ]
   }
 }

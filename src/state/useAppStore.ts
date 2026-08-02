@@ -10,6 +10,7 @@ import {
   formatDailySummary,
   selectDailySummaryOutdoorWindow,
 } from '../core/dailySummary';
+import { buildWidgetSnapshot } from '../core/widgetSnapshot';
 import {
   evaluateRiskTransition,
   formatRiskTransitionNotification,
@@ -38,11 +39,13 @@ import {
   loadProfile,
   loadRiskNotificationTransitionState,
   loadSettings,
+  saveWidgetSnapshot,
   saveEnvironmentCache,
   saveProfile,
   saveRiskNotificationTransitionState,
   saveSettings,
 } from '../storage/storage';
+import { saveWidgetSnapshotToNative } from '../services/widgetNativeModule';
 import {
   deliverRiskTransitionNotification,
   deliverRiskTestNotification,
@@ -98,6 +101,33 @@ async function persistSuccessfulEnvironment(environment: NormalizedEnvironment) 
     },
     data: environment,
   });
+}
+
+async function persistWidgetSnapshotFor(input: {
+  environment: NormalizedEnvironment | null;
+  profile: PersonalAllergyProfile;
+  settings: AppSettings;
+  entitlement: EntitlementState;
+  stale: boolean;
+}): Promise<void> {
+  const capabilities = capabilitiesForEntitlement(input.entitlement);
+  const derived = deriveEnvironmentState(
+    input.environment,
+    input.profile,
+    input.settings.outdoorWindowDurationHours,
+    capabilities,
+  );
+  const snapshot = buildWidgetSnapshot({
+    environment: input.environment,
+    derived,
+    settings: input.settings,
+    capabilities,
+    entitlement: input.entitlement,
+    stale: input.stale,
+  });
+
+  await saveWidgetSnapshot(snapshot);
+  await saveWidgetSnapshotToNative(snapshot);
 }
 
 let settingsSaveQueue = Promise.resolve();
@@ -197,6 +227,16 @@ export const useAppStore = create<AppStore>((set, get) => ({
           }
         : emptyLocation,
     });
+
+    if (environment) {
+      await persistWidgetSnapshotFor({
+        environment,
+        profile,
+        settings,
+        entitlement,
+        stale: staleFrom(cache?.metadata.savedAt ?? null),
+      });
+    }
   },
 
   refresh: async () => {
@@ -287,10 +327,18 @@ export const useAppStore = create<AppStore>((set, get) => ({
       if (nextNotificationState) {
         await saveRiskNotificationTransitionState(nextNotificationState);
       }
+      const nextStale = airQuality === null || weather === null;
+      await persistWidgetSnapshotFor({
+        environment,
+        profile: get().profile,
+        settings,
+        entitlement: get().entitlement,
+        stale: nextStale,
+      });
 
       set({
         loading: false,
-        stale: airQuality === null || weather === null,
+        stale: nextStale,
         location,
         environment,
         notificationPermissionStatus: permissionStatus,
@@ -367,6 +415,13 @@ export const useAppStore = create<AppStore>((set, get) => ({
     set({ settings });
     set({ notificationPermissionStatus, notificationMessage });
     scheduleSettingsSave(settings);
+    void persistWidgetSnapshotFor({
+      environment: get().environment,
+      profile: get().profile,
+      settings,
+      entitlement: get().entitlement,
+      stale: get().stale,
+    });
   },
 
   updateProfile: async (profilePatch) => {
@@ -378,6 +433,13 @@ export const useAppStore = create<AppStore>((set, get) => ({
       scheduleSettingsSave(settings);
     }
     await enqueueProfileSave(profile);
+    await persistWidgetSnapshotFor({
+      environment: get().environment,
+      profile,
+      settings,
+      entitlement: get().entitlement,
+      stale: get().stale,
+    });
   },
 
   toggleProfileFactor: async (factor) => {
@@ -391,6 +453,13 @@ export const useAppStore = create<AppStore>((set, get) => ({
     };
     set({ profile: nextProfile });
     await enqueueProfileSave(nextProfile);
+    await persistWidgetSnapshotFor({
+      environment: get().environment,
+      profile: nextProfile,
+      settings: get().settings,
+      entitlement: get().entitlement,
+      stale: get().stale,
+    });
   },
 
   shareDailySummary: async () => {

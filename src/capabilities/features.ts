@@ -5,6 +5,7 @@ import type {
   FeatureDefinition,
   FeatureId,
   NotificationCapabilityId,
+  WidgetCapabilityId,
 } from './types';
 
 function hasNotificationCapability(
@@ -12,6 +13,13 @@ function hasNotificationCapability(
   capability: NotificationCapabilityId,
 ): boolean {
   return capabilities.notifications.availableGroups.includes(capability);
+}
+
+function hasWidgetCapability(
+  capabilities: AppCapabilities,
+  capability: WidgetCapabilityId,
+): boolean {
+  return capabilities.widgets.availableWidgets.includes(capability);
 }
 
 export function featureDefinitions(capabilities: AppCapabilities): FeatureDefinition[] {
@@ -84,6 +92,25 @@ export function featureDefinitions(capabilities: AppCapabilities): FeatureDefini
       available: capabilities.sharing.dailySummary && capabilities.sharing.nativeShareSheet,
     },
     {
+      id: 'compact_home_widget',
+      displayName: 'Compact home-screen widget',
+      category: 'widgets',
+      available: hasWidgetCapability(capabilities, 'compact_home_widget'),
+      freeBehavior: 'Current score and main factor',
+      proBehavior: 'Current score and main factor',
+      description: 'Small Android widget using the latest locally cached AirAware snapshot.',
+    },
+    {
+      id: 'advanced_home_widget',
+      displayName: 'Advanced home-screen widget',
+      category: 'widgets',
+      available: hasWidgetCapability(capabilities, 'advanced_home_widget'),
+      requiredEntitlement: 'pro_lifetime',
+      freeBehavior: 'Locked informational state',
+      proBehavior: 'Current score, best outdoor window, and forecast summaries',
+      description: 'Richer Android widget using the active Pro forecast capability.',
+    },
+    {
       id: 'basic_transition_notifications',
       displayName: 'Risk transition notifications',
       category: 'notifications',
@@ -113,6 +140,14 @@ export function isFeatureAvailable(capabilities: AppCapabilities, featureId: Fea
 
 export function featureStatusMessage(feature: FeatureDefinition): string {
   if (feature.id === 'extended_environmental_data') {
+    if (feature.available) {
+      return `AirAware Pro active. ${feature.displayName} enabled.`;
+    }
+
+    return `${feature.displayName}: available with AirAware Pro. AirAware Pro purchasing is not available in this build.`;
+  }
+
+  if (feature.id === 'advanced_home_widget') {
     if (feature.available) {
       return `AirAware Pro active. ${feature.displayName} enabled.`;
     }
