@@ -1,0 +1,8 @@
+{
+  "entry": ["App.tsx", "tests/**/*.test.ts"],
+  "project": ["src/**/*.{ts,tsx}", "tests/**/*.{ts,tsx}", "*.config.js"],
+  "ignoreDependencies": ["expo-system-ui", "expo-updates"],
+  "jest": {
+    "config": ["package.json"]
+  }
+}
