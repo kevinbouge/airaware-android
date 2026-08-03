@@ -48,6 +48,16 @@ describe('Google Play policy guardrails', () => {
     expect(locationPlugin?.[1]?.locationWhenInUsePermission).toContain('approximate foreground');
   });
 
+  it('does not advertise automatic dark-mode support before a dynamic theme exists', () => {
+    const appJson = readJson('app.json') as {
+      expo?: {
+        userInterfaceStyle?: string;
+      };
+    };
+
+    expect(appJson.expo?.userInterfaceStyle).toBe('light');
+  });
+
   it('does not include ads, analytics, tracking, billing, or account SDK dependencies', () => {
     const dependencies = Object.keys(packageDependencies());
     const disallowedDependencyPatterns = [
@@ -81,6 +91,8 @@ describe('Google Play policy guardrails', () => {
     expect(disclosure).toContain('approximate foreground location');
     expect(disclosure).toContain('Open-Meteo');
     expect(disclosure).toContain('OpenStreetMap tile servers');
+    expect(disclosure).toContain('OpenStreetMap Overpass API');
+    expect(disclosure).toContain('OpenStreetMap contributors');
     expect(disclosure).toContain('Personal Allergy Profile');
     expect(disclosure).toContain('does not sell personal or sensitive user data');
     expect(disclosure).toContain('does not predict symptoms');

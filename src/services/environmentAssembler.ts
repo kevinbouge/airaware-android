@@ -58,9 +58,22 @@ const EMPTY_EXTENDED: ExtendedEnvironmentalReadings = {
   weather: EMPTY_EXTENDED_WEATHER,
 };
 
-function dayLabel(date: string, index: number): string {
-  if (index === 0) return 'Today';
-  if (index === 1) return 'Tomorrow';
+function addDays(date: string, days: number): string | null {
+  const match = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+
+  const [, year, month, day] = match;
+  const time = Date.UTC(Number(year), Number(month) - 1, Number(day) + days);
+
+  return new Date(time).toISOString().slice(0, 10);
+}
+
+function dayLabel(date: string, currentDate: string | null, index: number): string {
+  if (currentDate && date === currentDate) return 'Today';
+  if (currentDate && date === addDays(currentDate, 1)) return 'Tomorrow';
+  if (!currentDate && index === 0) return 'Today';
+  if (!currentDate && index === 1) return 'Tomorrow';
+
   return new Intl.DateTimeFormat(undefined, { weekday: 'long' }).format(
     new Date(`${date}T12:00:00`),
   );
@@ -69,8 +82,14 @@ function dayLabel(date: string, index: number): string {
 function chooseCurrentTimestamp(
   airQuality: NormalizedAirQuality | null,
   weather: NormalizedWeather | null,
+  fallback: NormalizedEnvironment | null,
 ) {
-  return airQuality?.current.timestamp ?? weather?.current.timestamp ?? null;
+  return (
+    airQuality?.current.timestamp ??
+    weather?.current.timestamp ??
+    fallback?.current.timestamp ??
+    null
+  );
 }
 
 function mergeCurrent(
@@ -89,7 +108,7 @@ function mergeCurrent(
   };
 
   return {
-    timestamp: chooseCurrentTimestamp(airQuality, weather),
+    timestamp: chooseCurrentTimestamp(airQuality, weather, fallback),
     pollen: airQuality?.current.pollen ??
       fallback?.current.pollen ?? {
         alder: null,
@@ -143,9 +162,11 @@ function mergeHourly(
   const weatherByTime = new Map((weather?.hourly ?? []).map((item) => [item.timestamp, item]));
   const airByTime = new Map((airQuality?.hourly ?? []).map((item) => [item.timestamp, item]));
   const fallbackByTime = new Map((fallback?.hourly ?? []).map((item) => [item.timestamp, item]));
-  const timestamps = Array.from(
-    new Set([...airByTime.keys(), ...weatherByTime.keys(), ...fallbackByTime.keys()]),
-  ).sort((left, right) => Date.parse(left) - Date.parse(right));
+  const freshTimestamps = new Set([...airByTime.keys(), ...weatherByTime.keys()]);
+  const timestampSource = freshTimestamps.size > 0 ? freshTimestamps : fallbackByTime.keys();
+  const timestamps = Array.from(new Set(timestampSource)).sort(
+    (left, right) => Date.parse(left) - Date.parse(right),
+  );
 
   return timestamps.map((timestamp) => {
     const air = airByTime.get(timestamp);
@@ -200,8 +221,12 @@ function mergeHourly(
   });
 }
 
-function buildForecastDays(hourly: HourlyEnvironmentalReading[]): ForecastDay[] {
+function buildForecastDays(
+  hourly: HourlyEnvironmentalReading[],
+  currentTimestamp: string | null,
+): ForecastDay[] {
   const grouped = new Map<string, HourlyEnvironmentalReading[]>();
+  const currentDate = currentTimestamp?.slice(0, 10) ?? hourly[0]?.timestamp.slice(0, 10) ?? null;
 
   for (const hour of hourly) {
     const date = hour.timestamp.slice(0, 10);
@@ -217,7 +242,7 @@ function buildForecastDays(hourly: HourlyEnvironmentalReading[]): ForecastDay[] 
 
     return {
       date,
-      label: dayLabel(date, index),
+      label: dayLabel(date, currentDate, index),
       score: peak ?? null,
     };
   });
@@ -240,7 +265,7 @@ export function assembleEnvironment(input: {
     fetchedAt: new Date().toISOString(),
     current,
     hourly,
-    forecastDays: buildForecastDays(hourly),
+    forecastDays: buildForecastDays(hourly, current.timestamp),
     metadata: {
       timezone: input.airQuality?.timezone ?? input.weather?.timezone ?? null,
       airQualityFetchedAt:

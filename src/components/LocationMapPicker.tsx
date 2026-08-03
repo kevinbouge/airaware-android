@@ -28,7 +28,7 @@ interface LocationMapPickerProps {
 }
 
 const DEFAULT_ZOOM = 10;
-const TILE_RANGE = [-1, 0, 1] as const;
+const TILE_RANGE = [-2, -1, 0, 1, 2] as const;
 const DRAG_THRESHOLD_PIXELS = 4;
 
 interface WebEventTarget {
@@ -170,10 +170,6 @@ export function LocationMapPicker({ coordinates, onSelect }: LocationMapPickerPr
   const centerTileY = Math.floor(centerPixel.y / MAP_TILE_SIZE);
   const tileDisplaySize = mapWidth / 3;
   const scale = tileDisplaySize / MAP_TILE_SIZE;
-  const originPixelX = (centerTileX - 1) * MAP_TILE_SIZE;
-  const originPixelY = (centerTileY - 1) * MAP_TILE_SIZE;
-  const markerLeft = (centerPixel.x - originPixelX) * scale;
-  const markerTop = (centerPixel.y - originPixelY) * scale;
 
   useEffect(() => {
     if (dragState.current) return;
@@ -197,8 +193,8 @@ export function LocationMapPicker({ coordinates, onSelect }: LocationMapPickerPr
     const point = pressCoordinates(event);
     if (!point) return;
 
-    const x = originPixelX + point.x / scale;
-    const y = originPixelY + point.y / scale;
+    const x = centerPixel.x + (point.x - mapWidth / 2) / scale;
+    const y = centerPixel.y + (point.y - mapWidth / 2) / scale;
     const selectedCoordinates = worldPixelToCoordinates(x, y, zoom);
     updateDraftCoordinates(selectedCoordinates);
     onSelect(selectedCoordinates);
@@ -283,8 +279,8 @@ export function LocationMapPicker({ coordinates, onSelect }: LocationMapPickerPr
                     styles.tile,
                     {
                       height: tileDisplaySize,
-                      left: (columnOffset + 1) * tileDisplaySize,
-                      top: (rowOffset + 1) * tileDisplaySize,
+                      left: (tileX * MAP_TILE_SIZE - centerPixel.x) * scale + mapWidth / 2,
+                      top: (tileY * MAP_TILE_SIZE - centerPixel.y) * scale + mapWidth / 2,
                       width: tileDisplaySize,
                     },
                   ]}
@@ -292,16 +288,7 @@ export function LocationMapPicker({ coordinates, onSelect }: LocationMapPickerPr
               );
             }),
           )}
-          <View
-            style={[
-              styles.marker,
-              styles.noPointerEvents,
-              {
-                left: markerLeft,
-                top: markerTop,
-              },
-            ]}
-          />
+          <View style={[styles.marker, styles.noPointerEvents]} />
         </View>
       </View>
       <View style={styles.mapFooter}>
@@ -364,9 +351,11 @@ const styles = StyleSheet.create({
     borderRadius: 9,
     borderWidth: 3,
     height: 18,
+    left: '50%',
     marginLeft: -9,
     marginTop: -9,
     position: 'absolute',
+    top: '50%',
     width: 18,
   },
   noPointerEvents: {

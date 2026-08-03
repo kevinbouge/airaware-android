@@ -145,6 +145,27 @@ function fallbackEnvironment(): NormalizedEnvironment {
   };
 }
 
+function fallbackEnvironmentWithHourlyWeather(): NormalizedEnvironment {
+  const fallback = fallbackEnvironment();
+  const oldWeather = {
+    ...fallback.current,
+    timestamp: '2026-07-31T12:00:00+02:00',
+    weather: { ...weatherContext, temperature: 15 },
+    moldPotential: calculateMoldPotential({ ...weatherContext, temperature: 15 }),
+  };
+  const matchingWeather = {
+    ...fallback.current,
+    timestamp: '2026-08-01T12:00:00+02:00',
+    weather: { ...weatherContext, temperature: 25 },
+    moldPotential: calculateMoldPotential({ ...weatherContext, temperature: 25 }),
+  };
+
+  return {
+    ...fallback,
+    hourly: [oldWeather, matchingWeather],
+  };
+}
+
 describe('environment assembler', () => {
   it('marks air quality and weather freshness independently when weather falls back to cache', () => {
     const environment = assembleEnvironment({
@@ -166,7 +187,7 @@ describe('environment assembler', () => {
     const environment = assembleEnvironment({
       coordinates,
       placeName: 'Prague',
-      airQuality: airQualityWithDailyHours(4),
+      airQuality: airQualityWithDailyHours(7),
       weather: null,
     });
 
@@ -175,7 +196,56 @@ describe('environment assembler', () => {
       '2026-08-02',
       '2026-08-03',
       '2026-08-04',
+      '2026-08-05',
+      '2026-08-06',
+      '2026-08-07',
     ]);
     expect(environment.forecastDays.every((day) => day.score?.available)).toBe(true);
+  });
+
+  it('preserves the cached current timestamp when both providers fall back to cache', () => {
+    const environment = assembleEnvironment({
+      coordinates,
+      placeName: 'Prague',
+      airQuality: null,
+      weather: null,
+      fallback: fallbackEnvironment(),
+    });
+
+    expect(environment.current.timestamp).toBe('2026-08-01T06:00:00+02:00');
+    expect(environment.metadata.airQualitySource).toBe('cached');
+    expect(environment.metadata.weatherSource).toBe('cached');
+  });
+
+  it('does not prepend stale fallback-only dates to a fresh hourly forecast', () => {
+    const environment = assembleEnvironment({
+      coordinates,
+      placeName: 'Prague',
+      airQuality: airQualityWithDailyHours(7),
+      weather: null,
+      fallback: fallbackEnvironmentWithHourlyWeather(),
+    });
+
+    expect(environment.hourly.map((hour) => hour.timestamp)).toEqual([
+      '2026-08-01T12:00:00+02:00',
+      '2026-08-02T12:00:00+02:00',
+      '2026-08-03T12:00:00+02:00',
+      '2026-08-04T12:00:00+02:00',
+      '2026-08-05T12:00:00+02:00',
+      '2026-08-06T12:00:00+02:00',
+      '2026-08-07T12:00:00+02:00',
+    ]);
+    expect(environment.hourly[0]?.weather.temperature).toBe(25);
+    expect(environment.forecastDays.map((day) => day.date)).toEqual([
+      '2026-08-01',
+      '2026-08-02',
+      '2026-08-03',
+      '2026-08-04',
+      '2026-08-05',
+      '2026-08-06',
+      '2026-08-07',
+    ]);
+    expect(environment.forecastDays[0]?.label).toBe('Today');
+    expect(environment.forecastDays[1]?.label).toBe('Tomorrow');
   });
 });

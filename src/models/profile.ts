@@ -47,7 +47,8 @@ export interface AppSettings {
   locationMode: 'automatic' | 'manual';
   manualLatitude: string;
   manualLongitude: string;
-  refreshIntervalMinutes: 60 | 120 | 240 | 360;
+  refreshIntervalMinutes: 30 | 60 | 120;
+  nearbyVegetationRadiusMeters: 1000 | 2000 | 5000;
   outdoorWindowDurationHours: 1 | 2 | 3;
   headlineScore: 'environmental' | 'personalized';
   forecastScore: 'environmental' | 'personalized';
@@ -63,7 +64,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   locationMode: 'automatic',
   manualLatitude: '',
   manualLongitude: '',
-  refreshIntervalMinutes: 120,
+  refreshIntervalMinutes: 60,
+  nearbyVegetationRadiusMeters: 2000,
   outdoorWindowDurationHours: 2,
   headlineScore: 'environmental',
   forecastScore: 'environmental',

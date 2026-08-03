@@ -102,6 +102,17 @@ async function manualLocation(
   };
 }
 
+function unavailableAutomaticLocation(
+  permissionStatus: Extract<LocationInfo['permissionStatus'], 'denied' | 'unavailable'>,
+): LocationInfo {
+  return {
+    coordinates: null,
+    placeName: null,
+    mode: 'automatic',
+    permissionStatus,
+  };
+}
+
 export async function resolveLocation(
   settings: AppSettings,
   dependencies: LocationDependencies = defaultDependencies(),
@@ -116,7 +127,7 @@ export async function resolveLocation(
       currentPermission === 'unknown' ? await dependencies.requestPermission() : currentPermission;
 
     if (permission !== 'granted') {
-      return manualLocation(settings, dependencies, 'denied', 'automatic');
+      return unavailableAutomaticLocation('denied');
     }
 
     const coordinates = await dependencies.getCurrentCoordinates();
@@ -130,6 +141,6 @@ export async function resolveLocation(
     };
   } catch (error) {
     console.warn('AirAware: location lookup failed', error);
-    return manualLocation(settings, dependencies, 'unavailable', 'automatic');
+    return unavailableAutomaticLocation('unavailable');
   }
 }

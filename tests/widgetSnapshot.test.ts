@@ -66,6 +66,9 @@ function environment(): NormalizedEnvironment {
     hour('2026-08-02T12:00:00+02:00', 40, 25, 4),
     hour('2026-08-03T12:00:00+02:00', 20, 15, 3),
     hour('2026-08-04T12:00:00+02:00', 60, 35, 6),
+    hour('2026-08-05T12:00:00+02:00', 50, 30, 5),
+    hour('2026-08-06T12:00:00+02:00', 30, 20, 4),
+    hour('2026-08-07T12:00:00+02:00', 70, 40, 7),
   ];
 
   return {
@@ -83,6 +86,9 @@ function environment(): NormalizedEnvironment {
       { date: '2026-08-02', label: 'Tomorrow', score: calculateEnvironmentalScore(hourly[2]!) },
       { date: '2026-08-03', label: 'Day 3', score: calculateEnvironmentalScore(hourly[3]!) },
       { date: '2026-08-04', label: 'Day 4', score: calculateEnvironmentalScore(hourly[4]!) },
+      { date: '2026-08-05', label: 'Day 5', score: calculateEnvironmentalScore(hourly[5]!) },
+      { date: '2026-08-06', label: 'Day 6', score: calculateEnvironmentalScore(hourly[6]!) },
+      { date: '2026-08-07', label: 'Day 7', score: calculateEnvironmentalScore(hourly[7]!) },
     ],
     metadata: {
       timezone: 'Europe/Prague',
@@ -153,7 +159,7 @@ describe('widget snapshots', () => {
     });
   });
 
-  it('uses Pro forecast horizon for the advanced widget', () => {
+  it('keeps seven Pro forecast days in the advanced widget snapshot and renders a compact subset', () => {
     const env = environment();
     const snapshot = buildWidgetSnapshot({
       environment: env,
@@ -166,9 +172,10 @@ describe('widget snapshots', () => {
     const advanced = advancedWidgetRenderModel(snapshot);
 
     expect(snapshot.advancedAvailable).toBe(true);
-    expect(snapshot.forecastDays).toHaveLength(4);
+    expect(snapshot.forecastDays).toHaveLength(7);
     expect(advanced.destination).toBe('forecast');
     expect(advanced.forecastLines).toHaveLength(4);
+    expect(advanced.forecastLines.at(-1)).toContain('Day 4');
     expect(advanced.bestWindowLine).toContain('Best outdoor window');
   });
 

@@ -114,11 +114,39 @@ describe('notification settings', () => {
   });
 
   it('flushes pending settings saves before the app can be suspended', async () => {
-    await useAppStore.getState().updateSettings({ refreshIntervalMinutes: 60 });
+    await useAppStore.getState().updateSettings({ refreshIntervalMinutes: 120 });
     await flushPendingSettingsSave();
 
     await expect(loadSettings()).resolves.toEqual(
-      expect.objectContaining({ refreshIntervalMinutes: 60 }),
+      expect.objectContaining({ refreshIntervalMinutes: 120 }),
+    );
+  });
+
+  it('preserves concurrent settings changes while notification permission is pending', async () => {
+    let nestedSettingsUpdate: Promise<void> | null = null;
+    jest.mocked(requestRiskNotificationPermission).mockImplementation(async () => {
+      nestedSettingsUpdate = useAppStore.getState().updateSettings({ refreshIntervalMinutes: 120 });
+      return 'granted';
+    });
+
+    await useAppStore.getState().updateSettings({ riskTransitionNotificationsEnabled: true });
+    await nestedSettingsUpdate;
+
+    expect(useAppStore.getState().settings.riskTransitionNotificationsEnabled).toBe(true);
+    expect(useAppStore.getState().settings.refreshIntervalMinutes).toBe(120);
+  });
+
+  it('preserves rapid collapsed-section toggles from the latest settings state', async () => {
+    await Promise.all([
+      useAppStore.getState().toggleCollapsedSection('data.pollen'),
+      useAppStore.getState().toggleCollapsedSection('data.airQuality'),
+    ]);
+
+    expect(useAppStore.getState().settings.collapsedSections).toEqual(
+      expect.objectContaining({
+        'data.pollen': true,
+        'data.airQuality': true,
+      }),
     );
   });
 

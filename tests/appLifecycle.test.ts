@@ -1,5 +1,12 @@
-import { shouldRefreshAfterHydration, shouldRunScheduledRefresh } from '../src/state/appLifecycle';
+import {
+  shouldRefreshAfterEntitlementChange,
+  shouldRefreshAfterHydration,
+  shouldRefreshAfterLocationSettingsChange,
+  shouldRunScheduledRefresh,
+} from '../src/state/appLifecycle';
+import { FREE_ENTITLEMENT, PRO_LIFETIME_ENTITLEMENT } from '../src/capabilities/entitlements';
 import { FREE_CAPABILITIES, PRO_LIFETIME_CAPABILITIES } from '../src/capabilities/config';
+import { DEFAULT_SETTINGS } from '../src/models/profile';
 import type { NormalizedEnvironment } from '../src/models/environment';
 
 function environmentWithForecastDays(
@@ -91,7 +98,7 @@ describe('app lifecycle refresh policy', () => {
     expect(
       shouldRefreshAfterHydration({
         hydrated: true,
-        environment: environmentWithForecastDays(4, false),
+        environment: environmentWithForecastDays(7, false),
         locationOnboardingComplete: true,
         capabilities: PRO_LIFETIME_CAPABILITIES,
       }),
@@ -102,7 +109,7 @@ describe('app lifecycle refresh policy', () => {
     expect(
       shouldRefreshAfterHydration({
         hydrated: true,
-        environment: environmentWithForecastDays(4, false),
+        environment: environmentWithForecastDays(7, false),
         locationOnboardingComplete: true,
         capabilities: PRO_LIFETIME_CAPABILITIES,
         extendedRefreshAttempted: true,
@@ -137,5 +144,101 @@ describe('app lifecycle refresh policy', () => {
         locationOnboardingComplete: true,
       }),
     ).toBe(true);
+  });
+
+  it('refreshes after switching between Free and Pro development entitlements', () => {
+    expect(
+      shouldRefreshAfterEntitlementChange({
+        previousEntitlement: FREE_ENTITLEMENT,
+        nextEntitlement: PRO_LIFETIME_ENTITLEMENT,
+        locationOnboardingComplete: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldRefreshAfterEntitlementChange({
+        previousEntitlement: PRO_LIFETIME_ENTITLEMENT,
+        nextEntitlement: FREE_ENTITLEMENT,
+        locationOnboardingComplete: true,
+      }),
+    ).toBe(true);
+  });
+
+  it('does not refresh after unchanged entitlement selections or before onboarding', () => {
+    expect(
+      shouldRefreshAfterEntitlementChange({
+        previousEntitlement: FREE_ENTITLEMENT,
+        nextEntitlement: FREE_ENTITLEMENT,
+        locationOnboardingComplete: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldRefreshAfterEntitlementChange({
+        previousEntitlement: FREE_ENTITLEMENT,
+        nextEntitlement: PRO_LIFETIME_ENTITLEMENT,
+        locationOnboardingComplete: false,
+      }),
+    ).toBe(false);
+  });
+
+  it('refreshes after changing the active location mode or manual coordinates', () => {
+    const manualSettings = {
+      ...DEFAULT_SETTINGS,
+      locationOnboardingComplete: true,
+      locationMode: 'manual' as const,
+      manualLatitude: '50.07550',
+      manualLongitude: '14.43780',
+    };
+    const automaticSettings = {
+      ...manualSettings,
+      locationMode: 'automatic' as const,
+    };
+
+    expect(
+      shouldRefreshAfterLocationSettingsChange({
+        previousSettings: manualSettings,
+        nextSettings: automaticSettings,
+      }),
+    ).toBe(true);
+    expect(
+      shouldRefreshAfterLocationSettingsChange({
+        previousSettings: automaticSettings,
+        nextSettings: manualSettings,
+      }),
+    ).toBe(true);
+    expect(
+      shouldRefreshAfterLocationSettingsChange({
+        previousSettings: manualSettings,
+        nextSettings: { ...manualSettings, manualLatitude: '49.19510' },
+      }),
+    ).toBe(true);
+  });
+
+  it('does not refresh for inactive manual coordinates, unrelated settings, or before onboarding', () => {
+    const automaticSettings = {
+      ...DEFAULT_SETTINGS,
+      locationOnboardingComplete: true,
+      locationMode: 'automatic' as const,
+      manualLatitude: '50.07550',
+      manualLongitude: '14.43780',
+    };
+
+    expect(
+      shouldRefreshAfterLocationSettingsChange({
+        previousSettings: automaticSettings,
+        nextSettings: { ...automaticSettings, manualLatitude: '49.19510' },
+      }),
+    ).toBe(false);
+    expect(
+      shouldRefreshAfterLocationSettingsChange({
+        previousSettings: automaticSettings,
+        nextSettings: { ...automaticSettings, refreshIntervalMinutes: 120 },
+      }),
+    ).toBe(false);
+    expect(
+      shouldRefreshAfterLocationSettingsChange({
+        previousSettings: { ...automaticSettings, locationOnboardingComplete: false },
+        nextSettings: { ...automaticSettings, locationOnboardingComplete: false },
+      }),
+    ).toBe(false);
   });
 });

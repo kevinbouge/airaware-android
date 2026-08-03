@@ -1,7 +1,8 @@
 import { FORECAST_DAY_LIMITS } from '../capabilities/config';
 import type { Coordinates, ExtendedWeatherReadings, WeatherContext } from '../models/environment';
 import { fetchJson } from './http';
-import { coordinateNumber, nullableNumber } from '../utils/number';
+import { coordinateNumber, isFiniteNumber, nullableNumber } from '../utils/number';
+import { timestampWithUtcOffset } from '../utils/time';
 
 const WEATHER_URL = 'https://api.open-meteo.com/v1/forecast';
 const VARIABLES = [
@@ -39,6 +40,7 @@ type OpenMeteoWeatherPayload = Record<string, unknown> & {
   latitude?: unknown;
   longitude?: unknown;
   timezone?: unknown;
+  utc_offset_seconds?: unknown;
   current?: Record<string, unknown>;
   hourly?: Record<string, unknown>;
   daily?: Record<string, unknown>;
@@ -73,6 +75,11 @@ function value(source: Record<string, unknown> | undefined, key: string): number
   return nullableNumber(source?.[key]);
 }
 
+function signedValue(source: Record<string, unknown> | undefined, key: string): number | null {
+  const candidate = source?.[key];
+  return isFiniteNumber(candidate) ? candidate : null;
+}
+
 function arrayValue(
   source: Record<string, unknown> | undefined,
   key: string,
@@ -80,6 +87,16 @@ function arrayValue(
 ): number | null {
   const values = source?.[key];
   return Array.isArray(values) ? nullableNumber(values[index]) : null;
+}
+
+function signedArrayValue(
+  source: Record<string, unknown> | undefined,
+  key: string,
+  index: number,
+): number | null {
+  const values = source?.[key];
+  const candidate = Array.isArray(values) ? values[index] : null;
+  return isFiniteNumber(candidate) ? candidate : null;
 }
 
 function uvValue(source: Record<string, unknown> | undefined, index?: number): number | null {
@@ -96,11 +113,13 @@ function contextFrom(
 } {
   const from = (key: string) =>
     index === undefined ? value(source, key) : arrayValue(source, key, index);
+  const signedFrom = (key: string) =>
+    index === undefined ? signedValue(source, key) : signedArrayValue(source, key, index);
 
   return {
-    temperature: from('temperature_2m'),
+    temperature: signedFrom('temperature_2m'),
     relativeHumidity: from('relative_humidity_2m'),
-    dewPoint: from('dew_point_2m'),
+    dewPoint: signedFrom('dew_point_2m'),
     precipitation: from('precipitation'),
     windSpeed: from('wind_speed_10m'),
     windDirection: from('wind_direction_10m'),
@@ -117,6 +136,8 @@ function extendedFrom(
 ): ExtendedWeatherReadings {
   const from = (key: string) =>
     index === undefined ? value(source, key) : arrayValue(source, key, index);
+  const signedFrom = (key: string) =>
+    index === undefined ? signedValue(source, key) : signedArrayValue(source, key, index);
 
   return {
     pressureMsl: from('pressure_msl'),
@@ -126,8 +147,8 @@ function extendedFrom(
     cloudCoverLow: from('cloud_cover_low'),
     cloudCoverMid: from('cloud_cover_mid'),
     cloudCoverHigh: from('cloud_cover_high'),
-    dewPoint: from('dew_point_2m'),
-    wetBulbTemperature: from('wet_bulb_temperature_2m'),
+    dewPoint: signedFrom('dew_point_2m'),
+    wetBulbTemperature: signedFrom('wet_bulb_temperature_2m'),
     windGusts: from('wind_gusts_10m'),
     shortwaveRadiation: from('shortwave_radiation'),
     directNormalIrradiance: from('direct_normal_irradiance'),
@@ -140,7 +161,7 @@ function extendedFrom(
 function dailyAt(source: Record<string, unknown> | undefined, index: number) {
   return {
     leafWetnessProbability: arrayValue(source, 'leaf_wetness_probability_mean', index),
-    temperature: arrayValue(source, 'temperature_2m_mean', index),
+    temperature: signedArrayValue(source, 'temperature_2m_mean', index),
     relativeHumidity: arrayValue(source, 'relative_humidity_2m_mean', index),
     precipitation: arrayValue(source, 'precipitation_sum', index),
     windSpeed: arrayValue(source, 'wind_speed_10m_mean', index),
@@ -160,6 +181,7 @@ export function buildWeatherUrl(coordinates: Coordinates): string {
     daily: DAILY_VARIABLES.join(','),
     forecast_days: String(FORECAST_DAY_LIMITS.providerRequest),
     timezone: 'auto',
+    wind_speed_unit: 'ms',
   });
 
   return `${WEATHER_URL}?${params.toString()}`;
@@ -174,9 +196,10 @@ export function normalizeWeather(payload: OpenMeteoWeatherPayload): NormalizedWe
   }
 
   const timezone = typeof payload.timezone === 'string' ? payload.timezone : null;
+  const utcOffsetSeconds = payload.utc_offset_seconds;
   const current = contextFrom(payload.current);
   const currentExtended = extendedFrom(payload.current);
-  const currentTimestamp = typeof payload.current?.time === 'string' ? payload.current.time : null;
+  const currentTimestamp = timestampWithUtcOffset(payload.current?.time, utcOffsetSeconds);
   const dailyTime = Array.isArray(payload.daily?.time) ? payload.daily.time : [];
   const daily = dailyTime
     .map((date, index) => {
@@ -187,8 +210,9 @@ export function normalizeWeather(payload: OpenMeteoWeatherPayload): NormalizedWe
   const today = daily[0] ?? null;
   const hourlyTime = Array.isArray(payload.hourly?.time) ? payload.hourly.time : [];
   const hourly = hourlyTime
-    .map((timestamp, index) => {
-      if (typeof timestamp !== 'string' || timestamp.length === 0) return null;
+    .map((rawTimestamp, index) => {
+      const timestamp = timestampWithUtcOffset(rawTimestamp, utcOffsetSeconds);
+      if (!timestamp) return null;
       const values = contextFrom(payload.hourly, index);
       const date = timestamp.slice(0, 10);
       const matchingDaily = daily.find((day) => day.date === date) ?? today;

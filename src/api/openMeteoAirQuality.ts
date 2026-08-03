@@ -9,6 +9,7 @@ import type {
 } from '../models/environment';
 import { fetchJson } from './http';
 import { coordinateNumber, nullableNumber } from '../utils/number';
+import { timestampWithUtcOffset } from '../utils/time';
 
 const AIR_QUALITY_URL = 'https://air-quality-api.open-meteo.com/v1/air-quality';
 
@@ -77,6 +78,7 @@ type OpenMeteoPayload = Record<string, unknown> & {
   latitude?: unknown;
   longitude?: unknown;
   timezone?: unknown;
+  utc_offset_seconds?: unknown;
   current?: Record<string, unknown>;
   hourly?: Record<string, unknown>;
 };
@@ -240,9 +242,10 @@ export function normalizeAirQuality(payload: OpenMeteoPayload): NormalizedAirQua
   }
 
   const timezone = typeof payload.timezone === 'string' ? payload.timezone : null;
+  const utcOffsetSeconds = payload.utc_offset_seconds;
   const selectedSource = sourceForTimezone(timezone);
   const current = payload.current;
-  const time = typeof current?.time === 'string' ? current.time : null;
+  const time = timestampWithUtcOffset(current?.time, utcOffsetSeconds);
   const currentPollen = pollenFrom(current);
   const currentPollutants = pollutantsFrom(current);
   const currentAqi = aqiFrom(current, selectedSource);
@@ -250,8 +253,9 @@ export function normalizeAirQuality(payload: OpenMeteoPayload): NormalizedAirQua
   const currentExtended = extendedFrom(current);
   const hourlyTime = Array.isArray(payload.hourly?.time) ? payload.hourly.time : [];
   const hourly = hourlyTime
-    .map((timestamp, index) => {
-      if (typeof timestamp !== 'string' || timestamp.length === 0) {
+    .map((rawTimestamp, index) => {
+      const timestamp = timestampWithUtcOffset(rawTimestamp, utcOffsetSeconds);
+      if (!timestamp) {
         return null;
       }
 

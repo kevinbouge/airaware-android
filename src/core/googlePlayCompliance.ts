@@ -3,6 +3,8 @@ export const GOOGLE_PLAY_PRIVACY_DISCLOSURE = [
   'AirAware uses approximate foreground location or manual coordinates to retrieve local environmental conditions.',
   'Coordinates are sent to Open-Meteo over HTTPS for environmental data.',
   'When the manual map picker is shown, OpenStreetMap tile servers receive requests for the visible map area.',
+  'When Nearby vegetation is used, coordinates are sent to the configured OpenStreetMap Overpass API to retrieve mapped vegetation and land-use context.',
+  'Vegetation and land-use data is provided by OpenStreetMap contributors.',
   'Personal Allergy Profile selections, cached environmental data, and settings stay on this device.',
   'Shared summaries are generated locally and passed only to the Android share sheet when you choose to share.',
   'Android widgets display locally cached AirAware data and do not fetch environmental providers independently.',

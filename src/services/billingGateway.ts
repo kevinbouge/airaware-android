@@ -1,9 +1,9 @@
 import {
   FREE_ENTITLEMENT,
-  PRO_LIFETIME_ENTITLEMENT,
   entitlementForBuild,
   type EntitlementState,
 } from '../capabilities/entitlements';
+import { loadDevelopmentEntitlementOverride } from '../storage/storage';
 
 type BillingStatus = 'not_configured';
 
@@ -17,11 +17,14 @@ export function createBillingGateway(): BillingGateway {
   return {
     status: 'not_configured',
     isAvailable: () => false,
-    currentEntitlement: async () =>
-      entitlementForBuild({
+    currentEntitlement: async () => {
+      const developmentOverride = __DEV__ ? await loadDevelopmentEntitlementOverride() : undefined;
+
+      return entitlementForBuild({
         isProduction: !__DEV__,
-        developmentOverride: PRO_LIFETIME_ENTITLEMENT,
+        developmentOverride,
         storedEntitlement: FREE_ENTITLEMENT,
-      }),
+      });
+    },
   };
 }

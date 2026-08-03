@@ -20,6 +20,8 @@ import { contributorFromScore } from '../utils/contributorLabels';
 import { formatScore, formatShortTime } from '../utils/format';
 import { isFiniteNumber } from '../utils/number';
 
+const ADVANCED_WIDGET_FORECAST_DISPLAY_DAYS = 4;
+
 function selectedHeadlineScore(input: {
   settings: AppSettings;
   environmentalScore: EnvironmentalScoreResult | null;
@@ -272,9 +274,9 @@ export function advancedWidgetRenderModel(snapshot: WidgetSnapshot | null): Widg
     bestWindowLine: snapshot.bestOutdoorWindowLabel
       ? `Best outdoor window\n${snapshot.bestOutdoorWindowLabel}`
       : null,
-    forecastLines: snapshot.forecastDays.map(
-      (day) => `${day.label} ${day.categoryLabel} · ${day.scoreLabel}`,
-    ),
+    forecastLines: snapshot.forecastDays
+      .slice(0, ADVANCED_WIDGET_FORECAST_DISPLAY_DAYS)
+      .map((day) => `${day.label} ${day.categoryLabel} · ${day.scoreLabel}`),
     message: snapshot.stale ? 'Cached data' : null,
     category: snapshot.headlineScore.category,
   };

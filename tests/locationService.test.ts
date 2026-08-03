@@ -56,7 +56,7 @@ describe('location service', () => {
     expect(deps.reverseGeocode).not.toHaveBeenCalled();
   });
 
-  it('reverse geocodes manual fallback coordinates when automatic permission is denied', async () => {
+  it('does not silently use manual coordinates when automatic permission is denied', async () => {
     const deps = dependencies({
       getPermission: jest.fn(async () => 'unknown' as const),
       requestPermission: jest.fn(async () => 'denied' as const),
@@ -72,7 +72,10 @@ describe('location service', () => {
     );
 
     expect(location.permissionStatus).toBe('denied');
-    expect(location.placeName).toBe('Prague');
+    expect(location.mode).toBe('automatic');
+    expect(location.coordinates).toBeNull();
+    expect(location.placeName).toBeNull();
+    expect(deps.reverseGeocode).not.toHaveBeenCalled();
   });
 
   it('does not request automatic location permission again after denial', async () => {
@@ -91,7 +94,36 @@ describe('location service', () => {
 
     expect(location.permissionStatus).toBe('denied');
     expect(deps.requestPermission).not.toHaveBeenCalled();
-    expect(location.coordinates).toEqual({ latitude: 50.0755, longitude: 14.4378 });
+    expect(location.coordinates).toBeNull();
+  });
+
+  it('returns unavailable automatic location when device lookup fails', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const deps = dependencies({
+      getPermission: jest.fn(async () => 'granted' as const),
+      getCurrentCoordinates: jest.fn(async () => {
+        throw new Error('location unavailable');
+      }),
+    });
+
+    try {
+      const location = await resolveLocation(
+        {
+          ...DEFAULT_SETTINGS,
+          locationMode: 'automatic',
+          manualLatitude: '50.0755',
+          manualLongitude: '14.4378',
+        },
+        deps,
+      );
+
+      expect(location.permissionStatus).toBe('unavailable');
+      expect(location.mode).toBe('automatic');
+      expect(location.coordinates).toBeNull();
+      expect(location.placeName).toBeNull();
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it('uses existing automatic location permission without prompting', async () => {

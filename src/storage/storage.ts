@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { CACHE_SCHEMA_VERSION } from '../core/constants';
+import { CACHE_SCHEMA_VERSION, VEGETATION_CACHE_SCHEMA_VERSION } from '../core/constants';
 import type {
   CachedEnvironment,
   CurrentEnvironmentalReadings,
@@ -9,6 +9,18 @@ import type {
   HourlyEnvironmentalReading,
 } from '../models/environment';
 import type { RiskNotificationTransitionState } from '../models/notifications';
+import type {
+  CachedVegetationContext,
+  NormalizedVegetationContext,
+  VegetationCategoryId,
+  VegetationTaxonId,
+} from '../models/vegetation';
+import {
+  FREE_ENTITLEMENT,
+  PRO_LIFETIME_ENTITLEMENT,
+  type EntitlementState,
+  normalizeEntitlement,
+} from '../capabilities/entitlements';
 import {
   WIDGET_SNAPSHOT_SCHEMA_VERSION,
   type WidgetSnapshot,
@@ -28,6 +40,8 @@ const PROFILE_KEY = 'airaware.profile.v1';
 const ENVIRONMENT_CACHE_KEY = 'airaware.environment-cache.v1';
 const RISK_NOTIFICATION_TRANSITION_KEY = 'airaware.risk-notification-transition.v1';
 const WIDGET_SNAPSHOT_KEY = 'airaware.widget-snapshot.v1';
+const DEVELOPMENT_ENTITLEMENT_OVERRIDE_KEY = 'airaware.development-entitlement.v1';
+const VEGETATION_CACHE_KEY = 'airaware.vegetation-cache.v1';
 
 function readObject(value: string | null): Record<string, unknown> | null {
   if (value === null) return null;
@@ -58,9 +72,15 @@ function validLocationMode(value: unknown): AppSettings['locationMode'] {
 }
 
 function validRefreshInterval(value: unknown): AppSettings['refreshIntervalMinutes'] {
-  return value === 60 || value === 120 || value === 240 || value === 360
+  return value === 30 || value === 60 || value === 120
     ? value
     : DEFAULT_SETTINGS.refreshIntervalMinutes;
+}
+
+function validVegetationRadius(value: unknown): AppSettings['nearbyVegetationRadiusMeters'] {
+  return value === 1000 || value === 2000 || value === 5000
+    ? value
+    : DEFAULT_SETTINGS.nearbyVegetationRadiusMeters;
 }
 
 function validOutdoorWindowDuration(value: unknown): AppSettings['outdoorWindowDurationHours'] {
@@ -190,6 +210,65 @@ function isWidgetSnapshot(value: unknown): value is WidgetSnapshot {
   );
 }
 
+function isVegetationFeatureSummary(value: unknown): boolean {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const object = value as Record<string, unknown>;
+  return (
+    typeof object.present === 'boolean' &&
+    isFiniteNumber(object.featureCount) &&
+    object.featureCount >= 0 &&
+    (isFiniteNumber(object.nearestMeters) || object.nearestMeters === null)
+  );
+}
+
+function isVegetationTaxonSummary(value: unknown): boolean {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const object = value as Record<string, unknown>;
+  return (
+    isFiniteNumber(object.featureCount) &&
+    object.featureCount >= 0 &&
+    (isFiniteNumber(object.nearestMeters) || object.nearestMeters === null)
+  );
+}
+
+function isVegetationContext(value: unknown): value is NormalizedVegetationContext {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+
+  const object = value as Record<string, unknown>;
+  const coordinates = object.coordinates as Record<string, unknown> | undefined;
+  const categories = object.categories as Record<VegetationCategoryId, unknown> | undefined;
+  const mappedTaxa = object.mappedTaxa as Record<VegetationTaxonId, unknown> | undefined;
+  const categoryIds: VegetationCategoryId[] = [
+    'woodland',
+    'grassland',
+    'meadow',
+    'orchard',
+    'scrub',
+    'parkland',
+    'farmland',
+  ];
+  const taxonIds: VegetationTaxonId[] = ['birch', 'alder', 'olive'];
+
+  return (
+    object.provider === 'openstreetmap' &&
+    coordinates !== undefined &&
+    isFiniteNumber(coordinates.latitude) &&
+    isFiniteNumber(coordinates.longitude) &&
+    (object.radiusMeters === 1000 ||
+      object.radiusMeters === 2000 ||
+      object.radiusMeters === 5000) &&
+    typeof object.fetchedAt === 'string' &&
+    typeof categories === 'object' &&
+    categories !== null &&
+    categoryIds.every((id) => isVegetationFeatureSummary(categories[id])) &&
+    typeof mappedTaxa === 'object' &&
+    mappedTaxa !== null &&
+    taxonIds.every((id) => isVegetationTaxonSummary(mappedTaxa[id])) &&
+    object.attribution === 'OpenStreetMap contributors' &&
+    object.completeness === 'unknown'
+  );
+}
+
 const EMPTY_EXTENDED_AIR_QUALITY: ExtendedAirQualityReadings = {
   carbonDioxide: null,
   ammonia: null,
@@ -282,6 +361,7 @@ export async function loadSettings(): Promise<AppSettings> {
     manualLatitude: stringOrDefault(object?.manualLatitude, DEFAULT_SETTINGS.manualLatitude),
     manualLongitude: stringOrDefault(object?.manualLongitude, DEFAULT_SETTINGS.manualLongitude),
     refreshIntervalMinutes: validRefreshInterval(object?.refreshIntervalMinutes),
+    nearbyVegetationRadiusMeters: validVegetationRadius(object?.nearbyVegetationRadiusMeters),
     outdoorWindowDurationHours: validOutdoorWindowDuration(object?.outdoorWindowDurationHours),
     headlineScore: validScorePreference(object?.headlineScore, DEFAULT_SETTINGS.headlineScore),
     forecastScore: validScorePreference(object?.forecastScore, DEFAULT_SETTINGS.forecastScore),
@@ -379,4 +459,61 @@ export async function saveWidgetSnapshot(snapshot: WidgetSnapshot): Promise<void
   };
 
   await AsyncStorage.setItem(WIDGET_SNAPSHOT_KEY, JSON.stringify(envelope));
+}
+
+export async function loadVegetationCache(): Promise<CachedVegetationContext | null> {
+  const object = readObject(await AsyncStorage.getItem(VEGETATION_CACHE_KEY));
+
+  if (
+    object?.metadata === null ||
+    typeof object?.metadata !== 'object' ||
+    object?.data === null ||
+    object.data === undefined
+  ) {
+    return null;
+  }
+
+  const metadata = object.metadata as Record<string, unknown>;
+  if (
+    metadata.version !== VEGETATION_CACHE_SCHEMA_VERSION ||
+    typeof metadata.savedAt !== 'string' ||
+    typeof metadata.cacheKey !== 'string'
+  ) {
+    return null;
+  }
+
+  if (!isVegetationContext(object.data)) {
+    return null;
+  }
+
+  return {
+    metadata: {
+      version: VEGETATION_CACHE_SCHEMA_VERSION,
+      savedAt: metadata.savedAt,
+      cacheKey: metadata.cacheKey,
+    },
+    data: object.data,
+  };
+}
+
+export async function saveVegetationCache(cache: CachedVegetationContext): Promise<void> {
+  await AsyncStorage.setItem(VEGETATION_CACHE_KEY, JSON.stringify(cache));
+}
+
+export async function loadDevelopmentEntitlementOverride(): Promise<EntitlementState> {
+  if (!__DEV__) return FREE_ENTITLEMENT;
+
+  const object = readObject(await AsyncStorage.getItem(DEVELOPMENT_ENTITLEMENT_OVERRIDE_KEY));
+  return normalizeEntitlement(object ?? PRO_LIFETIME_ENTITLEMENT);
+}
+
+export async function saveDevelopmentEntitlementOverride(
+  entitlement: EntitlementState,
+): Promise<void> {
+  if (!__DEV__) return;
+
+  await AsyncStorage.setItem(
+    DEVELOPMENT_ENTITLEMENT_OVERRIDE_KEY,
+    JSON.stringify(normalizeEntitlement(entitlement)),
+  );
 }

@@ -64,6 +64,7 @@ describe('Open-Meteo providers', () => {
     expect(url).toContain('shortwave_radiation');
     expect(url).toContain('cape');
     expect(url).toContain('timezone=auto');
+    expect(url).toContain('wind_speed_unit=ms');
     expect(url).toContain(`forecast_days=${FORECAST_DAY_LIMITS.providerRequest}`);
 
     const response = normalizeWeather({
@@ -77,7 +78,7 @@ describe('Open-Meteo providers', () => {
         uv_index: -1,
       },
       hourly: {
-        time: ['2026-08-01T12:00', 'bad'],
+        time: ['2026-08-01T12:00', '2026-08-01T13:00'],
         temperature_2m: [20, 21],
         relative_humidity_2m: [70, 72],
         uv_index: [7.2, -3],
@@ -88,6 +89,43 @@ describe('Open-Meteo providers', () => {
     expect(response.current.uvIndex).toBeNull();
     expect(response.hourly[0]?.uvIndex).toBe(7.2);
     expect(response.hourly[1]?.uvIndex).toBeNull();
+  });
+
+  it('keeps valid negative weather temperatures and applies provider UTC offsets', () => {
+    const response = normalizeWeather({
+      latitude: 64.1,
+      longitude: -21.9,
+      timezone: 'Atlantic/Reykjavik',
+      utc_offset_seconds: -3600,
+      current: {
+        time: '2026-01-10T07:00',
+        temperature_2m: -6,
+        dew_point_2m: -8.5,
+        wet_bulb_temperature_2m: -7,
+        relative_humidity_2m: 82,
+      },
+      hourly: {
+        time: ['2026-01-10T07:00'],
+        temperature_2m: [-6],
+        dew_point_2m: [-8.5],
+        wet_bulb_temperature_2m: [-7],
+        relative_humidity_2m: [82],
+      },
+      daily: {
+        time: ['2026-01-10'],
+        temperature_2m_mean: [-5],
+        relative_humidity_2m_mean: [82],
+      },
+    });
+
+    expect(response.current.timestamp).toBe('2026-01-10T07:00-01:00');
+    expect(response.current.temperature).toBe(-6);
+    expect(response.current.dewPoint).toBe(-8.5);
+    expect(response.current.extended.wetBulbTemperature).toBe(-7);
+    expect(response.hourly[0]?.timestamp).toBe('2026-01-10T07:00-01:00');
+    expect(response.hourly[0]?.temperature).toBe(-6);
+    expect(response.hourly[0]?.extended.wetBulbTemperature).toBe(-7);
+    expect(response.daily[0]?.temperature).toBe(-5);
   });
 
   it('normalizes supported extended air-quality variables without requiring every value', () => {
@@ -133,6 +171,28 @@ describe('Open-Meteo providers', () => {
       formaldehyde: 0.7,
       nonMethaneVolatileOrganicCompounds: 14,
     });
+  });
+
+  it('applies provider UTC offsets to air-quality timestamps', () => {
+    const response = normalizeAirQuality({
+      latitude: 40.7,
+      longitude: -74,
+      timezone: 'America/New_York',
+      utc_offset_seconds: -14400,
+      current: {
+        time: '2026-08-01T12:00',
+        pm2_5: 8,
+        us_aqi_pm2_5: 32,
+      },
+      hourly: {
+        time: ['2026-08-01T12:00'],
+        pm2_5: [8],
+        us_aqi_pm2_5: [32],
+      },
+    });
+
+    expect(response.current.timestamp).toBe('2026-08-01T12:00-04:00');
+    expect(response.hourly[0]?.timestamp).toBe('2026-08-01T12:00-04:00');
   });
 
   it('normalizes supported extended weather variables and rejects malformed numbers', () => {

@@ -1,14 +1,36 @@
-import { ScrollView, StyleSheet } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { forecastDaysForCapabilities } from '../capabilities/forecast';
+import { categoryLabel } from '../core/categories';
 import { RiskForecastTimeline } from '../components/RiskForecastTimeline';
-import { ReadingRow } from '../components/ReadingRow';
 import { SectionCard } from '../components/SectionCard';
 import { StateView } from '../components/StateView';
 import { useCapabilities } from '../hooks/useCapabilities';
 import { useDerivedEnvironment } from '../hooks/useDerivedEnvironment';
+import type { RiskCategoryId } from '../models/environment';
 import { useAppStore } from '../state/useAppStore';
-import { colors, spacing } from '../theme/theme';
-import { formatCategoryScore } from '../utils/format';
+import { colors, riskColor, spacing } from '../theme/theme';
+import { formatScore } from '../utils/format';
+
+interface DailyForecastScore {
+  available: boolean;
+  category: RiskCategoryId;
+  score: number | null;
+}
+
+function DailyForecastRow({ label, score }: { label: string; score: DailyForecastScore | null }) {
+  const available = score?.available === true && score.category !== 'unavailable';
+  const accent = available ? riskColor(score.category) : colors.unavailable;
+  const value = available
+    ? `${categoryLabel(score.category)} (${formatScore(score.score)})`
+    : 'Unavailable';
+
+  return (
+    <View style={styles.dailyRow}>
+      <Text style={styles.dailyLabel}>{label}</Text>
+      <Text style={[styles.dailyValue, { color: accent }]}>{value}</Text>
+    </View>
+  );
+}
 
 export function ForecastScreen() {
   const environment = useAppStore((state) => state.environment);
@@ -53,23 +75,23 @@ export function ForecastScreen() {
       score: hour.result.score,
       category: hour.result.category,
     })) ?? [];
-  const dailyScoreLabel = (date: string): string => {
+  const dailyScore = (date: string): DailyForecastScore | null => {
     if (date === currentDate && currentScore?.available) {
-      return formatCategoryScore(currentScore.category, currentScore.score);
+      return currentScore;
     }
 
-    const score = usePersonalized
-      ? personalizedByDate.get(date)
-      : environment.forecastDays.find((day) => day.date === date)?.score;
+    if (usePersonalized) {
+      return personalizedByDate.get(date) ?? null;
+    }
 
-    return score ? formatCategoryScore(score.category, score.score) : 'Unavailable';
+    return environment.forecastDays.find((day) => day.date === date)?.score ?? null;
   };
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <SectionCard title={title}>
         {visibleForecastDays.map((day) => (
-          <ReadingRow key={day.date} label={day.label} value={dailyScoreLabel(day.date)} />
+          <DailyForecastRow key={day.date} label={day.label} score={dailyScore(day.date)} />
         ))}
       </SectionCard>
 
@@ -91,6 +113,24 @@ export function ForecastScreen() {
 const styles = StyleSheet.create({
   content: {
     padding: spacing.lg,
+  },
+  dailyLabel: {
+    color: colors.text,
+    flex: 1,
+    fontSize: 15,
+  },
+  dailyRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.md,
+    justifyContent: 'space-between',
+    minHeight: 30,
+  },
+  dailyValue: {
+    fontSize: 15,
+    fontWeight: '700',
+    minWidth: 116,
+    textAlign: 'right',
   },
   screen: {
     backgroundColor: colors.background,

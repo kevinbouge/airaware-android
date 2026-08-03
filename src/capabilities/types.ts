@@ -63,6 +63,7 @@ export type FeatureId =
   | 'forecast'
   | 'extended_forecast'
   | 'extended_environmental_data'
+  | 'nearby_vegetation'
   | 'best_outdoor_window'
   | 'automatic_location'
   | 'manual_location'

@@ -1,15 +1,18 @@
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { AppButton } from '../components/AppButton';
-import { CurrentReadingsSections } from '../components/CurrentReadingsSections';
 import { ScoreCard } from '../components/ScoreCard';
 import { SectionCard } from '../components/SectionCard';
 import { StateView } from '../components/StateView';
 import { GasMaskIcon } from '../components/icons/GasMaskIcon';
-import { useCapabilities } from '../hooks/useCapabilities';
 import { useDerivedEnvironment } from '../hooks/useDerivedEnvironment';
 import { useAppStore } from '../state/useAppStore';
 import { colors, riskColor, spacing } from '../theme/theme';
-import { formatCoordinates, formatTimestamp } from '../utils/format';
+import {
+  formatCategoryScore,
+  formatCoordinates,
+  formatShortTime,
+  formatTimestamp,
+} from '../utils/format';
 import { contributorFromScore } from '../utils/contributorLabels';
 
 function formatUpdateStatus(
@@ -48,21 +51,16 @@ export function TodayScreen() {
   const refresh = useAppStore((state) => state.refresh);
   const updateSettings = useAppStore((state) => state.updateSettings);
   const shareDailySummary = useAppStore((state) => state.shareDailySummary);
-  const capabilities = useCapabilities();
-  const { environmentalScore, personalizedScore } = useDerivedEnvironment();
+  const {
+    environmentalScore,
+    personalizedScore,
+    environmentalBestOutdoorWindow,
+    personalizedBestOutdoorWindow,
+  } = useDerivedEnvironment();
 
   const startLocationRefresh = async () => {
     await updateSettings({ locationOnboardingComplete: true });
     await refresh();
-  };
-
-  const toggleSection = (sectionId: string) => {
-    void updateSettings({
-      collapsedSections: {
-        ...settings.collapsedSections,
-        [sectionId]: !settings.collapsedSections[sectionId],
-      },
-    });
   };
 
   if (!hydrated) return <StateView loading message="Loading AirAware..." />;
@@ -83,6 +81,10 @@ export function TodayScreen() {
     stale,
     environment?.metadata ?? null,
   );
+  const bestOutdoorWindow =
+    settings.forecastScore === 'personalized' && personalizedBestOutdoorWindow
+      ? personalizedBestOutdoorWindow
+      : environmentalBestOutdoorWindow;
 
   return (
     <ScrollView
@@ -123,12 +125,23 @@ export function TodayScreen() {
 
       {environment ? (
         <>
-          <CurrentReadingsSections
-            capabilities={capabilities}
-            collapsedSections={settings.collapsedSections}
-            current={environment.current}
-            onToggleSection={toggleSection}
-          />
+          {bestOutdoorWindow?.available ? (
+            <SectionCard title="Best outdoor window">
+              <Text style={styles.windowValue}>
+                {formatShortTime(bestOutdoorWindow.startTime)}–
+                {formatShortTime(bestOutdoorWindow.endTime)}
+              </Text>
+              <Text
+                style={[
+                  styles.body,
+                  styles.windowScore,
+                  { color: riskColor(bestOutdoorWindow.category) },
+                ]}
+              >
+                {formatCategoryScore(bestOutdoorWindow.category, bestOutdoorWindow.averageScore)}
+              </Text>
+            </SectionCard>
+          ) : null}
 
           <View style={styles.actions}>
             {shareMessage ? <Text style={styles.shareMessage}>{shareMessage}</Text> : null}
@@ -191,6 +204,14 @@ const styles = StyleSheet.create({
     color: '#604B00',
     marginBottom: spacing.md,
     padding: spacing.md,
+  },
+  windowValue: {
+    color: colors.text,
+    fontSize: 24,
+    fontWeight: '800',
+  },
+  windowScore: {
+    fontWeight: '800',
   },
   place: {
     color: colors.muted,

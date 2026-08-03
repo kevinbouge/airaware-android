@@ -3,8 +3,8 @@ import type { EntitlementState } from './entitlements';
 
 export const FORECAST_DAY_LIMITS = {
   free: 3,
-  proLifetime: 4,
-  providerRequest: 4,
+  proLifetime: 7,
+  providerRequest: 7,
 } as const;
 
 const BASE_CAPABILITIES = {

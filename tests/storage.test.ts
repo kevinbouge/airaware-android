@@ -54,6 +54,7 @@ describe('settings storage', () => {
       JSON.stringify({
         locationMode: 'mars',
         refreshIntervalMinutes: 15,
+        nearbyVegetationRadiusMeters: 3000,
         outdoorWindowDurationHours: 12,
         headlineScore: 'other',
         summaryScore: 'panel',
@@ -72,6 +73,9 @@ describe('settings storage', () => {
 
     expect(settings.locationMode).toBe(DEFAULT_SETTINGS.locationMode);
     expect(settings.refreshIntervalMinutes).toBe(DEFAULT_SETTINGS.refreshIntervalMinutes);
+    expect(settings.nearbyVegetationRadiusMeters).toBe(
+      DEFAULT_SETTINGS.nearbyVegetationRadiusMeters,
+    );
     expect(settings.outdoorWindowDurationHours).toBe(DEFAULT_SETTINGS.outdoorWindowDurationHours);
     expect(settings.headlineScore).toBe(DEFAULT_SETTINGS.headlineScore);
     expect(settings.forecastScore).toBe(DEFAULT_SETTINGS.forecastScore);

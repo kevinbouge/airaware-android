@@ -1,7 +1,12 @@
 import { Share } from 'react-native';
 import { create } from 'zustand';
 import { capabilitiesForEntitlement } from '../capabilities/config';
-import { FREE_ENTITLEMENT, type EntitlementState } from '../capabilities/entitlements';
+import {
+  FREE_ENTITLEMENT,
+  PRO_LIFETIME_ENTITLEMENT,
+  type EntitlementKind,
+  type EntitlementState,
+} from '../capabilities/entitlements';
 import { isFeatureAvailable } from '../capabilities/features';
 import { isEnvironmentalVariableAvailable } from '../capabilities/variables';
 import { CACHE_SCHEMA_VERSION, CACHE_STALE_AFTER_MS } from '../core/constants';
@@ -22,6 +27,7 @@ import type {
   NotificationPermissionStatus,
   RiskNotificationTransitionState,
 } from '../models/notifications';
+import type { NormalizedVegetationContext } from '../models/vegetation';
 import {
   DEFAULT_PROFILE,
   DEFAULT_SETTINGS,
@@ -32,18 +38,27 @@ import { deriveEnvironmentState } from './derivedEnvironment';
 import { parseManualCoordinates, resolveLocation } from '../services/locationService';
 import { assembleEnvironment } from '../services/environmentAssembler';
 import { activeEnvironmentalProvider } from '../services/environmentProviders';
+import { fetchVegetationContext } from '../api/openStreetMapVegetation';
 import { createBillingGateway } from '../services/billingGateway';
 import { cacheForCoordinates } from '../services/cacheCompatibility';
 import {
+  vegetationCacheEnvelope,
+  vegetationCacheExpired,
+  vegetationCacheForRequest,
+} from '../services/vegetationCache';
+import {
   loadEnvironmentCache,
+  saveDevelopmentEntitlementOverride,
   loadProfile,
   loadRiskNotificationTransitionState,
   loadSettings,
+  loadVegetationCache,
   saveWidgetSnapshot,
   saveEnvironmentCache,
   saveProfile,
   saveRiskNotificationTransitionState,
   saveSettings,
+  saveVegetationCache,
 } from '../storage/storage';
 import { saveWidgetSnapshotToNative } from '../services/widgetNativeModule';
 import {
@@ -54,6 +69,10 @@ import {
   requestRiskNotificationPermission,
 } from '../services/notificationService';
 import { settingsForProfileState } from './settingsPolicy';
+import {
+  shouldRefreshAfterEntitlementChange,
+  shouldRefreshAfterLocationSettingsChange,
+} from './appLifecycle';
 
 interface AppStore {
   hydrated: boolean;
@@ -69,15 +88,22 @@ interface AppStore {
   profile: PersonalAllergyProfile;
   entitlement: EntitlementState;
   environment: NormalizedEnvironment | null;
+  vegetation: NormalizedVegetationContext | null;
+  vegetationStale: boolean;
+  vegetationLoading: boolean;
+  vegetationError: string | null;
   riskNotificationTransitionState: RiskNotificationTransitionState | null;
   hydrate: () => Promise<void>;
   refresh: () => Promise<void>;
   updateSettings: (settings: Partial<AppSettings>) => Promise<void>;
+  toggleCollapsedSection: (sectionId: string) => Promise<void>;
   updateProfile: (profile: Partial<PersonalAllergyProfile>) => Promise<void>;
   toggleProfileFactor: (factor: keyof PersonalAllergyProfile['factors']) => Promise<void>;
   shareDailySummary: () => Promise<void>;
   sendTestRiskNotification: () => Promise<void>;
   openNotificationSettings: () => Promise<void>;
+  setDevelopmentEntitlement: (kind: EntitlementKind) => Promise<void>;
+  refreshVegetation: (force?: boolean) => Promise<void>;
 }
 
 const emptyLocation: LocationInfo = {
@@ -130,10 +156,33 @@ async function persistWidgetSnapshotFor(input: {
   await saveWidgetSnapshotToNative(snapshot);
 }
 
+async function loadCachedVegetationFor(input: {
+  coordinates: NormalizedEnvironment['coordinates'] | null;
+  radiusMeters: AppSettings['nearbyVegetationRadiusMeters'];
+}): Promise<{
+  vegetation: NormalizedVegetationContext | null;
+  stale: boolean;
+}> {
+  if (!input.coordinates) return { vegetation: null, stale: false };
+
+  const cache = vegetationCacheForRequest(
+    await loadVegetationCache(),
+    input.coordinates,
+    input.radiusMeters,
+  );
+
+  return {
+    vegetation: cache?.data ?? null,
+    stale: cache ? vegetationCacheExpired(cache) : false,
+  };
+}
+
 let settingsSaveQueue = Promise.resolve();
 let profileSaveQueue = Promise.resolve();
+let settingsUpdateQueue = Promise.resolve();
 let pendingSettings: AppSettings | null = null;
 let settingsSaveTimeout: ReturnType<typeof setTimeout> | null = null;
+let pendingRefresh = false;
 
 function enqueueSettingsSave(settings: AppSettings): Promise<void> {
   settingsSaveQueue = settingsSaveQueue
@@ -192,6 +241,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
   profile: DEFAULT_PROFILE,
   entitlement: FREE_ENTITLEMENT,
   environment: null,
+  vegetation: null,
+  vegetationStale: false,
+  vegetationLoading: false,
+  vegetationError: null,
   riskNotificationTransitionState: null,
 
   hydrate: async () => {
@@ -205,6 +258,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
     ]);
     const settings = settingsForProfileState(storedSettings, profile);
     const environment = cache?.data ?? null;
+    const cachedVegetation = await loadCachedVegetationFor({
+      coordinates: environment?.coordinates ?? null,
+      radiusMeters: settings.nearbyVegetationRadiusMeters,
+    });
 
     if (settings !== storedSettings) {
       scheduleSettingsSave(settings);
@@ -216,6 +273,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
       profile,
       entitlement,
       environment,
+      vegetation: cachedVegetation.vegetation,
+      vegetationStale: cachedVegetation.stale,
+      vegetationError: null,
       riskNotificationTransitionState: notificationState,
       stale: staleFrom(cache?.metadata.savedAt ?? null),
       location: environment
@@ -236,18 +296,31 @@ export const useAppStore = create<AppStore>((set, get) => ({
         entitlement,
         stale: staleFrom(cache?.metadata.savedAt ?? null),
       });
+      void get().refreshVegetation(false);
     }
   },
 
   refresh: async () => {
-    if (get().loading) return;
+    if (get().loading) {
+      pendingRefresh = true;
+      return;
+    }
+
+    const runPendingRefresh = () => {
+      if (!pendingRefresh) return;
+
+      pendingRefresh = false;
+      void get().refresh();
+    };
 
     set({ loading: true, error: null, shareMessage: null });
     const settings = get().settings;
     const cached = get().environment;
+    let resolvedLocation: LocationInfo | null = null;
 
     try {
       const location = await resolveLocation(settings);
+      resolvedLocation = location;
 
       if (!location.coordinates) {
         throw new Error('Location is unavailable. Add manual coordinates in Settings.');
@@ -263,6 +336,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
       ]);
       const airQuality = airResult.status === 'fulfilled' ? airResult.value : null;
       const weather = weatherResult.status === 'fulfilled' ? weatherResult.value : null;
+      const hasCompleteFreshProviderData = airQuality !== null && weather !== null;
+      const hasFreshProviderData = airQuality !== null || weather !== null;
 
       if (!airQuality && !weather && !cachedForLocation) {
         throw new Error('Open-Meteo data is unavailable.');
@@ -276,7 +351,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
         fallback: cachedForLocation,
       });
 
-      await persistSuccessfulEnvironment(environment);
+      if (hasCompleteFreshProviderData) {
+        await persistSuccessfulEnvironment(environment);
+      }
+
       const derived = deriveEnvironmentState(
         environment,
         get().profile,
@@ -288,26 +366,27 @@ export const useAppStore = create<AppStore>((set, get) => ({
         canNotify && settings.riskTransitionNotificationsEnabled
           ? await getRiskNotificationPermissionStatus()
           : get().notificationPermissionStatus;
-      const transitionEvaluation = canNotify
-        ? evaluateRiskTransition({
-            settings,
-            capabilityAvailable: canNotify,
-            permissionStatus,
-            environmentalScore: derived.environmentalScore,
-            personalizedScore: derived.personalizedScore,
-            previousState: get().riskNotificationTransitionState,
-            coordinates: environment.coordinates,
-            placeName: environment.placeName,
-            profile: get().profile,
-            observationKey: riskNotificationObservationKey({
-              fetchedAt: environment.fetchedAt,
-              currentTimestamp: environment.current.timestamp,
-              airQualityFetchedAt: environment.metadata.airQualityFetchedAt,
-              weatherFetchedAt: environment.metadata.weatherFetchedAt,
-            }),
-            now: new Date().toISOString(),
-          })
-        : null;
+      const transitionEvaluation =
+        canNotify && hasFreshProviderData
+          ? evaluateRiskTransition({
+              settings,
+              capabilityAvailable: canNotify,
+              permissionStatus,
+              environmentalScore: derived.environmentalScore,
+              personalizedScore: derived.personalizedScore,
+              previousState: get().riskNotificationTransitionState,
+              coordinates: environment.coordinates,
+              placeName: environment.placeName,
+              profile: get().profile,
+              observationKey: riskNotificationObservationKey({
+                fetchedAt: environment.fetchedAt,
+                currentTimestamp: environment.current.timestamp,
+                airQualityFetchedAt: environment.metadata.airQualityFetchedAt,
+                weatherFetchedAt: environment.metadata.weatherFetchedAt,
+              }),
+              now: new Date().toISOString(),
+            })
+          : null;
 
       let delivered = false;
       if (transitionEvaluation?.transition) {
@@ -345,83 +424,133 @@ export const useAppStore = create<AppStore>((set, get) => ({
         riskNotificationTransitionState:
           nextNotificationState ?? get().riskNotificationTransitionState,
       });
+      void get().refreshVegetation(false);
+      runPendingRefresh();
     } catch (error) {
       console.warn('AirAware: refresh failed', error);
       const cache = await loadEnvironmentCache();
-      const requestedCoordinates =
-        settings.locationMode === 'manual' ? parseManualCoordinates(settings) : null;
-      const environment =
-        cacheForCoordinates(cache?.data ?? null, requestedCoordinates) ??
-        cacheForCoordinates(cached, requestedCoordinates) ??
-        (requestedCoordinates ? null : (cache?.data ?? cached));
+      const fallbackCoordinates =
+        settings.locationMode === 'manual'
+          ? parseManualCoordinates(settings)
+          : (resolvedLocation?.coordinates ?? null);
+      const environment = fallbackCoordinates
+        ? (cacheForCoordinates(cache?.data ?? null, fallbackCoordinates) ??
+          cacheForCoordinates(cached, fallbackCoordinates))
+        : null;
 
       set({
         loading: false,
         stale: environment !== null,
         error: environment
-          ? requestedCoordinates
-            ? 'Showing cached environmental data.'
-            : 'Showing cached environmental data. Current location could not be verified.'
+          ? 'Showing cached environmental data.'
           : 'No environmental data is available.',
         environment: environment ?? null,
       });
+      runPendingRefresh();
     }
   },
 
   updateSettings: async (settingsPatch) => {
-    const capabilities = capabilitiesForEntitlement(get().entitlement);
-    const currentSettings = get().settings;
-    let notificationPermissionStatus = get().notificationPermissionStatus;
-    let notificationMessage: string | null = null;
-    let normalizedPatch = settingsPatch;
+    settingsUpdateQueue = settingsUpdateQueue
+      .catch((error) => console.warn('AirAware: previous settings update failed', error))
+      .then(async () => {
+        const capabilities = capabilitiesForEntitlement(get().entitlement);
+        const currentSettings = get().settings;
+        let notificationPermissionStatus = get().notificationPermissionStatus;
+        let notificationMessage: string | null = null;
+        let normalizedPatch = settingsPatch;
 
-    if (
-      settingsPatch.riskTransitionNotificationsEnabled === true &&
-      currentSettings.riskTransitionNotificationsEnabled !== true
-    ) {
-      if (!isFeatureAvailable(capabilities, 'basic_transition_notifications')) {
-        normalizedPatch = { ...settingsPatch, riskTransitionNotificationsEnabled: false };
-        notificationMessage = 'Risk transition notifications are unavailable in this build.';
-      } else if (notificationPermissionStatus === 'denied') {
-        notificationPermissionStatus = await getRiskNotificationPermissionStatus();
-        if (notificationPermissionStatus === 'granted') {
-          normalizedPatch = { ...settingsPatch, riskTransitionNotificationsEnabled: true };
-        } else {
-          normalizedPatch = { ...settingsPatch, riskTransitionNotificationsEnabled: false };
-          notificationMessage =
-            'Notification permission is denied. Open Android settings to allow notifications.';
+        if (
+          settingsPatch.riskTransitionNotificationsEnabled === true &&
+          currentSettings.riskTransitionNotificationsEnabled !== true
+        ) {
+          if (!isFeatureAvailable(capabilities, 'basic_transition_notifications')) {
+            normalizedPatch = { ...settingsPatch, riskTransitionNotificationsEnabled: false };
+            notificationMessage = 'Risk transition notifications are unavailable in this build.';
+          } else if (notificationPermissionStatus === 'denied') {
+            notificationPermissionStatus = await getRiskNotificationPermissionStatus();
+            if (notificationPermissionStatus === 'granted') {
+              normalizedPatch = { ...settingsPatch, riskTransitionNotificationsEnabled: true };
+            } else {
+              normalizedPatch = { ...settingsPatch, riskTransitionNotificationsEnabled: false };
+              notificationMessage =
+                'Notification permission is denied. Open Android settings to allow notifications.';
+            }
+          } else {
+            notificationPermissionStatus = await requestRiskNotificationPermission();
+
+            if (notificationPermissionStatus !== 'granted') {
+              normalizedPatch = { ...settingsPatch, riskTransitionNotificationsEnabled: false };
+              notificationMessage =
+                notificationPermissionStatus === 'denied'
+                  ? 'Notification permission was denied. You can retry from Settings.'
+                  : 'Notifications are unavailable on this device.';
+            }
+          }
         }
-      } else {
-        notificationPermissionStatus = await requestRiskNotificationPermission();
 
-        if (notificationPermissionStatus !== 'granted') {
-          normalizedPatch = { ...settingsPatch, riskTransitionNotificationsEnabled: false };
-          notificationMessage =
-            notificationPermissionStatus === 'denied'
-              ? 'Notification permission was denied. You can retry from Settings.'
-              : 'Notifications are unavailable on this device.';
+        if (settingsPatch.riskTransitionNotificationsEnabled === false) {
+          notificationMessage = null;
         }
-      }
-    }
 
-    if (settingsPatch.riskTransitionNotificationsEnabled === false) {
-      notificationMessage = null;
-    }
+        const settings = settingsForProfileState(
+          { ...get().settings, ...normalizedPatch },
+          get().profile,
+        );
+        set({ settings });
+        set({ notificationPermissionStatus, notificationMessage });
+        scheduleSettingsSave(settings);
+        void persistWidgetSnapshotFor({
+          environment: get().environment,
+          profile: get().profile,
+          settings,
+          entitlement: get().entitlement,
+          stale: get().stale,
+        });
+        if (settingsPatch.nearbyVegetationRadiusMeters !== undefined) {
+          void get().refreshVegetation(true);
+        }
+        if (
+          shouldRefreshAfterLocationSettingsChange({
+            previousSettings: currentSettings,
+            nextSettings: settings,
+          })
+        ) {
+          void get().refresh();
+        }
+      });
 
-    const settings = settingsForProfileState(
-      { ...currentSettings, ...normalizedPatch },
-      get().profile,
-    );
-    set({ settings });
-    set({ notificationPermissionStatus, notificationMessage });
-    scheduleSettingsSave(settings);
-    void persistWidgetSnapshotFor({
-      environment: get().environment,
-      profile: get().profile,
-      settings,
-      entitlement: get().entitlement,
-      stale: get().stale,
-    });
+    return settingsUpdateQueue;
+  },
+
+  toggleCollapsedSection: async (sectionId) => {
+    settingsUpdateQueue = settingsUpdateQueue
+      .catch((error) => console.warn('AirAware: previous settings update failed', error))
+      .then(async () => {
+        const currentSettings = get().settings;
+        const settings = settingsForProfileState(
+          {
+            ...currentSettings,
+            collapsedSections: {
+              ...currentSettings.collapsedSections,
+              [sectionId]: !currentSettings.collapsedSections[sectionId],
+            },
+          },
+          get().profile,
+        );
+
+        set({ settings });
+        scheduleSettingsSave(settings);
+        void persistWidgetSnapshotFor({
+          environment: get().environment,
+          profile: get().profile,
+          settings,
+          entitlement: get().entitlement,
+          stale: get().stale,
+        });
+      });
+
+    return settingsUpdateQueue;
   },
 
   updateProfile: async (profilePatch) => {
@@ -535,5 +664,84 @@ export const useAppStore = create<AppStore>((set, get) => ({
         ? 'Android notification settings opened.'
         : 'Could not open Android notification settings.',
     });
+  },
+
+  setDevelopmentEntitlement: async (kind) => {
+    if (!__DEV__) return;
+
+    const previousEntitlement = get().entitlement;
+    const entitlement = kind === 'pro_lifetime' ? PRO_LIFETIME_ENTITLEMENT : FREE_ENTITLEMENT;
+    await saveDevelopmentEntitlementOverride(entitlement);
+    set({ entitlement });
+    await persistWidgetSnapshotFor({
+      environment: get().environment,
+      profile: get().profile,
+      settings: get().settings,
+      entitlement,
+      stale: get().stale,
+    });
+
+    if (
+      shouldRefreshAfterEntitlementChange({
+        previousEntitlement,
+        nextEntitlement: entitlement,
+        locationOnboardingComplete: get().settings.locationOnboardingComplete,
+      })
+    ) {
+      void get().refresh();
+    }
+  },
+
+  refreshVegetation: async (force = false) => {
+    const environment = get().environment;
+    const coordinates = environment?.coordinates ?? get().location.coordinates;
+    const radiusMeters = get().settings.nearbyVegetationRadiusMeters;
+
+    if (!coordinates) {
+      set({ vegetation: null, vegetationStale: false, vegetationError: null });
+      return;
+    }
+
+    const cache = vegetationCacheForRequest(await loadVegetationCache(), coordinates, radiusMeters);
+    const cacheExpired = cache ? vegetationCacheExpired(cache) : false;
+
+    if (cache && !cacheExpired && !force) {
+      set({
+        vegetation: cache.data,
+        vegetationStale: false,
+        vegetationError: null,
+      });
+      return;
+    }
+
+    if (cache) {
+      set({
+        vegetation: cache.data,
+        vegetationStale: cacheExpired,
+        vegetationError: cacheExpired ? 'Showing cached nearby vegetation data.' : null,
+      });
+    }
+
+    set({ vegetationLoading: true });
+    try {
+      const vegetation = await fetchVegetationContext(coordinates, radiusMeters);
+      await saveVegetationCache(vegetationCacheEnvelope(vegetation));
+      set({
+        vegetation,
+        vegetationStale: false,
+        vegetationError: null,
+        vegetationLoading: false,
+      });
+    } catch (error) {
+      console.warn('AirAware: nearby vegetation refresh failed', error);
+      set({
+        vegetation: cache?.data ?? null,
+        vegetationStale: cache !== null,
+        vegetationError: cache
+          ? 'Showing cached nearby vegetation data.'
+          : 'Nearby vegetation data is unavailable.',
+        vegetationLoading: false,
+      });
+    }
   },
 }));

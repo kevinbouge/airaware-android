@@ -6,7 +6,7 @@ function toRadians(value: number): number {
   return (value * Math.PI) / 180;
 }
 
-function distanceMeters(left: Coordinates, right: Coordinates): number {
+export function distanceMeters(left: Coordinates, right: Coordinates): number {
   const latitudeDelta = toRadians(right.latitude - left.latitude);
   const longitudeDelta = toRadians(right.longitude - left.longitude);
   const leftLatitude = toRadians(left.latitude);

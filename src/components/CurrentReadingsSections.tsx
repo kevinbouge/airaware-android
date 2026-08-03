@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Text, StyleSheet } from 'react-native';
 import { ReadingRow } from './ReadingRow';
 import { SectionCard } from './SectionCard';
@@ -29,9 +30,8 @@ import { colors } from '../theme/theme';
 
 const CURRENT_READING_SECTION_IDS = {
   pollen: 'today.pollen',
-  regulatedPollution: 'today.regulatedPollution',
-  atmosphericIrritants: 'today.atmosphericIrritants',
-  moldAndSun: 'today.moldAndSun',
+  airQuality: 'today.airQuality',
+  moldAndUv: 'today.moldAndUv',
   atmosphericComposition: 'today.atmosphericComposition',
   pressureVisibility: 'today.pressureVisibility',
   cloudsMoisture: 'today.cloudsMoisture',
@@ -238,7 +238,7 @@ const WIND_ROWS: {
     id: 'extendedWindGusts',
     key: 'windGusts',
     label: 'Wind gusts',
-    format: (value) => formatMeasurement(value, 'km/h'),
+    format: (value) => formatMeasurement(value, 'm/s', 1),
   },
 ];
 
@@ -247,6 +247,7 @@ interface CurrentReadingsSectionsProps {
   capabilities: AppCapabilities;
   collapsedSections: Record<string, boolean>;
   onToggleSection: (sectionId: string) => void;
+  beforeAdvancedSections?: ReactNode;
 }
 
 function isFiniteReading(value: number | null | undefined): value is number {
@@ -311,6 +312,16 @@ function pollutantReadingRows(
 
       return detail ? { ...row, detail } : row;
     });
+}
+
+function airQualityReadingRows(
+  current: CurrentEnvironmentalReadings,
+  capabilities: AppCapabilities,
+): (ExtendedReadingRow & { detail?: string })[] {
+  return [
+    ...pollutantReadingRows(current, capabilities),
+    ...irritantReadingRows(current, capabilities),
+  ];
 }
 
 function irritantReadingRows(
@@ -455,12 +466,12 @@ export function CurrentReadingsSections({
   capabilities,
   collapsedSections,
   onToggleSection,
+  beforeAdvancedSections,
 }: CurrentReadingsSectionsProps) {
   const moldSunRows = moldAndSunRows(current, capabilities);
   const proSections = proCurrentReadingSections(current, capabilities);
   const pollenRows = pollenReadingRows(current, capabilities);
-  const pollutantRows = pollutantReadingRows(current, capabilities);
-  const irritantRows = irritantReadingRows(current, capabilities);
+  const airQualityRows = airQualityReadingRows(current, capabilities);
 
   return (
     <>
@@ -478,14 +489,14 @@ export function CurrentReadingsSections({
       </SectionCard>
 
       <SectionCard
-        title="Regulated pollution"
+        title="Air quality"
         subtitle={current.aqiLabel}
         collapsible
-        collapsed={collapsedSections[CURRENT_READING_SECTION_IDS.regulatedPollution] === true}
-        onToggle={() => onToggleSection(CURRENT_READING_SECTION_IDS.regulatedPollution)}
+        collapsed={collapsedSections[CURRENT_READING_SECTION_IDS.airQuality] === true}
+        onToggle={() => onToggleSection(CURRENT_READING_SECTION_IDS.airQuality)}
       >
-        {pollutantRows.length > 0 ? (
-          pollutantRows.map((row) => (
+        {airQualityRows.length > 0 ? (
+          airQualityRows.map((row) => (
             <ReadingRow key={row.id} label={row.label} value={row.value} detail={row.detail} />
           ))
         ) : (
@@ -494,23 +505,10 @@ export function CurrentReadingsSections({
       </SectionCard>
 
       <SectionCard
-        title="Atmospheric irritants"
+        title="Mold and UV"
         collapsible
-        collapsed={collapsedSections[CURRENT_READING_SECTION_IDS.atmosphericIrritants] === true}
-        onToggle={() => onToggleSection(CURRENT_READING_SECTION_IDS.atmosphericIrritants)}
-      >
-        {irritantRows.length > 0 ? (
-          irritantRows.map((row) => <ReadingRow key={row.id} label={row.label} value={row.value} />)
-        ) : (
-          <NoDataMessage />
-        )}
-      </SectionCard>
-
-      <SectionCard
-        title="Mold and sun"
-        collapsible
-        collapsed={collapsedSections[CURRENT_READING_SECTION_IDS.moldAndSun] === true}
-        onToggle={() => onToggleSection(CURRENT_READING_SECTION_IDS.moldAndSun)}
+        collapsed={collapsedSections[CURRENT_READING_SECTION_IDS.moldAndUv] === true}
+        onToggle={() => onToggleSection(CURRENT_READING_SECTION_IDS.moldAndUv)}
       >
         {moldSunRows.length > 0 ? (
           moldSunRows.map((row) => <ReadingRow key={row.id} label={row.label} value={row.value} />)
@@ -519,23 +517,23 @@ export function CurrentReadingsSections({
         )}
       </SectionCard>
 
-      {proSections.map((section) => (
-        <SectionCard
-          key={section.id}
-          title={section.title}
-          collapsible
-          collapsed={collapsedSections[section.id] === true}
-          onToggle={() => onToggleSection(section.id)}
-        >
-          {section.rows.length > 0 ? (
-            section.rows.map((row) => (
+      {beforeAdvancedSections}
+
+      {proSections
+        .filter((section) => section.rows.length > 0)
+        .map((section) => (
+          <SectionCard
+            key={section.id}
+            title={section.title}
+            collapsible
+            collapsed={collapsedSections[section.id] === true}
+            onToggle={() => onToggleSection(section.id)}
+          >
+            {section.rows.map((row) => (
               <ReadingRow key={row.id} label={row.label} value={row.value} />
-            ))
-          ) : (
-            <NoDataMessage />
-          )}
-        </SectionCard>
-      ))}
+            ))}
+          </SectionCard>
+        ))}
     </>
   );
 }

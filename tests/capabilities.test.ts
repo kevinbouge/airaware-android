@@ -37,6 +37,7 @@ describe('capabilities', () => {
     expect(isFeatureAvailable(FREE_CAPABILITIES, 'basic_transition_notifications')).toBe(true);
     expect(isFeatureAvailable(FREE_CAPABILITIES, 'advanced_environment_notifications')).toBe(false);
     expect(isFeatureAvailable(FREE_CAPABILITIES, 'extended_environmental_data')).toBe(false);
+    expect(isFeatureAvailable(FREE_CAPABILITIES, 'nearby_vegetation')).toBe(true);
   });
 
   it('models Free and Pro lifetime forecast horizons centrally', () => {
@@ -56,13 +57,16 @@ describe('capabilities', () => {
       { date: '2026-08-03', score: 30 },
       { date: '2026-08-04', score: 40 },
       { date: '2026-08-05', score: 50 },
+      { date: '2026-08-06', score: 60 },
+      { date: '2026-08-07', score: 70 },
+      { date: '2026-08-08', score: 80 },
     ];
 
     expect(forecastDaysForCapabilities(providerDays, FREE_CAPABILITIES)).toEqual(
       providerDays.slice(0, 3),
     );
     expect(forecastDaysForCapabilities(providerDays, PRO_LIFETIME_CAPABILITIES)).toEqual(
-      providerDays.slice(0, 4),
+      providerDays.slice(0, 7),
     );
     expect(
       forecastDaysForCapabilities(providerDays.slice(0, 2), PRO_LIFETIME_CAPABILITIES),
@@ -128,6 +132,7 @@ describe('capabilities', () => {
       'forecast',
       'extended_forecast',
       'extended_environmental_data',
+      'nearby_vegetation',
       'best_outdoor_window',
       'automatic_location',
       'manual_location',
@@ -141,13 +146,21 @@ describe('capabilities', () => {
       available: false,
       requiredEntitlement: 'pro_lifetime',
       freeBehavior: 'Today plus 2 additional days',
-      proBehavior: 'Today plus 3 additional days',
+      proBehavior: 'Today plus 6 additional days',
+      description: 'Plan up to seven days with environmental and personalized forecast summaries.',
     });
     expect(features.find((feature) => feature.id === 'extended_environmental_data')).toMatchObject({
+      displayName: 'Advanced Environmental Data',
       available: false,
       requiredEntitlement: 'pro_lifetime',
       freeBehavior: 'Standard Environmental Data',
       proBehavior: 'Additional atmospheric and weather measurements',
+    });
+    expect(features.find((feature) => feature.id === 'nearby_vegetation')).toMatchObject({
+      displayName: 'Nearby vegetation',
+      available: true,
+      freeBehavior: 'OpenStreetMap vegetation and land-use context',
+      proBehavior: 'OpenStreetMap vegetation and land-use context',
     });
     expect(
       features
@@ -195,10 +208,10 @@ describe('capabilities', () => {
     expect(freeFeature).toBeDefined();
     expect(proFeature).toBeDefined();
     expect(featureStatusMessage(freeFeature!)).toContain('Today plus 2 additional days');
-    expect(featureStatusMessage(freeFeature!)).toContain('Today plus 3 additional days');
+    expect(featureStatusMessage(freeFeature!)).toContain('Today plus 6 additional days');
     expect(featureStatusMessage(freeFeature!)).toContain('purchasing is not available');
     expect(featureStatusMessage(proFeature!)).toContain('AirAware Pro active');
-    expect(featureStatusMessage(proFeature!)).toContain('Today plus 3 additional days');
+    expect(featureStatusMessage(proFeature!)).toContain('Today plus 6 additional days');
   });
 
   it('selects the configured environmental provider through the provider catalog', () => {
@@ -230,9 +243,9 @@ describe('capabilities', () => {
     expect(PRO_LIFETIME_CAPABILITIES.notifications.availableGroups).toContain(
       'advanced_environment_notifications',
     );
-    expect(forecastDayLimit(PRO_LIFETIME_CAPABILITIES)).toBe(
-      forecastDayLimit(FREE_CAPABILITIES) + 1,
-    );
+    expect(forecastDayLimit(PRO_LIFETIME_CAPABILITIES)).toBe(FORECAST_DAY_LIMITS.proLifetime);
     expect(isFeatureAvailable(PRO_LIFETIME_CAPABILITIES, 'extended_forecast')).toBe(true);
+    expect(isFeatureAvailable(PRO_LIFETIME_CAPABILITIES, 'nearby_vegetation')).toBe(true);
+    expect(isFeatureAvailable(FREE_CAPABILITIES, 'nearby_vegetation')).toBe(true);
   });
 });
