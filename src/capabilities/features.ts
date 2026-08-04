@@ -154,7 +154,7 @@ export function featureStatusMessage(feature: FeatureDefinition): string {
       return `AirAware Pro active. ${feature.displayName} enabled.`;
     }
 
-    return `${feature.displayName}: available with AirAware Pro. AirAware Pro purchasing is not available in this build.`;
+    return `${feature.displayName}: available with AirAware Pro.`;
   }
 
   if (feature.id === 'advanced_home_widget') {
@@ -162,7 +162,7 @@ export function featureStatusMessage(feature: FeatureDefinition): string {
       return `AirAware Pro active. ${feature.displayName} enabled.`;
     }
 
-    return `${feature.displayName}: available with AirAware Pro. AirAware Pro purchasing is not available in this build.`;
+    return `${feature.displayName}: available with AirAware Pro.`;
   }
 
   if (feature.id !== 'extended_forecast') {
@@ -175,5 +175,5 @@ export function featureStatusMessage(feature: FeatureDefinition): string {
     return `AirAware Pro active. ${feature.displayName} enabled: ${feature.proBehavior}.`;
   }
 
-  return `${feature.displayName}: ${feature.freeBehavior}. AirAware Pro adds ${feature.proBehavior}. AirAware Pro purchasing is not available in this build.`;
+  return `${feature.displayName}: ${feature.freeBehavior}. AirAware Pro adds ${feature.proBehavior}.`;
 }

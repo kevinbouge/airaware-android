@@ -27,32 +27,46 @@ function packageDependencies(): string[] {
 }
 
 describe('export compliance guardrails', () => {
-  it('does not include crypto, secure storage, billing, IAP, or payment SDK dependencies', () => {
+  it('does not include crypto, secure storage, unapproved billing, IAP, or payment SDK dependencies', () => {
     const dependencyNames = packageDependencies();
+    const approvedBillingDependencies = ['react-native-purchases', 'react-native-purchases-ui'];
     const controlledDependencyPatterns = [
       /^expo-crypto$/,
       /^expo-secure-store$/,
       /^react-native-keychain$/,
       /^react-native-iap$/,
-      /^react-native-purchases$/,
       /^@revenuecat\//,
       /^@stripe\//,
       /billing/i,
     ];
+    const billingDependencies = dependencyNames.filter((dependency) =>
+      /^react-native-purchases(?:-ui)?$/.test(dependency),
+    );
 
     expect(
-      dependencyNames.filter((dependency) =>
-        controlledDependencyPatterns.some((pattern) => pattern.test(dependency)),
-      ),
+      dependencyNames
+        .filter((dependency) => !approvedBillingDependencies.includes(dependency))
+        .filter((dependency) =>
+          controlledDependencyPatterns.some((pattern) => pattern.test(dependency)),
+        ),
     ).toEqual([]);
+    expect(billingDependencies.sort()).toEqual(approvedBillingDependencies.sort());
   });
 
-  it('does not import custom cryptography or purchase SDK modules from source', () => {
+  it('keeps RevenueCat imports isolated in the billing layer', () => {
+    const filesWithPurchaseImports = sourceFiles(SOURCE_ROOT).filter((file) =>
+      readFileSync(file, 'utf8').includes('react-native-purchases'),
+    );
+    expect(filesWithPurchaseImports).toEqual([join(SOURCE_ROOT, 'services', 'billingGateway.ts')]);
+  });
+
+  it('does not import custom cryptography or unapproved purchase SDK modules from source', () => {
     const source = sourceFiles(SOURCE_ROOT)
+      .filter((file) => file !== join(SOURCE_ROOT, 'services', 'billingGateway.ts'))
       .map((file) => readFileSync(file, 'utf8'))
       .join('\n');
     const controlledImportPattern =
-      /from ['"](?:crypto|node:crypto|expo-crypto|expo-secure-store|react-native-keychain|react-native-iap|react-native-purchases|@revenuecat\/[^'"]+|@stripe\/[^'"]+)['"]/;
+      /from ['"](?:crypto|node:crypto|expo-crypto|expo-secure-store|react-native-keychain|react-native-iap|@revenuecat\/[^'"]+|@stripe\/[^'"]+)['"]/;
 
     expect(source).not.toMatch(controlledImportPattern);
   });

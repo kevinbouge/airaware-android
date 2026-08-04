@@ -209,7 +209,7 @@ describe('capabilities', () => {
     expect(proFeature).toBeDefined();
     expect(featureStatusMessage(freeFeature!)).toContain('Today plus 2 additional days');
     expect(featureStatusMessage(freeFeature!)).toContain('Today plus 6 additional days');
-    expect(featureStatusMessage(freeFeature!)).toContain('purchasing is not available');
+    expect(featureStatusMessage(freeFeature!)).not.toContain('purchasing is not available');
     expect(featureStatusMessage(proFeature!)).toContain('AirAware Pro active');
     expect(featureStatusMessage(proFeature!)).toContain('Today plus 6 additional days');
   });

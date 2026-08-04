@@ -31,6 +31,9 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
+.env.*
+!.env.example
 .env*.local
 
 # typescript
@@ -42,3 +45,7 @@ coverage/
 # generated native folders
 /ios
 /android
+
+# Keystore
+android/app/*.keystore
+android/app/*.jks

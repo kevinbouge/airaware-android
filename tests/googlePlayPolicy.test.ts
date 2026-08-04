@@ -26,6 +26,10 @@ function packageDependencies(): Record<string, string> {
   };
 }
 
+function readText(relativePath: string): string {
+  return fs.readFileSync(path.join(root, relativePath), 'utf8');
+}
+
 describe('Google Play policy guardrails', () => {
   it('requests only approximate foreground location', () => {
     const appJson = readJson('app.json') as {
@@ -58,8 +62,9 @@ describe('Google Play policy guardrails', () => {
     expect(appJson.expo?.userInterfaceStyle).toBe('light');
   });
 
-  it('does not include ads, analytics, tracking, billing, or account SDK dependencies', () => {
+  it('includes only approved billing SDK dependencies and no ads, analytics, tracking, or account SDKs', () => {
     const dependencies = Object.keys(packageDependencies());
+    const approvedBillingDependencies = ['react-native-purchases', 'react-native-purchases-ui'];
     const disallowedDependencyPatterns = [
       /firebase/i,
       /analytics/i,
@@ -70,18 +75,20 @@ describe('Google Play policy guardrails', () => {
       /onesignal/i,
       /facebook/i,
       /google-signin/i,
-      /billing/i,
       /iap/i,
-      /purchases/i,
-      /revenuecat/i,
       /stripe/i,
     ];
+    const billingLikeDependencies = dependencies.filter(
+      (dependency) =>
+        /billing/i.test(dependency) || /iap/i.test(dependency) || /purchases/i.test(dependency),
+    );
 
     expect(
       dependencies.filter((dependency) =>
         disallowedDependencyPatterns.some((pattern) => pattern.test(dependency)),
       ),
     ).toEqual([]);
+    expect(billingLikeDependencies.sort()).toEqual(approvedBillingDependencies.sort());
   });
 
   it('keeps required in-app privacy and health-boundary disclosures centralized', () => {
@@ -93,10 +100,29 @@ describe('Google Play policy guardrails', () => {
     expect(disclosure).toContain('OpenStreetMap tile servers');
     expect(disclosure).toContain('OpenStreetMap Overpass API');
     expect(disclosure).toContain('OpenStreetMap contributors');
+    expect(disclosure).toContain('RevenueCat');
+    expect(disclosure).toContain('Google Play processes payments');
     expect(disclosure).toContain('Personal Allergy Profile');
     expect(disclosure).toContain('does not sell personal or sensitive user data');
     expect(disclosure).toContain('does not predict symptoms');
     expect(disclosure).toContain('does not request background location');
     expect(disclosure).toContain('clearing app storage or uninstalling');
+  });
+
+  it('does not bundle obvious RevenueCat or Google Play server credentials', () => {
+    const checkedFiles = [
+      'README.md',
+      '.env.example',
+      'app.json',
+      'package.json',
+      'src/services/billingGateway.ts',
+      'src/core/googlePlayCompliance.ts',
+    ];
+    const source = checkedFiles.map(readText).join('\n');
+
+    expect(source).not.toMatch(/REVENUECAT_(SECRET|V2)_API_KEY\s*=/i);
+    expect(source).not.toMatch(/-----BEGIN PRIVATE KEY-----/);
+    expect(source).not.toMatch(/"type"\s*:\s*"service_account"/);
+    expect(source).not.toMatch(/test_RA[a-zA-Z0-9]+/);
   });
 });

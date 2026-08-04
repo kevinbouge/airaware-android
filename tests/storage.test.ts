@@ -1,14 +1,17 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   loadEnvironmentCache,
+  loadBillingEntitlementCache,
   loadProfile,
   loadRiskNotificationTransitionState,
   loadSettings,
   loadWidgetSnapshot,
   saveRiskNotificationTransitionState,
+  saveBillingEntitlementCache,
   saveSettings,
   saveWidgetSnapshot,
 } from '../src/storage/storage';
+import { PRO_LIFETIME_ENTITLEMENT } from '../src/capabilities/entitlements';
 import { DEFAULT_SETTINGS } from '../src/models/profile';
 
 describe('settings storage', () => {
@@ -350,5 +353,35 @@ describe('settings storage', () => {
     );
 
     await expect(loadWidgetSnapshot()).resolves.toBeNull();
+  });
+
+  it('persists only normalized billing entitlement cache metadata', async () => {
+    await saveBillingEntitlementCache({
+      version: 1,
+      entitlement: PRO_LIFETIME_ENTITLEMENT,
+      verifiedAt: '2026-08-03T10:00:00.000Z',
+      source: 'revenuecat',
+    });
+
+    await expect(loadBillingEntitlementCache()).resolves.toMatchObject({
+      entitlement: PRO_LIFETIME_ENTITLEMENT,
+      verifiedAt: '2026-08-03T10:00:00.000Z',
+      source: 'revenuecat',
+    });
+  });
+
+  it('rejects invalid billing entitlement cache metadata', async () => {
+    await AsyncStorage.setItem(
+      'airaware.billing-entitlement-cache.v1',
+      JSON.stringify({
+        version: 1,
+        entitlement: { kind: 'pro_lifetime' },
+        verifiedAt: 'not-a-date',
+        purchaseToken: 'must-not-be-stored',
+        source: 'revenuecat',
+      }),
+    );
+
+    await expect(loadBillingEntitlementCache()).resolves.toBeNull();
   });
 });

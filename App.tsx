@@ -4,7 +4,11 @@ import { AppState } from 'react-native';
 import { AppNavigator } from './src/navigation/AppNavigator';
 import { useCapabilities } from './src/hooks/useCapabilities';
 import { shouldRefreshAfterHydration, shouldRunScheduledRefresh } from './src/state/appLifecycle';
-import { flushPendingSettingsSave, useAppStore } from './src/state/useAppStore';
+import {
+  disposeAppStoreResources,
+  flushPendingSettingsSave,
+  useAppStore,
+} from './src/state/useAppStore';
 
 export default function App() {
   const hydrate = useAppStore((state) => state.hydrate);
@@ -20,6 +24,7 @@ export default function App() {
 
   useEffect(() => {
     void hydrate();
+    return () => disposeAppStoreResources();
   }, [hydrate]);
 
   useEffect(() => {

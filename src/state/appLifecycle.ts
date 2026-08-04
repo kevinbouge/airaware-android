@@ -1,6 +1,5 @@
 import type { NormalizedEnvironment } from '../models/environment';
 import type { AppCapabilities } from '../capabilities/types';
-import type { EntitlementState } from '../capabilities/entitlements';
 import type { AppSettings } from '../models/profile';
 import { forecastDayLimit } from '../capabilities/forecast';
 import { isFeatureAvailable } from '../capabilities/features';
@@ -39,17 +38,6 @@ export function shouldRunScheduledRefresh(input: {
   locationOnboardingComplete: boolean;
 }): boolean {
   return input.hydrated && input.locationOnboardingComplete;
-}
-
-export function shouldRefreshAfterEntitlementChange(input: {
-  previousEntitlement: EntitlementState;
-  nextEntitlement: EntitlementState;
-  locationOnboardingComplete: boolean;
-}): boolean {
-  return (
-    input.locationOnboardingComplete &&
-    input.previousEntitlement.kind !== input.nextEntitlement.kind
-  );
 }
 
 export function shouldRefreshAfterLocationSettingsChange(input: {

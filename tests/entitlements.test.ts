@@ -34,4 +34,14 @@ describe('entitlements', () => {
       }),
     ).toEqual(PRO_LIFETIME_ENTITLEMENT);
   });
+
+  it('ignores null development override outside production', () => {
+    expect(
+      entitlementForBuild({
+        storedEntitlement: FREE_ENTITLEMENT,
+        developmentOverride: null,
+        isProduction: false,
+      }),
+    ).toEqual(FREE_ENTITLEMENT);
+  });
 });

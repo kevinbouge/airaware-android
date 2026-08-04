@@ -50,6 +50,19 @@ function addReceiver(androidManifest, className, label, providerResource) {
   return androidManifest;
 }
 
+function useRevenueCatSafeLaunchMode(androidManifest) {
+  const application = androidManifest.manifest.application?.[0];
+  if (!application?.activity) return androidManifest;
+
+  application.activity.forEach((activity) => {
+    if (activity.$?.['android:name'] === '.MainActivity') {
+      activity.$['android:launchMode'] = 'singleTop';
+    }
+  });
+
+  return androidManifest;
+}
+
 function patchMainApplication(projectRoot, packageName) {
   const mainApplicationPath = path.join(
     projectRoot,
@@ -717,6 +730,7 @@ module.exports = function withAirAwareAndroidWidgets(config) {
       '@string/airaware_advanced_widget_name',
       '@xml/airaware_advanced_widget_info',
     );
+    pluginConfig.modResults = useRevenueCatSafeLaunchMode(pluginConfig.modResults);
     return pluginConfig;
   });
 

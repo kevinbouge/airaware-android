@@ -4,6 +4,7 @@ import { capabilitiesForEntitlement } from '../capabilities/config';
 import {
   FREE_ENTITLEMENT,
   PRO_LIFETIME_ENTITLEMENT,
+  entitlementForBuild,
   type EntitlementKind,
   type EntitlementState,
 } from '../capabilities/entitlements';
@@ -23,6 +24,8 @@ import {
   riskTransitionStateAfterDeliveryAttempt,
 } from '../core/riskTransitionNotifications';
 import type { LocationInfo, NormalizedEnvironment } from '../models/environment';
+import type { BillingState } from '../models/billing';
+import { UNCONFIGURED_BILLING_STATE } from '../models/billing';
 import type {
   NotificationPermissionStatus,
   RiskNotificationTransitionState,
@@ -48,6 +51,7 @@ import {
 } from '../services/vegetationCache';
 import {
   loadEnvironmentCache,
+  loadDevelopmentEntitlementOverride,
   saveDevelopmentEntitlementOverride,
   loadProfile,
   loadRiskNotificationTransitionState,
@@ -69,10 +73,7 @@ import {
   requestRiskNotificationPermission,
 } from '../services/notificationService';
 import { settingsForProfileState } from './settingsPolicy';
-import {
-  shouldRefreshAfterEntitlementChange,
-  shouldRefreshAfterLocationSettingsChange,
-} from './appLifecycle';
+import { shouldRefreshAfterLocationSettingsChange } from './appLifecycle';
 
 interface AppStore {
   hydrated: boolean;
@@ -82,11 +83,14 @@ interface AppStore {
   error: string | null;
   shareMessage: string | null;
   notificationMessage: string | null;
+  billingMessage: string | null;
   notificationPermissionStatus: NotificationPermissionStatus;
   location: LocationInfo;
   settings: AppSettings;
   profile: PersonalAllergyProfile;
   entitlement: EntitlementState;
+  billingState: BillingState;
+  developmentEntitlementOverride: EntitlementState | null;
   environment: NormalizedEnvironment | null;
   vegetation: NormalizedVegetationContext | null;
   vegetationStale: boolean;
@@ -102,7 +106,10 @@ interface AppStore {
   shareDailySummary: () => Promise<void>;
   sendTestRiskNotification: () => Promise<void>;
   openNotificationSettings: () => Promise<void>;
-  setDevelopmentEntitlement: (kind: EntitlementKind) => Promise<void>;
+  purchaseProLifetime: () => Promise<void>;
+  restorePurchases: () => Promise<void>;
+  refreshBilling: () => Promise<void>;
+  setDevelopmentEntitlement: (kind: EntitlementKind | null) => Promise<void>;
   refreshVegetation: (force?: boolean) => Promise<void>;
 }
 
@@ -183,6 +190,35 @@ let settingsUpdateQueue = Promise.resolve();
 let pendingSettings: AppSettings | null = null;
 let settingsSaveTimeout: ReturnType<typeof setTimeout> | null = null;
 let pendingRefresh = false;
+const billingGateway = createBillingGateway();
+let unsubscribeBillingGateway: (() => void) | null = null;
+
+function effectiveBillingState(
+  billingState: BillingState,
+  developmentOverride: EntitlementState | null,
+): BillingState {
+  const entitlement = entitlementForBuild({
+    storedEntitlement: billingState.entitlement,
+    developmentOverride,
+    isProduction: !__DEV__,
+  });
+
+  if (__DEV__ && developmentOverride !== null) {
+    return {
+      ...billingState,
+      entitlement,
+      entitlementSource: 'development_preview',
+      entitlementStatus: entitlement.kind === 'pro_lifetime' ? 'pro' : 'free',
+      proActive: entitlement.kind === 'pro_lifetime',
+    };
+  }
+
+  return {
+    ...billingState,
+    entitlement,
+    proActive: entitlement.kind === 'pro_lifetime',
+  };
+}
 
 function enqueueSettingsSave(settings: AppSettings): Promise<void> {
   settingsSaveQueue = settingsSaveQueue
@@ -206,6 +242,12 @@ export function flushPendingSettingsSave(): Promise<void> {
   }
 
   return enqueueSettingsSave(settingsToSave);
+}
+
+export function disposeAppStoreResources(): void {
+  unsubscribeBillingGateway?.();
+  unsubscribeBillingGateway = null;
+  billingGateway.dispose();
 }
 
 function scheduleSettingsSave(settings: AppSettings): void {
@@ -235,11 +277,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
   error: null,
   shareMessage: null,
   notificationMessage: null,
+  billingMessage: null,
   notificationPermissionStatus: 'unknown',
   location: emptyLocation,
   settings: DEFAULT_SETTINGS,
   profile: DEFAULT_PROFILE,
   entitlement: FREE_ENTITLEMENT,
+  billingState: UNCONFIGURED_BILLING_STATE,
+  developmentEntitlementOverride: null,
   environment: null,
   vegetation: null,
   vegetationStale: false,
@@ -248,14 +293,23 @@ export const useAppStore = create<AppStore>((set, get) => ({
   riskNotificationTransitionState: null,
 
   hydrate: async () => {
-    const billingGateway = createBillingGateway();
-    const [storedSettings, profile, cache, entitlement, notificationState] = await Promise.all([
+    const [
+      storedSettings,
+      profile,
+      cache,
+      rawBillingState,
+      developmentOverride,
+      notificationState,
+    ] = await Promise.all([
       loadSettings(),
       loadProfile(),
       loadEnvironmentCache(),
-      billingGateway.currentEntitlement(),
+      billingGateway.initializeBilling(),
+      loadDevelopmentEntitlementOverride(),
       loadRiskNotificationTransitionState(),
     ]);
+    const billingState = effectiveBillingState(rawBillingState, developmentOverride);
+    const entitlement = billingState.entitlement;
     const settings = settingsForProfileState(storedSettings, profile);
     const environment = cache?.data ?? null;
     const cachedVegetation = await loadCachedVegetationFor({
@@ -272,6 +326,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
       settings,
       profile,
       entitlement,
+      billingState,
+      developmentEntitlementOverride: developmentOverride,
       environment,
       vegetation: cachedVegetation.vegetation,
       vegetationStale: cachedVegetation.stale,
@@ -287,6 +343,28 @@ export const useAppStore = create<AppStore>((set, get) => ({
           }
         : emptyLocation,
     });
+
+    if (!unsubscribeBillingGateway) {
+      unsubscribeBillingGateway = billingGateway.subscribeToEntitlementChanges(
+        (nextBillingState) => {
+          const effective = effectiveBillingState(
+            nextBillingState,
+            get().developmentEntitlementOverride,
+          );
+          set({
+            billingState: effective,
+            entitlement: effective.entitlement,
+          });
+          void persistWidgetSnapshotFor({
+            environment: get().environment,
+            profile: get().profile,
+            settings: get().settings,
+            entitlement: effective.entitlement,
+            stale: get().stale,
+          });
+        },
+      );
+    }
 
     if (environment) {
       await persistWidgetSnapshotFor({
@@ -666,13 +744,83 @@ export const useAppStore = create<AppStore>((set, get) => ({
     });
   },
 
+  purchaseProLifetime: async () => {
+    const result = await billingGateway.purchaseProLifetime();
+    const effective = effectiveBillingState(
+      result.billingState,
+      get().developmentEntitlementOverride,
+    );
+    set({
+      billingState: effective,
+      entitlement: effective.entitlement,
+      billingMessage: result.message,
+    });
+    await persistWidgetSnapshotFor({
+      environment: get().environment,
+      profile: get().profile,
+      settings: get().settings,
+      entitlement: effective.entitlement,
+      stale: get().stale,
+    });
+  },
+
+  restorePurchases: async () => {
+    const result = await billingGateway.restorePurchases();
+    const effective = effectiveBillingState(
+      result.billingState,
+      get().developmentEntitlementOverride,
+    );
+    set({
+      billingState: effective,
+      entitlement: effective.entitlement,
+      billingMessage: result.message,
+    });
+    await persistWidgetSnapshotFor({
+      environment: get().environment,
+      profile: get().profile,
+      settings: get().settings,
+      entitlement: effective.entitlement,
+      stale: get().stale,
+    });
+  },
+
+  refreshBilling: async () => {
+    const rawBillingState = await billingGateway.refreshEntitlement();
+    const effective = effectiveBillingState(rawBillingState, get().developmentEntitlementOverride);
+    set({
+      billingState: effective,
+      entitlement: effective.entitlement,
+      billingMessage: effective.error,
+    });
+    await persistWidgetSnapshotFor({
+      environment: get().environment,
+      profile: get().profile,
+      settings: get().settings,
+      entitlement: effective.entitlement,
+      stale: get().stale,
+    });
+  },
+
   setDevelopmentEntitlement: async (kind) => {
     if (!__DEV__) return;
 
-    const previousEntitlement = get().entitlement;
-    const entitlement = kind === 'pro_lifetime' ? PRO_LIFETIME_ENTITLEMENT : FREE_ENTITLEMENT;
-    await saveDevelopmentEntitlementOverride(entitlement);
-    set({ entitlement });
+    const developmentOverride =
+      kind === null ? null : kind === 'pro_lifetime' ? PRO_LIFETIME_ENTITLEMENT : FREE_ENTITLEMENT;
+    await saveDevelopmentEntitlementOverride(developmentOverride);
+    const billingState = effectiveBillingState(
+      billingGateway.getBillingState(),
+      developmentOverride,
+    );
+    const entitlement = billingState.entitlement;
+    set({
+      entitlement,
+      billingState,
+      developmentEntitlementOverride: developmentOverride,
+      billingMessage:
+        developmentOverride === null
+          ? 'RevenueCat entitlement is active.'
+          : 'Development capability preview updated.',
+    });
     await persistWidgetSnapshotFor({
       environment: get().environment,
       profile: get().profile,
@@ -680,16 +828,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
       entitlement,
       stale: get().stale,
     });
-
-    if (
-      shouldRefreshAfterEntitlementChange({
-        previousEntitlement,
-        nextEntitlement: entitlement,
-        locationOnboardingComplete: get().settings.locationOnboardingComplete,
-      })
-    ) {
-      void get().refresh();
-    }
   },
 
   refreshVegetation: async (force = false) => {

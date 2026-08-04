@@ -1,10 +1,8 @@
 import {
-  shouldRefreshAfterEntitlementChange,
   shouldRefreshAfterHydration,
   shouldRefreshAfterLocationSettingsChange,
   shouldRunScheduledRefresh,
 } from '../src/state/appLifecycle';
-import { FREE_ENTITLEMENT, PRO_LIFETIME_ENTITLEMENT } from '../src/capabilities/entitlements';
 import { FREE_CAPABILITIES, PRO_LIFETIME_CAPABILITIES } from '../src/capabilities/config';
 import { DEFAULT_SETTINGS } from '../src/models/profile';
 import type { NormalizedEnvironment } from '../src/models/environment';
@@ -144,40 +142,6 @@ describe('app lifecycle refresh policy', () => {
         locationOnboardingComplete: true,
       }),
     ).toBe(true);
-  });
-
-  it('refreshes after switching between Free and Pro development entitlements', () => {
-    expect(
-      shouldRefreshAfterEntitlementChange({
-        previousEntitlement: FREE_ENTITLEMENT,
-        nextEntitlement: PRO_LIFETIME_ENTITLEMENT,
-        locationOnboardingComplete: true,
-      }),
-    ).toBe(true);
-    expect(
-      shouldRefreshAfterEntitlementChange({
-        previousEntitlement: PRO_LIFETIME_ENTITLEMENT,
-        nextEntitlement: FREE_ENTITLEMENT,
-        locationOnboardingComplete: true,
-      }),
-    ).toBe(true);
-  });
-
-  it('does not refresh after unchanged entitlement selections or before onboarding', () => {
-    expect(
-      shouldRefreshAfterEntitlementChange({
-        previousEntitlement: FREE_ENTITLEMENT,
-        nextEntitlement: FREE_ENTITLEMENT,
-        locationOnboardingComplete: true,
-      }),
-    ).toBe(false);
-    expect(
-      shouldRefreshAfterEntitlementChange({
-        previousEntitlement: FREE_ENTITLEMENT,
-        nextEntitlement: PRO_LIFETIME_ENTITLEMENT,
-        locationOnboardingComplete: false,
-      }),
-    ).toBe(false);
   });
 
   it('refreshes after changing the active location mode or manual coordinates', () => {

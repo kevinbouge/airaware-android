@@ -33,6 +33,7 @@
           "defaultChannel": "risk-changes"
         }
       ],
+      "expo-system-ui",
       "./plugins/withAirAwareAndroidWidgets"
     ]
   }

@@ -1,10 +1,6 @@
 import { Modal, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useState } from 'react';
-import {
-  featureDefinitions,
-  featureStatusMessage,
-  isFeatureAvailable,
-} from '../capabilities/features';
+import { featureDefinitions, isFeatureAvailable } from '../capabilities/features';
 import { AppButton } from '../components/AppButton';
 import { LocationMapPicker } from '../components/LocationMapPicker';
 import { SectionCard } from '../components/SectionCard';
@@ -54,12 +50,20 @@ export function SettingsScreen() {
   const loading = useAppStore((state) => state.loading);
   const profileEnabled = useAppStore((state) => state.profile.enabled);
   const notificationMessage = useAppStore((state) => state.notificationMessage);
+  const billingMessage = useAppStore((state) => state.billingMessage);
   const notificationPermissionStatus = useAppStore((state) => state.notificationPermissionStatus);
   const entitlement = useAppStore((state) => state.entitlement);
+  const billingState = useAppStore((state) => state.billingState);
+  const developmentEntitlementOverride = useAppStore(
+    (state) => state.developmentEntitlementOverride,
+  );
   const location = useAppStore((state) => state.location);
   const environment = useAppStore((state) => state.environment);
   const updateSettings = useAppStore((state) => state.updateSettings);
   const setDevelopmentEntitlement = useAppStore((state) => state.setDevelopmentEntitlement);
+  const purchaseProLifetime = useAppStore((state) => state.purchaseProLifetime);
+  const restorePurchases = useAppStore((state) => state.restorePurchases);
+  const refreshBilling = useAppStore((state) => state.refreshBilling);
   const sendTestRiskNotification = useAppStore((state) => state.sendTestRiskNotification);
   const openNotificationSettings = useAppStore((state) => state.openNotificationSettings);
   const capabilities = useCapabilities();
@@ -79,6 +83,22 @@ export function SettingsScreen() {
   const advancedWidgetFeature = featureDefinitions(capabilities).find(
     (feature) => feature.id === 'advanced_home_widget',
   );
+  const proFeatures = [
+    extendedForecastFeature,
+    extendedEnvironmentalDataFeature,
+    advancedWidgetFeature,
+  ]
+    .filter(Boolean)
+    .map((feature) => feature!.displayName);
+  const purchaseAvailable =
+    billingState.billingStatus === 'ready' &&
+    billingState.offering?.available === true &&
+    billingState.offering.priceString !== null &&
+    !billingState.proActive;
+  const billingBusy = billingState.purchaseInProgress || billingState.restoreInProgress;
+  const unlockTitle = billingState.offering?.priceString
+    ? `Unlock AirAware Pro — ${billingState.offering.priceString}`
+    : 'Unlock AirAware Pro';
 
   const updateManualCoordinates = (coordinates: typeof manualCoordinates) => {
     void updateSettings({
@@ -335,39 +355,91 @@ export function SettingsScreen() {
           {__DEV__ ? (
             <>
               <Text style={styles.body}>
-                Development entitlement override. This is ignored in production builds.
+                Development capability preview. This is ignored in production and does not change
+                RevenueCat entitlement.
               </Text>
+              <View style={styles.buttonRow}>
+                <OptionButton
+                  label="Use RevenueCat"
+                  selected={developmentEntitlementOverride === null}
+                  onPress={() => setDevelopmentEntitlement(null)}
+                />
+              </View>
               <View style={styles.twoButtonRow}>
                 <OptionButton
-                  label="Free"
-                  selected={entitlement.kind === 'free'}
+                  label="Preview Free"
+                  selected={developmentEntitlementOverride?.kind === 'free'}
                   grow
                   onPress={() => setDevelopmentEntitlement('free')}
                 />
                 <OptionButton
-                  label="Pro"
-                  selected={entitlement.kind === 'pro_lifetime'}
+                  label="Preview Pro"
+                  selected={developmentEntitlementOverride?.kind === 'pro_lifetime'}
                   grow
                   onPress={() => setDevelopmentEntitlement('pro_lifetime')}
                 />
               </View>
             </>
           ) : null}
-          <Text style={styles.body}>
-            {extendedForecastFeature
-              ? featureStatusMessage(extendedForecastFeature)
-              : 'AirAware Pro purchasing is not available in this build.'}
+          {billingState.proActive ? (
+            <Text style={styles.body}>
+              AirAware Pro active. Your lifetime Pro features are unlocked.
+            </Text>
+          ) : (
+            <Text style={styles.body}>
+              Unlock additional AirAware capabilities with one lifetime purchase.
+            </Text>
+          )}
+          <View style={styles.featureList}>
+            {proFeatures.map((feature) => (
+              <Text key={feature} style={styles.body}>
+                - {feature}
+              </Text>
+            ))}
+          </View>
+          <Text style={styles.notice}>
+            One-time purchase. No subscription. No AirAware account.
           </Text>
-          <Text style={styles.body}>
-            {extendedEnvironmentalDataFeature
-              ? featureStatusMessage(extendedEnvironmentalDataFeature)
-              : 'Advanced Environmental Data is not available in this build.'}
-          </Text>
-          <Text style={styles.body}>
-            {advancedWidgetFeature
-              ? featureStatusMessage(advancedWidgetFeature)
-              : 'Advanced home-screen widget is not available in this build.'}
-          </Text>
+          {billingState.billingStatus === 'unconfigured' ? (
+            <Text style={styles.notice}>
+              AirAware Pro purchasing is not configured in this build.
+            </Text>
+          ) : null}
+          {billingState.billingStatus === 'unavailable' ? (
+            <Text style={styles.notice}>
+              AirAware Pro purchasing requires an Android development or release build.
+            </Text>
+          ) : null}
+          {billingState.billingStatus === 'error' || billingState.billingStatus === 'offline' ? (
+            <Text style={styles.notice}>AirAware Pro purchasing is currently unavailable.</Text>
+          ) : null}
+          {billingState.billingStatus === 'ready' && !billingState.proActive ? (
+            <AppButton
+              title={unlockTitle}
+              fullWidth
+              disabled={!purchaseAvailable || billingBusy}
+              onPress={purchaseProLifetime}
+            />
+          ) : null}
+          <AppButton
+            title={billingState.restoreInProgress ? 'Restoring purchase...' : 'Restore purchase'}
+            fullWidth
+            disabled={billingState.billingStatus !== 'ready' || billingBusy}
+            onPress={restorePurchases}
+          />
+          {billingState.billingStatus !== 'ready' ? (
+            <AppButton title="Retry AirAware Pro" fullWidth onPress={refreshBilling} />
+          ) : null}
+          {billingMessage ? <Text style={styles.notice}>{billingMessage}</Text> : null}
+          {!billingMessage && billingState.error ? (
+            <Text style={styles.notice}>{billingState.error}</Text>
+          ) : null}
+          {__DEV__ ? (
+            <Text style={styles.notice}>
+              Effective entitlement: {entitlement.kind === 'pro_lifetime' ? 'Pro' : 'Free'} ·
+              source: {billingState.entitlementSource}
+            </Text>
+          ) : null}
         </SectionCard>
 
         <SectionCard title="Privacy">
@@ -442,6 +514,9 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 16,
     fontWeight: '700',
+  },
+  featureList: {
+    gap: spacing.xs,
   },
   manualLocationPreview: {
     gap: spacing.sm,

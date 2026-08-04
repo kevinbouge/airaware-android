@@ -15,12 +15,8 @@ import type {
   VegetationCategoryId,
   VegetationTaxonId,
 } from '../models/vegetation';
-import {
-  FREE_ENTITLEMENT,
-  PRO_LIFETIME_ENTITLEMENT,
-  type EntitlementState,
-  normalizeEntitlement,
-} from '../capabilities/entitlements';
+import { type EntitlementState, normalizeEntitlement } from '../capabilities/entitlements';
+import type { BillingEntitlementSource } from '../models/billing';
 import {
   WIDGET_SNAPSHOT_SCHEMA_VERSION,
   type WidgetSnapshot,
@@ -41,6 +37,8 @@ const ENVIRONMENT_CACHE_KEY = 'airaware.environment-cache.v1';
 const RISK_NOTIFICATION_TRANSITION_KEY = 'airaware.risk-notification-transition.v1';
 const WIDGET_SNAPSHOT_KEY = 'airaware.widget-snapshot.v1';
 const DEVELOPMENT_ENTITLEMENT_OVERRIDE_KEY = 'airaware.development-entitlement.v1';
+const BILLING_ENTITLEMENT_CACHE_KEY = 'airaware.billing-entitlement-cache.v1';
+const BILLING_ENTITLEMENT_CACHE_SCHEMA_VERSION = 1;
 const VEGETATION_CACHE_KEY = 'airaware.vegetation-cache.v1';
 
 function readObject(value: string | null): Record<string, unknown> | null {
@@ -461,6 +459,44 @@ export async function saveWidgetSnapshot(snapshot: WidgetSnapshot): Promise<void
   await AsyncStorage.setItem(WIDGET_SNAPSHOT_KEY, JSON.stringify(envelope));
 }
 
+export interface BillingEntitlementCache {
+  version: typeof BILLING_ENTITLEMENT_CACHE_SCHEMA_VERSION;
+  entitlement: EntitlementState;
+  verifiedAt: string;
+  source: Extract<BillingEntitlementSource, 'revenuecat' | 'cached_revenuecat'>;
+}
+
+function isBillingEntitlementCache(value: unknown): value is BillingEntitlementCache {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+
+  const object = value as Record<string, unknown>;
+  return (
+    object.version === BILLING_ENTITLEMENT_CACHE_SCHEMA_VERSION &&
+    (object.source === 'revenuecat' || object.source === 'cached_revenuecat') &&
+    typeof object.verifiedAt === 'string' &&
+    Number.isFinite(Date.parse(object.verifiedAt)) &&
+    normalizeEntitlement(object.entitlement).kind ===
+      (object.entitlement as Record<string, unknown> | null)?.kind
+  );
+}
+
+export async function loadBillingEntitlementCache(): Promise<BillingEntitlementCache | null> {
+  const object = readObject(await AsyncStorage.getItem(BILLING_ENTITLEMENT_CACHE_KEY));
+  return isBillingEntitlementCache(object) ? object : null;
+}
+
+export async function saveBillingEntitlementCache(cache: BillingEntitlementCache): Promise<void> {
+  await AsyncStorage.setItem(
+    BILLING_ENTITLEMENT_CACHE_KEY,
+    JSON.stringify({
+      version: BILLING_ENTITLEMENT_CACHE_SCHEMA_VERSION,
+      entitlement: normalizeEntitlement(cache.entitlement),
+      verifiedAt: cache.verifiedAt,
+      source: cache.source,
+    }),
+  );
+}
+
 export async function loadVegetationCache(): Promise<CachedVegetationContext | null> {
   const object = readObject(await AsyncStorage.getItem(VEGETATION_CACHE_KEY));
 
@@ -500,17 +536,22 @@ export async function saveVegetationCache(cache: CachedVegetationContext): Promi
   await AsyncStorage.setItem(VEGETATION_CACHE_KEY, JSON.stringify(cache));
 }
 
-export async function loadDevelopmentEntitlementOverride(): Promise<EntitlementState> {
-  if (!__DEV__) return FREE_ENTITLEMENT;
+export async function loadDevelopmentEntitlementOverride(): Promise<EntitlementState | null> {
+  if (!__DEV__) return null;
 
   const object = readObject(await AsyncStorage.getItem(DEVELOPMENT_ENTITLEMENT_OVERRIDE_KEY));
-  return normalizeEntitlement(object ?? PRO_LIFETIME_ENTITLEMENT);
+  return object ? normalizeEntitlement(object) : null;
 }
 
 export async function saveDevelopmentEntitlementOverride(
-  entitlement: EntitlementState,
+  entitlement: EntitlementState | null,
 ): Promise<void> {
   if (!__DEV__) return;
+
+  if (entitlement === null) {
+    await AsyncStorage.removeItem(DEVELOPMENT_ENTITLEMENT_OVERRIDE_KEY);
+    return;
+  }
 
   await AsyncStorage.setItem(
     DEVELOPMENT_ENTITLEMENT_OVERRIDE_KEY,

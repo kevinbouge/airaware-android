@@ -24,7 +24,11 @@ export function entitlementForBuild(input: {
 }): EntitlementState {
   const stored = normalizeEntitlement(input.storedEntitlement);
 
-  if (input.isProduction || input.developmentOverride === undefined) {
+  if (
+    input.isProduction ||
+    input.developmentOverride === undefined ||
+    input.developmentOverride === null
+  ) {
     return stored;
   }
 

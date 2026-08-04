@@ -1,30 +1,511 @@
+import { Platform } from 'react-native';
 import {
   FREE_ENTITLEMENT,
+  PRO_LIFETIME_ENTITLEMENT,
   entitlementForBuild,
   type EntitlementState,
 } from '../capabilities/entitlements';
-import { loadDevelopmentEntitlementOverride } from '../storage/storage';
+import type { BillingOperationResult, BillingState, ProOffering } from '../models/billing';
+import { UNCONFIGURED_BILLING_STATE } from '../models/billing';
+import { loadBillingEntitlementCache, saveBillingEntitlementCache } from '../storage/storage';
 
-type BillingStatus = 'not_configured';
+const REVENUECAT_PRO_ENTITLEMENT_ID = 'pro';
+const REVENUECAT_LIFETIME_PACKAGE_ID = 'lifetime';
 
-export interface BillingGateway {
-  status: BillingStatus;
-  isAvailable: () => false;
-  currentEntitlement: () => Promise<EntitlementState>;
+type CustomerInfoLike = {
+  entitlements?: {
+    active?: Record<string, unknown>;
+  };
+};
+
+type StoreProductLike = {
+  identifier?: unknown;
+  title?: unknown;
+  description?: unknown;
+  priceString?: unknown;
+  currencyCode?: unknown;
+  price?: unknown;
+};
+
+type PackageLike = {
+  identifier?: unknown;
+  product?: StoreProductLike;
+};
+
+type OfferingsLike = {
+  current?: {
+    availablePackages?: PackageLike[];
+  } | null;
+};
+
+type PurchasesClientLike = {
+  configure: (config: { apiKey: string }) => void;
+  setLogLevel?: (level: unknown) => void;
+  getCustomerInfo: () => Promise<CustomerInfoLike>;
+  getOfferings: () => Promise<OfferingsLike>;
+  purchasePackage: (
+    pkg: PackageLike,
+  ) => Promise<{ customerInfo?: CustomerInfoLike } | CustomerInfoLike>;
+  restorePurchases: () => Promise<CustomerInfoLike>;
+  addCustomerInfoUpdateListener?: (listener: (customerInfo: CustomerInfoLike) => void) => void;
+  removeCustomerInfoUpdateListener?: (listener: (customerInfo: CustomerInfoLike) => void) => void;
+};
+
+type PurchasesModuleLike = {
+  default?: PurchasesClientLike;
+  LOG_LEVEL?: {
+    VERBOSE?: unknown;
+  };
+};
+
+export interface BillingGatewayDependencies {
+  apiKey?: string | null;
+  platformOS?: string;
+  isDevelopment?: boolean;
+  loadPurchasesModule?: () => Promise<PurchasesModuleLike>;
+  now?: () => string;
 }
 
-export function createBillingGateway(): BillingGateway {
-  return {
-    status: 'not_configured',
-    isAvailable: () => false,
-    currentEntitlement: async () => {
-      const developmentOverride = __DEV__ ? await loadDevelopmentEntitlementOverride() : undefined;
+export interface BillingGateway {
+  initializeBilling: () => Promise<BillingState>;
+  getBillingState: () => BillingState;
+  currentEntitlement: () => Promise<EntitlementState>;
+  loadProOffering: () => Promise<ProOffering | null>;
+  purchaseProLifetime: () => Promise<BillingOperationResult>;
+  restorePurchases: () => Promise<BillingOperationResult>;
+  refreshEntitlement: () => Promise<BillingState>;
+  subscribeToEntitlementChanges: (listener: (state: BillingState) => void) => () => void;
+  dispose: () => void;
+}
 
-      return entitlementForBuild({
-        isProduction: !__DEV__,
-        developmentOverride,
-        storedEntitlement: FREE_ENTITLEMENT,
-      });
+function configuredApiKey(): string | null {
+  const value = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY;
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+async function defaultModuleLoader(): Promise<PurchasesModuleLike> {
+  return import('react-native-purchases') as unknown as Promise<PurchasesModuleLike>;
+}
+
+function hasActiveProEntitlement(customerInfo: CustomerInfoLike | null): boolean {
+  return Boolean(customerInfo?.entitlements?.active?.[REVENUECAT_PRO_ENTITLEMENT_ID]);
+}
+
+function entitlementFromCustomerInfo(customerInfo: CustomerInfoLike | null): EntitlementState {
+  return hasActiveProEntitlement(customerInfo) ? PRO_LIFETIME_ENTITLEMENT : FREE_ENTITLEMENT;
+}
+
+function stringOrNull(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+function numberOrNull(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function normalizePackage(pkg: PackageLike | null): ProOffering | null {
+  if (!pkg) return null;
+
+  const product = pkg.product ?? {};
+  return {
+    packageIdentifier: stringOrNull(pkg.identifier) ?? REVENUECAT_LIFETIME_PACKAGE_ID,
+    productIdentifier: stringOrNull(product.identifier),
+    title: stringOrNull(product.title),
+    description: stringOrNull(product.description),
+    priceString: stringOrNull(product.priceString),
+    currencyCode: stringOrNull(product.currencyCode),
+    price: numberOrNull(product.price),
+    available: true,
+  };
+}
+
+function unavailableLifetimePackage(): ProOffering {
+  return {
+    packageIdentifier: REVENUECAT_LIFETIME_PACKAGE_ID,
+    productIdentifier: null,
+    title: null,
+    description: null,
+    priceString: null,
+    currencyCode: null,
+    price: null,
+    available: false,
+  };
+}
+
+function customerInfoFromPurchaseResult(
+  result: { customerInfo?: CustomerInfoLike } | CustomerInfoLike,
+): CustomerInfoLike | null {
+  if (result && typeof result === 'object' && 'customerInfo' in result) {
+    return result.customerInfo ?? null;
+  }
+
+  return (result as CustomerInfoLike) ?? null;
+}
+
+function isCancelledPurchase(error: unknown): boolean {
+  return (
+    error !== null &&
+    typeof error === 'object' &&
+    ((error as Record<string, unknown>).userCancelled === true ||
+      (error as Record<string, unknown>).code === 'PURCHASE_CANCELLED')
+  );
+}
+
+function userSafeError(error: unknown): 'offline' | 'error' {
+  if (error !== null && typeof error === 'object') {
+    const code = (error as Record<string, unknown>).code;
+    if (typeof code === 'string' && code.toLowerCase().includes('network')) {
+      return 'offline';
+    }
+  }
+
+  return 'error';
+}
+
+export function createBillingGateway(
+  dependencies: BillingGatewayDependencies = {},
+): BillingGateway {
+  const platformOS = dependencies.platformOS ?? Platform.OS;
+  const isDevelopment = dependencies.isDevelopment ?? __DEV__;
+  const now = dependencies.now ?? (() => new Date().toISOString());
+  const apiKey = dependencies.apiKey ?? configuredApiKey();
+  const loadPurchasesModule = dependencies.loadPurchasesModule ?? defaultModuleLoader;
+
+  let state: BillingState = { ...UNCONFIGURED_BILLING_STATE };
+  let purchases: PurchasesClientLike | null = null;
+  let initialized = false;
+  let initializing: Promise<BillingState> | null = null;
+  let lifetimePackage: PackageLike | null = null;
+  let customerInfoListener: ((customerInfo: CustomerInfoLike) => void) | null = null;
+  const subscribers = new Set<(state: BillingState) => void>();
+
+  function notify(): void {
+    const snapshot = { ...state };
+    subscribers.forEach((subscriber) => subscriber(snapshot));
+  }
+
+  async function setFreshCustomerInfo(customerInfo: CustomerInfoLike): Promise<BillingState> {
+    const entitlement = entitlementFromCustomerInfo(customerInfo);
+    const refreshedAt = now();
+
+    state = {
+      ...state,
+      billingStatus: 'ready',
+      entitlementStatus: entitlement.kind === 'pro_lifetime' ? 'pro' : 'free',
+      entitlement,
+      entitlementSource: 'revenuecat',
+      proActive: entitlement.kind === 'pro_lifetime',
+      lastSuccessfulEntitlementRefreshAt: refreshedAt,
+      error: null,
+    };
+
+    await saveBillingEntitlementCache({
+      version: 1,
+      entitlement,
+      verifiedAt: refreshedAt,
+      source: 'revenuecat',
+    });
+    notify();
+    return state;
+  }
+
+  async function setCachedEntitlement(): Promise<BillingState> {
+    const cache = await loadBillingEntitlementCache();
+    if (!cache) return state;
+
+    const entitlement = entitlementForBuild({
+      storedEntitlement: cache.entitlement,
+      isProduction: !isDevelopment,
+    });
+    state = {
+      ...state,
+      entitlement,
+      entitlementStatus: entitlement.kind === 'pro_lifetime' ? 'cached_pro' : 'free',
+      entitlementSource: 'cached_revenuecat',
+      proActive: entitlement.kind === 'pro_lifetime',
+      lastSuccessfulEntitlementRefreshAt: cache.verifiedAt,
+    };
+    notify();
+    return state;
+  }
+
+  async function ensureInitialized(): Promise<BillingState> {
+    if (initialized) return state;
+    if (initializing) return initializing;
+
+    initializing = (async () => {
+      if (platformOS !== 'android') {
+        state = {
+          ...UNCONFIGURED_BILLING_STATE,
+          billingStatus: 'unavailable',
+          entitlementSource: 'unavailable',
+          error: 'RevenueCat billing is available only in Android development or release builds.',
+        };
+        notify();
+        initialized = true;
+        return state;
+      }
+
+      if (!apiKey) {
+        state = {
+          ...UNCONFIGURED_BILLING_STATE,
+          error: 'RevenueCat API key is not configured.',
+        };
+        if (isDevelopment) {
+          console.warn('AirAware: EXPO_PUBLIC_REVENUECAT_API_KEY is not configured.');
+        }
+        notify();
+        initialized = true;
+        return state;
+      }
+
+      state = {
+        ...state,
+        billingStatus: 'initializing',
+        entitlementStatus: 'loading',
+        error: null,
+      };
+      notify();
+
+      try {
+        const module = await loadPurchasesModule();
+        purchases = module.default ?? null;
+
+        if (!purchases) {
+          throw new Error('RevenueCat Purchases module is unavailable.');
+        }
+
+        if (isDevelopment && module.LOG_LEVEL?.VERBOSE !== undefined) {
+          purchases.setLogLevel?.(module.LOG_LEVEL.VERBOSE);
+        }
+
+        purchases.configure({ apiKey });
+        initialized = true;
+
+        if (purchases.addCustomerInfoUpdateListener) {
+          customerInfoListener = (customerInfo) => {
+            void setFreshCustomerInfo(customerInfo).catch((error) =>
+              console.warn('AirAware: RevenueCat listener update failed', error),
+            );
+          };
+          purchases.addCustomerInfoUpdateListener(customerInfoListener);
+        }
+
+        await setFreshCustomerInfo(await purchases.getCustomerInfo());
+        await loadProOffering();
+        return state;
+      } catch (error) {
+        console.warn('AirAware: RevenueCat initialization failed', error);
+        initialized = true;
+        state = {
+          ...state,
+          billingStatus: userSafeError(error),
+          entitlementStatus: 'unknown',
+          entitlement: FREE_ENTITLEMENT,
+          entitlementSource: 'unknown',
+          proActive: false,
+          error: 'AirAware Pro purchasing is currently unavailable.',
+        };
+        await setCachedEntitlement();
+        notify();
+        return state;
+      } finally {
+        initializing = null;
+      }
+    })();
+
+    return initializing;
+  }
+
+  async function loadProOffering(): Promise<ProOffering | null> {
+    await ensureInitialized();
+
+    if (!purchases) {
+      return state.offering;
+    }
+
+    try {
+      const offerings = await purchases.getOfferings();
+      lifetimePackage =
+        offerings.current?.availablePackages?.find(
+          (pkg) => pkg.identifier === REVENUECAT_LIFETIME_PACKAGE_ID,
+        ) ?? null;
+      state = {
+        ...state,
+        offering: normalizePackage(lifetimePackage) ?? unavailableLifetimePackage(),
+        error: null,
+      };
+      notify();
+      return state.offering;
+    } catch (error) {
+      console.warn('AirAware: RevenueCat offering load failed', error);
+      state = {
+        ...state,
+        offering: unavailableLifetimePackage(),
+        error: 'AirAware Pro purchase information is unavailable.',
+      };
+      notify();
+      return state.offering;
+    }
+  }
+
+  return {
+    initializeBilling: ensureInitialized,
+
+    getBillingState: () => ({ ...state }),
+
+    currentEntitlement: async () => {
+      await ensureInitialized();
+      return state.entitlement;
+    },
+
+    loadProOffering,
+
+    purchaseProLifetime: async () => {
+      await ensureInitialized();
+
+      if (!purchases || state.billingStatus !== 'ready') {
+        return {
+          billingState: state,
+          message: 'AirAware Pro purchasing is currently unavailable.',
+        };
+      }
+
+      if (state.purchaseInProgress) {
+        return { billingState: state, message: null };
+      }
+
+      if (!lifetimePackage) {
+        await loadProOffering();
+      }
+
+      if (!lifetimePackage) {
+        return {
+          billingState: state,
+          message: 'AirAware Pro purchase information is unavailable.',
+        };
+      }
+
+      state = { ...state, purchaseInProgress: true, error: null };
+      notify();
+
+      try {
+        const customerInfo = customerInfoFromPurchaseResult(
+          await purchases.purchasePackage(lifetimePackage),
+        );
+        if (customerInfo) {
+          await setFreshCustomerInfo(customerInfo);
+        }
+
+        state = { ...state, purchaseInProgress: false };
+        notify();
+
+        if (state.entitlement.kind === 'pro_lifetime') {
+          return { billingState: state, message: 'AirAware Pro unlocked.' };
+        }
+
+        return {
+          billingState: state,
+          message: 'AirAware Pro purchase is pending confirmation.',
+        };
+      } catch (error) {
+        state = { ...state, purchaseInProgress: false };
+        if (isCancelledPurchase(error)) {
+          notify();
+          return { billingState: state, message: null, cancelled: true };
+        }
+
+        console.warn('AirAware: RevenueCat purchase failed', error);
+        state = {
+          ...state,
+          error: 'AirAware Pro could not be unlocked. Please try again.',
+        };
+        notify();
+        return {
+          billingState: state,
+          message: 'AirAware Pro could not be unlocked. Please try again.',
+        };
+      }
+    },
+
+    restorePurchases: async () => {
+      await ensureInitialized();
+
+      if (!purchases || state.billingStatus !== 'ready') {
+        return {
+          billingState: state,
+          message: 'AirAware Pro could not be restored. Please try again.',
+        };
+      }
+
+      if (state.restoreInProgress) {
+        return { billingState: state, message: null };
+      }
+
+      state = { ...state, restoreInProgress: true, error: null };
+      notify();
+
+      try {
+        await setFreshCustomerInfo(await purchases.restorePurchases());
+        state = { ...state, restoreInProgress: false };
+        notify();
+
+        return {
+          billingState: state,
+          message:
+            state.entitlement.kind === 'pro_lifetime'
+              ? 'AirAware Pro restored.'
+              : 'No AirAware Pro purchase was found for this Google Play account.',
+        };
+      } catch (error) {
+        console.warn('AirAware: RevenueCat restore failed', error);
+        state = {
+          ...state,
+          restoreInProgress: false,
+          error: 'AirAware Pro could not be restored. Please try again.',
+        };
+        notify();
+        return {
+          billingState: state,
+          message: 'AirAware Pro could not be restored. Please try again.',
+        };
+      }
+    },
+
+    refreshEntitlement: async () => {
+      await ensureInitialized();
+
+      if (!purchases && apiKey && platformOS === 'android') {
+        initialized = false;
+        return ensureInitialized();
+      }
+
+      if (!purchases) {
+        return state;
+      }
+
+      try {
+        return await setFreshCustomerInfo(await purchases.getCustomerInfo());
+      } catch (error) {
+        console.warn('AirAware: RevenueCat entitlement refresh failed', error);
+        await setCachedEntitlement();
+        return state;
+      }
+    },
+
+    subscribeToEntitlementChanges: (listener) => {
+      subscribers.add(listener);
+      return () => {
+        subscribers.delete(listener);
+      };
+    },
+
+    dispose: () => {
+      if (purchases?.removeCustomerInfoUpdateListener && customerInfoListener) {
+        purchases.removeCustomerInfoUpdateListener(customerInfoListener);
+      }
+      customerInfoListener = null;
+      subscribers.clear();
     },
   };
 }

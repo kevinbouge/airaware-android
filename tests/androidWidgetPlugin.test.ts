@@ -12,5 +12,6 @@ describe('Android widget config plugin', () => {
     expect(plugin).toContain('AirAwareAdvancedWidgetProvider');
     expect(plugin).toContain('AirAwareWidgetModule');
     expect(plugin).toContain('android.appwidget.action.APPWIDGET_UPDATE');
+    expect(plugin).toContain("activity.$['android:launchMode'] = 'singleTop'");
   });
 });

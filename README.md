@@ -31,11 +31,13 @@ provide medical advice.
 - Open-Meteo Air Quality API and Weather Forecast API through isolated provider modules
 - OpenStreetMap Overpass API through an isolated nearby-vegetation provider
 - Expo Location for foreground approximate location
-- AsyncStorage for local settings, profile selections, entitlement development override, provider cache,
-  notification transition state, and widget snapshots
+- AsyncStorage for local settings, profile selections, a small entitlement presentation cache,
+  development capability preview override, provider cache, notification transition state, and widget
+  snapshots
 - Android native share sheet for local plain-text daily summaries
 - Expo Notifications for local risk transition notifications
 - OpenStreetMap map tiles for manual coordinate selection
+- RevenueCat React Native SDK for AirAware Pro entitlement management through Google Play
 
 ### Native Android Integration
 
@@ -44,6 +46,9 @@ provide medical advice.
   home-screen widgets
 - Small native bridge for writing widget snapshots into Android shared preferences
 - `react-native-svg` for the gas-mask identity and tab icons
+- `react-native-purchases` for RevenueCat purchase and entitlement integration
+- `react-native-purchases-ui` is installed for future RevenueCat-hosted paywall support, but the
+  current app uses AirAware's own Settings purchase UI
 
 ### Quality Tooling
 
@@ -87,8 +92,9 @@ nvm use 22.13.1
 - Advanced Environmental Data capability for additional informational measurements where
   Open-Meteo supports them
 - Gas-mask app icon and risk-colored Today icon
-- Capability-based Free/Pro forecast horizon and advanced data access, with no purchases active in
-  this build
+- Capability-based Free/Pro forecast horizon and advanced data/widget access
+- AirAware Pro lifetime purchase entitlement managed through RevenueCat and Google Play when a
+  public RevenueCat SDK key is configured
 
 ## Screens
 
@@ -102,8 +108,9 @@ nvm use 22.13.1
 - **Profile**: local Personal Allergy Profile toggles, including Mold potential and UV index.
   Informational advanced measurements remain display-only on Data
 - **Settings**: location mode, manual map selection, refresh interval, outdoor-window duration,
-  headline score, forecast score, notification preferences, daily-summary score, privacy and
-  attribution notes, current AirAware Pro status, and a development-only Free/Pro smoke-test switch
+  headline score, forecast score, notification preferences, daily-summary score, AirAware Pro
+  purchase/restore status, privacy and attribution notes, and a development-only capability preview
+  switch
 
 ## Android Home-Screen Widgets
 
@@ -205,8 +212,15 @@ coordinates. When the manual map picker is shown, OpenStreetMap tile servers rec
 the visible map area. When Nearby vegetation is used, the active latitude and longitude are sent to
 the configured OpenStreetMap Overpass API to request mapped vegetation and land-use features near
 the selected coordinates. Personal Allergy Profile selections remain in local app storage and are not
-sent to Open-Meteo, OpenStreetMap, billing, or any other provider. Shared summaries are generated
-locally and passed to the Android share sheet; AirAware does not upload them.
+sent to Open-Meteo, OpenStreetMap, RevenueCat, or any other environmental provider. Shared summaries
+are generated locally and passed to the Android share sheet; AirAware does not upload them.
+
+AirAware uses RevenueCat to manage AirAware Pro purchase entitlement. Google Play processes
+payments; AirAware does not directly handle card or payment information. RevenueCat may process
+anonymous app identifiers, purchase records, product identifiers, entitlement state, and device/app
+metadata needed for billing. AirAware does not send RevenueCat coordinates, environmental readings,
+Personal Allergy Profile selections, nearby vegetation data, shared summaries, or notification
+settings.
 
 Shared summaries never include coordinates, raw provider JSON, or profile factor lists.
 
@@ -225,7 +239,8 @@ Settings. AirAware does not request notification permission on first launch.
 
 Because AirAware has no account system and no server-side user profile, clearing app storage or
 uninstalling the app removes locally stored settings, cached provider responses, selected
-coordinates, and Personal Allergy Profile selections.
+coordinates, and Personal Allergy Profile selections. RevenueCat uses anonymous app user IDs; restore
+purchases remains available to recover eligible Google Play purchases.
 
 ## Google Play Policy Readiness
 
@@ -247,16 +262,21 @@ Before submitting to Google Play:
 - Complete the Health apps declaration if Play Console classifies AirAware as health-related.
   AirAware must be described as environmental information only: it does not predict symptoms,
   diagnose allergies, provide medical advice, or guarantee safe conditions.
-- Declare that the app has no ads, analytics, accounts, subscriptions, Google Play Billing
-  integration, user-generated content, or background location in the current build.
+- Declare that the app has no ads, analytics, accounts, subscriptions, user-generated content, or
+  background location in the current build.
+- Disclose that Google Play Billing is used indirectly through RevenueCat for a one-time
+  non-consumable AirAware Pro purchase. Google Play processes payments and RevenueCat manages
+  entitlement validation.
 - If risk transition notifications are enabled, disclose that notification permission is optional
   and used only for local AirAware risk-category transition notifications.
 - Re-run `npm run validate`, `npx expo-doctor`, and the Google Play policy guardrail tests before
   release.
 
 The guardrail tests fail if the project adds obvious policy-sensitive dependencies such as ads,
-analytics, tracking, billing, in-app purchase, payment, or account SDKs, or if Android location
-permissions expand beyond approximate foreground location.
+analytics, tracking, unapproved billing, unrelated in-app purchase/payment, or account SDKs, or if
+Android location permissions expand beyond approximate foreground location. The approved billing
+dependencies are `react-native-purchases` and `react-native-purchases-ui`; RevenueCat imports must
+stay isolated in the billing gateway.
 
 ## Free and Pro
 
@@ -295,16 +315,20 @@ Android home-screen widgets:
 - Free and Pro: compact current-condition widget
 - Pro lifetime: advanced widget with best outdoor window and forecast summaries
 
-AirAware Pro is planned as a one-time lifetime unlock with no subscription and no account
-requirement. Google Play would process future purchases; AirAware does not handle payment
-information directly.
+AirAware Pro is a one-time lifetime unlock with no subscription and no AirAware account
+requirement. Google Play processes payments and RevenueCat validates purchase entitlement. The Pro
+price is loaded from Google Play through RevenueCat and is not hard-coded in the app.
 
-Google Play Billing is not active in the current build, so purchasing AirAware Pro is not available
-yet. The production entitlement defaults to Free. Development builds show a local Free/Pro switch in
-Settings under **AirAware Pro** so capability-gated UI can be smoke-tested without billing. The
-switch is ignored in production builds and does not create purchases, restore flows, purchase tokens,
-pricing, subscriptions, accounts, or billing SDK integration. Personal Allergy Profile data remains
-local and is not sent to billing, Open-Meteo, or any other provider.
+The RevenueCat entitlement identifier is `pro`. The RevenueCat package identifier used for the
+lifetime purchase is `lifetime`. Production Pro access is granted only when RevenueCat customer
+information reports the `pro` entitlement as active.
+
+If `EXPO_PUBLIC_REVENUECAT_API_KEY` is missing, billing is marked unconfigured and the app remains
+Free. Development builds include a capability preview control in Settings under **AirAware Pro** so
+Free and Pro surfaces can be smoke-tested. The preview is ignored in production, does not modify
+RevenueCat customer information, does not simulate a purchase, and does not store purchase tokens.
+Personal Allergy Profile data remains local and is not sent to RevenueCat, Open-Meteo, or any other
+provider.
 
 Notification capabilities are modeled separately:
 
@@ -314,9 +338,31 @@ Notification capabilities are modeled separately:
 Only basic transition notifications are implemented today. Advanced environmental notification
 types are not implemented and no Pro-only notification settings are shown.
 
-Google Play Billing remains inactive. Development builds may show Pro capabilities only through the
-local development entitlement switch so Extended Forecast, Advanced Environmental Data, and the
-advanced widget can be tested before billing exists.
+Real purchase testing requires an Android development or release build. Expo Go cannot perform native
+RevenueCat purchases. RevenueCat Test Store can be used for development testing when configured, but
+real Google Play purchase validation still requires the proper Play Console product, tester, and
+build distribution setup.
+
+## AirAware Pro Purchases
+
+AirAware Pro purchases are managed through RevenueCat and Google Play.
+
+Install the RevenueCat SDK packages with Expo-compatible dependency resolution:
+
+```sh
+npx expo install react-native-purchases react-native-purchases-ui
+```
+
+Configure the public RevenueCat SDK key in local environment configuration:
+
+```sh
+EXPO_PUBLIC_REVENUECAT_API_KEY=<public RevenueCat Android or test SDK key>
+```
+
+`.env.example` contains a placeholder. Do not commit local `.env` files, RevenueCat secret API keys,
+Google Play service-account JSON, private keys, webhook secrets, purchase tokens, or receipts. Public
+RevenueCat SDK keys are not server secrets, but centralizing them makes test and production key
+changes safe.
 
 ## Notifications
 
@@ -370,19 +416,20 @@ rules for software that uses encryption.
 Current technical export-review notes:
 
 - AirAware does not implement custom cryptography.
-- AirAware does not include crypto, secure-storage, billing, in-app purchase, or payment SDK
-  dependencies.
+- AirAware does not include crypto or secure-storage dependencies.
+- AirAware uses RevenueCat for billing entitlement management and Google Play processes payments.
 - AirAware does not provide end-to-end encryption, secure messaging, VPN, authentication,
   cryptanalysis, network forensics, or digital-forensics functionality.
 - Network requests use standard HTTPS/TLS provided by the platform and React Native networking stack.
 - Shared summaries are generated locally and passed to the Android share sheet.
-- Google Play Billing is not integrated; AirAware does not handle payment information directly.
+- No RevenueCat server secret key, Google Play service-account JSON, private key, or webhook secret is
+  bundled in the app.
 
 The repository includes an export-compliance guardrail test that fails if obvious crypto, secure
-storage, billing, in-app purchase, or payment SDK dependencies/imports are introduced. Before
-publishing or adding those capabilities, review the Google Play export-compliance questionnaire and
-the U.S. Bureau of Industry and Security encryption guidance. This section is an engineering review
-aid, not legal advice.
+storage, unapproved billing, in-app purchase, or payment SDK dependencies/imports are introduced.
+Before publishing, review the Google Play export-compliance questionnaire and the U.S. Bureau of
+Industry and Security encryption guidance. This section is an engineering review aid, not legal
+advice.
 
 ## Development
 
@@ -417,15 +464,17 @@ widgets because Android widgets are not pure React Native views.
 
 ### Development Free/Pro Smoke Testing
 
-In development builds, Settings includes an **AirAware Pro** section with a local **Free / Pro**
-switch. Use it to smoke-test capability-gated behavior without Google Play Billing:
+In development builds, Settings includes an **AirAware Pro** section with a local capability preview:
 
-- Free mode shows the Free forecast horizon, Standard Environmental Data, and compact widget access.
-- Pro mode enables Extended Forecast, Advanced Environmental Data, and the advanced widget.
+- Use RevenueCat: use the configured RevenueCat entitlement.
+- Preview Free shows the Free forecast horizon, Standard Environmental Data, and compact widget
+  access.
+- Preview Pro enables Extended Forecast, Advanced Environmental Data, and the advanced widget.
 
-The switch is persisted in local app storage for development convenience. It is guarded by `__DEV__`,
-ignored in production builds, and does not implement purchases, restore purchases, product IDs,
-purchase tokens, prices, subscriptions, accounts, ads, analytics, or payment handling.
+The preview is persisted in local app storage for development convenience. It is guarded by
+`__DEV__`, ignored in production builds, and does not modify RevenueCat customer information,
+simulate purchases, create purchase tokens, prices, subscriptions, accounts, ads, analytics, or
+payment handling.
 
 Validate:
 
@@ -448,7 +497,7 @@ src/api/          Open-Meteo and OpenStreetMap network providers and response no
 src/capabilities/ Static capability profiles, feature metadata, and availability selectors
 src/core/         Pure scoring, mold, personalization, forecast, and summary logic
 src/models/       Provider-independent TypeScript domain models
-src/services/     Location and environment assembly
+src/services/     Location, billing gateway, notifications, widgets, and environment assembly
 src/storage/      AsyncStorage-backed settings and cache
 src/state/        Zustand app store and refresh orchestration
 src/components/   Reusable UI primitives
@@ -489,20 +538,20 @@ implemented in the app. Screens and services use capability selectors such as fo
 feature availability, provider availability, and environmental-variable availability. This keeps
 future edition changes localized to configuration and metadata rather than scattered conditionals.
 
-The project also includes a small billing gateway boundary. It is intentionally a no-op and has no
-product identifiers, purchase logic, restore flow, Google Play Billing SDK, paywall, ads, accounts,
-or analytics. Future billing work should integrate through that isolated boundary instead of leaking
-purchase checks into screens, scoring, provider, or storage code.
+The billing gateway isolates RevenueCat. Screens, scoring, providers, widgets, and profile logic do
+not parse RevenueCat SDK objects. The gateway normalizes initialization status, entitlement status,
+the lifetime package, localized price, purchase/restore progress, and user-safe errors. Production
+Pro access is derived from RevenueCat customer information for the `pro` entitlement; a development
+capability preview can override presentation only in `__DEV__` builds.
 
-The current production entitlement is Free. Pro lifetime is represented as an entitlement and
-capability profile for Extended Forecast, Advanced Environmental Data, and the advanced home-screen
-widget. Development builds can switch between Free and Pro locally from Settings; production builds
-ignore that development override. Standard Forecast shows today plus 2 additional days, for 3 total
-forecast days. Extended Forecast shows today plus 6 additional days, for up to 7 total forecast
-days. Advanced Environmental Data exposes additional informational readings where the provider
-supports them. Mold potential and UV index remain standard readings and optional Personal Allergy
-Profile factors for Free and Pro users. These capabilities do not change the environmental burden
-formula, cache behavior, location behavior, notifications, or sharing.
+The current production entitlement defaults to Free unless RevenueCat verifies AirAware Pro.
+Pro lifetime is represented as an entitlement and capability profile for Extended Forecast, Advanced
+Environmental Data, and the advanced home-screen widget. Standard Forecast shows today plus 2
+additional days, for 3 total forecast days. Extended Forecast shows today plus 6 additional days, for
+up to 7 total forecast days. Advanced Environmental Data exposes additional informational readings
+where the provider supports them. Mold potential and UV index remain standard readings and optional
+Personal Allergy Profile factors for Free and Pro users. These capabilities do not change the
+environmental burden formula, cache behavior, location behavior, notifications, or sharing.
 
 Widget capabilities are separate from scoring and provider access. The compact widget is available
 to Free and Pro users. The advanced widget is a Pro capability and uses the same active headline
@@ -535,11 +584,12 @@ this milestone.
   mean vegetation is absent.
 - Widgets update when the app writes a fresh local widget snapshot. They do not perform aggressive
   independent polling, background location, or independent provider requests.
-- No background location, advanced environmental notifications, accounts, analytics, or long-term
-  history are included in this first Android milestone.
-- Google Play Billing is not integrated yet. The currently modeled Pro capabilities are Extended
-  Forecast, Advanced Environmental Data, and the advanced home-screen widget; advanced environmental
-  notifications are capability metadata only.
+- No background location, advanced environmental notifications, accounts, analytics, subscriptions,
+  or long-term history are included in this Android milestone.
+- AirAware Pro purchase testing requires RevenueCat and Google Play configuration plus an Android
+  development or release build. Expo Go cannot validate native purchases.
+- The currently implemented Pro capabilities are Extended Forecast, Advanced Environmental Data, and
+  the advanced home-screen widget; advanced environmental notifications are capability metadata only.
 
 ## License
 
