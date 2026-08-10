@@ -804,8 +804,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
   setDevelopmentEntitlement: async (kind) => {
     if (!__DEV__) return;
 
-    const developmentOverride =
-      kind === null ? null : kind === 'pro_lifetime' ? PRO_LIFETIME_ENTITLEMENT : FREE_ENTITLEMENT;
+    let developmentOverride = null;
+    if (kind === 'pro_lifetime') {
+      developmentOverride = PRO_LIFETIME_ENTITLEMENT;
+    } else if (kind === 'free') {
+      developmentOverride = FREE_ENTITLEMENT;
+    }
     await saveDevelopmentEntitlementOverride(developmentOverride);
     const billingState = effectiveBillingState(
       billingGateway.getBillingState(),

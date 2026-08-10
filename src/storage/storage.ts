@@ -1,5 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { CACHE_SCHEMA_VERSION, VEGETATION_CACHE_SCHEMA_VERSION } from '../core/constants';
+import {
+  CACHE_SCHEMA_VERSION,
+  DATA_DETAIL_CACHE_SCHEMA_VERSION,
+  VEGETATION_CACHE_SCHEMA_VERSION,
+} from '../core/constants';
 import type {
   CachedEnvironment,
   CurrentEnvironmentalReadings,
@@ -8,6 +12,7 @@ import type {
   ExtendedWeatherReadings,
   HourlyEnvironmentalReading,
 } from '../models/environment';
+import type { CachedDataDetailTimeline, DataDetailTimeline } from '../models/dataDetail';
 import type { RiskNotificationTransitionState } from '../models/notifications';
 import type {
   CachedVegetationContext,
@@ -40,6 +45,7 @@ const DEVELOPMENT_ENTITLEMENT_OVERRIDE_KEY = 'airaware.development-entitlement.v
 const BILLING_ENTITLEMENT_CACHE_KEY = 'airaware.billing-entitlement-cache.v1';
 const BILLING_ENTITLEMENT_CACHE_SCHEMA_VERSION = 1;
 const VEGETATION_CACHE_KEY = 'airaware.vegetation-cache.v1';
+const DATA_DETAIL_CACHE_PREFIX = 'airaware.data-detail-cache.v1:';
 
 function readObject(value: string | null): Record<string, unknown> | null {
   if (value === null) return null;
@@ -267,6 +273,50 @@ function isVegetationContext(value: unknown): value is NormalizedVegetationConte
   );
 }
 
+function isDataDetailTimeline(value: unknown): value is DataDetailTimeline {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+
+  const object = value as Record<string, unknown>;
+  const coordinates = object.coordinates as Record<string, unknown> | undefined;
+  const summary = object.summary as Record<string, unknown> | undefined;
+
+  return (
+    typeof object.variableId === 'string' &&
+    (object.rangeId === '24h' ||
+      object.rangeId === 'week' ||
+      object.rangeId === 'month' ||
+      object.rangeId === 'year') &&
+    typeof object.generatedAt === 'string' &&
+    coordinates !== undefined &&
+    isFiniteNumber(coordinates.latitude) &&
+    isFiniteNumber(coordinates.longitude) &&
+    (typeof object.timezone === 'string' || object.timezone === null) &&
+    (object.granularity === 'hourly' ||
+      object.granularity === 'daily' ||
+      object.granularity === 'weekly') &&
+    typeof object.historyAvailable === 'boolean' &&
+    typeof object.forecastAvailable === 'boolean' &&
+    (typeof object.forecastTruncated === 'boolean' || object.forecastTruncated === undefined) &&
+    typeof object.partial === 'boolean' &&
+    typeof object.now === 'string' &&
+    isFiniteNumber(object.nowOffsetRatio) &&
+    Array.isArray(object.points) &&
+    (object.domain === null ||
+      (typeof object.domain === 'object' &&
+        !Array.isArray(object.domain) &&
+        isFiniteNumber((object.domain as Record<string, unknown>).min) &&
+        isFiniteNumber((object.domain as Record<string, unknown>).max))) &&
+    summary !== undefined &&
+    typeof summary === 'object' &&
+    !Array.isArray(summary) &&
+    (isFiniteNumber(summary.current) || summary.current === null) &&
+    (isFiniteNumber(summary.minimum) || summary.minimum === null) &&
+    (isFiniteNumber(summary.maximum) || summary.maximum === null) &&
+    (isFiniteNumber(summary.average) || summary.average === null) &&
+    (typeof object.error === 'string' || object.error === null)
+  );
+}
+
 const EMPTY_EXTENDED_AIR_QUALITY: ExtendedAirQualityReadings = {
   carbonDioxide: null,
   ammonia: null,
@@ -322,20 +372,23 @@ function normalizeExtendedReadings(value: unknown): ExtendedEnvironmentalReading
   };
 }
 
-function normalizeCurrentReading(
-  reading: CurrentEnvironmentalReadings,
-): CurrentEnvironmentalReadings {
+function normalizeReading<T extends CurrentEnvironmentalReadings | HourlyEnvironmentalReading>(
+  reading: T,
+): T {
   return {
     ...reading,
     extended: normalizeExtendedReadings(reading.extended),
   };
 }
 
+function normalizeCurrentReading(
+  reading: CurrentEnvironmentalReadings,
+): CurrentEnvironmentalReadings {
+  return normalizeReading(reading);
+}
+
 function normalizeHourlyReading(reading: HourlyEnvironmentalReading): HourlyEnvironmentalReading {
-  return {
-    ...reading,
-    extended: normalizeExtendedReadings(reading.extended),
-  };
+  return normalizeReading(reading);
 }
 
 function normalizedCachedEnvironment(data: CachedEnvironment['data']): CachedEnvironment['data'] {
@@ -534,6 +587,35 @@ export async function loadVegetationCache(): Promise<CachedVegetationContext | n
 
 export async function saveVegetationCache(cache: CachedVegetationContext): Promise<void> {
   await AsyncStorage.setItem(VEGETATION_CACHE_KEY, JSON.stringify(cache));
+}
+
+export async function loadDataDetailCache(
+  cacheKey: string,
+): Promise<CachedDataDetailTimeline | null> {
+  const object = readObject(await AsyncStorage.getItem(`${DATA_DETAIL_CACHE_PREFIX}${cacheKey}`));
+
+  if (
+    object?.version !== DATA_DETAIL_CACHE_SCHEMA_VERSION ||
+    typeof object.savedAt !== 'string' ||
+    object.cacheKey !== cacheKey ||
+    !isDataDetailTimeline(object.data)
+  ) {
+    return null;
+  }
+
+  return {
+    version: DATA_DETAIL_CACHE_SCHEMA_VERSION,
+    savedAt: object.savedAt,
+    cacheKey,
+    data: {
+      ...object.data,
+      forecastTruncated: object.data.forecastTruncated ?? false,
+    },
+  };
+}
+
+export async function saveDataDetailCache(cache: CachedDataDetailTimeline): Promise<void> {
+  await AsyncStorage.setItem(`${DATA_DETAIL_CACHE_PREFIX}${cache.cacheKey}`, JSON.stringify(cache));
 }
 
 export async function loadDevelopmentEntitlementOverride(): Promise<EntitlementState | null> {

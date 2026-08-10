@@ -1,565 +1,510 @@
-<!DOCTYPE html>
+<!doctype html>
 
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <title>AirAware Privacy Policy</title>
+    <title>AirAware Privacy Policy</title>
 
-<meta
-name="description"
-content="Privacy Policy for the AirAware Android application."
+    <meta name="description" content="Privacy Policy for the AirAware Android application." />
 
->
-
-  <style>
-    :root {
-      color-scheme: light dark;
-      --background: #f4f7f6;
-      --surface: #ffffff;
-      --text: #1f2933;
-      --muted: #5f6c75;
-      --border: #d8e2df;
-      --accent: #0f766e;
-      --notice-background: #e6fffa;
-      --notice-border: #14b8a6;
-    }
-
-    @media (prefers-color-scheme: dark) {
+    <style>
       :root {
-        --background: #101817;
-        --surface: #182220;
-        --text: #edf5f2;
-        --muted: #b5c5c0;
-        --border: #344541;
-        --accent: #5eead4;
-        --notice-background: #153a35;
-        --notice-border: #2dd4bf;
+        color-scheme: light dark;
+        --background: #f4f7f6;
+        --surface: #ffffff;
+        --text: #1f2933;
+        --muted: #5f6c75;
+        --border: #d8e2df;
+        --accent: #0f766e;
+        --notice-background: #e6fffa;
+        --notice-border: #14b8a6;
       }
-    }
 
-    * {
-      box-sizing: border-box;
-    }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --background: #101817;
+          --surface: #182220;
+          --text: #edf5f2;
+          --muted: #b5c5c0;
+          --border: #344541;
+          --accent: #5eead4;
+          --notice-background: #153a35;
+          --notice-border: #2dd4bf;
+        }
+      }
 
-    html {
-      scroll-behavior: smooth;
-    }
+      * {
+        box-sizing: border-box;
+      }
 
-    body {
-      margin: 0;
-      background: var(--background);
-      color: var(--text);
-      font-family:
-        Inter,
-        -apple-system,
-        BlinkMacSystemFont,
-        "Segoe UI",
-        Roboto,
-        Helvetica,
-        Arial,
-        sans-serif;
-      font-size: 17px;
-      line-height: 1.7;
-    }
-
-    main {
-      width: min(880px, calc(100% - 32px));
-      margin: 40px auto;
-      padding: 44px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      box-shadow: 0 10px 35px rgb(0 0 0 / 8%);
-    }
-
-    h1,
-    h2 {
-      line-height: 1.25;
-    }
-
-    h1 {
-      margin: 0 0 8px;
-      font-size: clamp(2rem, 5vw, 2.7rem);
-    }
-
-    h2 {
-      margin-top: 2.4rem;
-      margin-bottom: 0.7rem;
-      font-size: 1.35rem;
-    }
-
-    p {
-      margin: 0.8rem 0;
-    }
-
-    ul {
-      padding-left: 1.4rem;
-    }
-
-    li {
-      margin: 0.45rem 0;
-    }
-
-    a {
-      color: var(--accent);
-      overflow-wrap: anywhere;
-    }
-
-    .updated {
-      margin-top: 0;
-      color: var(--muted);
-    }
-
-    .summary {
-      margin: 2rem 0;
-      padding: 18px 20px;
-      background: var(--notice-background);
-      border-left: 4px solid var(--notice-border);
-      border-radius: 8px;
-    }
-
-    footer {
-      margin-top: 3rem;
-      padding-top: 1.5rem;
-      color: var(--muted);
-      border-top: 1px solid var(--border);
-    }
-
-    @media (max-width: 600px) {
-      main {
-        width: min(100% - 20px, 880px);
-        margin: 10px auto;
-        padding: 26px 20px;
-        border-radius: 12px;
+      html {
+        scroll-behavior: smooth;
       }
 
       body {
-        font-size: 16px;
+        margin: 0;
+        background: var(--background);
+        color: var(--text);
+        font-family:
+          Inter,
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          Roboto,
+          Helvetica,
+          Arial,
+          sans-serif;
+        font-size: 17px;
+        line-height: 1.7;
       }
-    }
-  </style>
-
-</head>
-
-<body>
-  <main>
-    <header>
-      <h1>AirAware Privacy Policy</h1>
-      <p class="updated">
-        Effective date: August 4, 2026
-      </p>
-    </header>
-
-```
-<section class="summary" aria-label="Privacy summary">
-  <strong>Privacy summary:</strong>
-  AirAware does not use analytics, advertising identifiers, user accounts,
-  telemetry, cloud synchronization, or remote configuration. Most data is
-  processed and stored locally on the user's device.
-</section>
-
-<section>
-  <h2>1. Overview</h2>
-
-  <p>
-    This Privacy Policy explains how AirAware handles information when you
-    use the AirAware Android application.
-  </p>
-
-  <p>
-    AirAware provides environmental information related to pollen, air
-    quality, weather-based mold potential, ultraviolet conditions, nearby
-    vegetation, and related environmental measurements.
-  </p>
-
-  <p>
-    AirAware does not use analytics, advertising identifiers, accounts,
-    telemetry, cloud sync, or remote configuration.
-  </p>
-</section>
-
-<section>
-  <h2>2. Location information</h2>
-
-  <p>
-    AirAware requests only approximate foreground location. It does not
-    request precise location or background location.
-  </p>
-
-  <p>
-    Coordinates are sent to Open-Meteo to retrieve local environmental
-    data, including optional advanced measurements when available. This
-    occurs only after the user accepts the location explanation or selects
-    a manual location.
-  </p>
-
-  <p>
-    Manual map selections are saved locally on the device and are used to
-    refresh environmental data for the selected coordinates.
-  </p>
-
-  <p>
-    AirAware does not maintain its own server-side location history.
-  </p>
-</section>
-
-<section>
-  <h2>3. OpenStreetMap and nearby vegetation</h2>
-
-  <p>
-    When the manual map picker is displayed, OpenStreetMap tile servers
-    receive requests necessary to provide map tiles for the visible map
-    area.
-  </p>
-
-  <p>
-    When the Nearby vegetation feature is used, the active latitude and
-    longitude are sent to the configured OpenStreetMap Overpass API. These
-    coordinates are used to request mapped vegetation and land-use features
-    near the selected location.
-  </p>
-
-  <p>
-    AirAware does not send Personal Allergy Profile selections,
-    notification settings, shared summaries, or purchase information to
-    OpenStreetMap or the Overpass API.
-  </p>
-</section>
-
-<section>
-  <h2>4. Personal Allergy Profile</h2>
-
-  <p>
-    Personal Allergy Profile selections are stored locally on the user's
-    device.
-  </p>
-
-  <p>
-    These selections are not sent to Open-Meteo, OpenStreetMap, RevenueCat,
-    or any other environmental data provider.
-  </p>
-
-  <p>
-    AirAware uses these locally stored selections only to personalize
-    environmental risk calculations and presentation within the app.
-  </p>
-</section>
-
-<section>
-  <h2>5. Purchases and RevenueCat</h2>
-
-  <p>
-    AirAware uses RevenueCat to manage AirAware Pro purchase entitlement.
-    Google Play processes payments. AirAware does not directly receive,
-    process, or store card or payment information.
-  </p>
-
-  <p>
-    RevenueCat may process information required to validate and manage
-    purchases, including:
-  </p>
-
-  <ul>
-    <li>Anonymous application user identifiers</li>
-    <li>Purchase records</li>
-    <li>Product identifiers</li>
-    <li>Subscription or entitlement state</li>
-    <li>Device and application metadata required for billing operations</li>
-  </ul>
-
-  <p>
-    AirAware does not send RevenueCat:
-  </p>
-
-  <ul>
-    <li>Location coordinates</li>
-    <li>Environmental readings</li>
-    <li>Personal Allergy Profile selections</li>
-    <li>Nearby vegetation data</li>
-    <li>Shared summaries</li>
-    <li>Notification settings</li>
-  </ul>
-</section>
-
-<section>
-  <h2>6. Shared summaries</h2>
-
-  <p>
-    Shared summaries are generated locally and passed to the Android share
-    sheet. AirAware does not upload these summaries.
-  </p>
-
-  <p>
-    Shared summaries never include:
-  </p>
-
-  <ul>
-    <li>Location coordinates</li>
-    <li>Raw provider JSON</li>
-    <li>Personal Allergy Profile factor lists</li>
-  </ul>
-
-  <p>
-    When the Android share sheet is used, the application selected by the
-    user to receive the summary may handle that information according to
-    its own privacy policy.
-  </p>
-</section>
-
-<section>
-  <h2>7. Android widgets</h2>
-
-  <p>
-    Android widgets display locally cached AirAware snapshot data.
-  </p>
-
-  <p>
-    Widgets do not independently contact Open-Meteo, do not include
-    coordinates, and do not display Personal Allergy Profile selections.
-    Widget data is not uploaded by AirAware.
-  </p>
-
-  <p>
-    Android launchers may capture, cache, or display widget content as part
-    of normal Android system behavior.
-  </p>
-
-  <p>
-    Locked advanced widgets do not expose environmental data when AirAware
-    Pro is unavailable.
-  </p>
-</section>
-
-<section>
-  <h2>8. Notifications</h2>
-
-  <p>
-    Notification permission is requested only if the user enables risk
-    transition notifications in Settings.
-  </p>
-
-  <p>
-    AirAware does not request notification permission on first launch.
-  </p>
-
-  <p>
-    Notification preferences are stored locally and are not sent to
-    environmental data providers or RevenueCat.
-  </p>
-</section>
-
-<section>
-  <h2>9. Permissions AirAware does not request</h2>
-
-  <p>
-    AirAware does not request access to:
-  </p>
-
-  <ul>
-    <li>Background location</li>
-    <li>Precise location</li>
-    <li>Contacts</li>
-    <li>Camera</li>
-    <li>Microphone</li>
-    <li>SMS messages</li>
-    <li>Call logs</li>
-    <li>Health permissions</li>
-    <li>Installed application inventory</li>
-    <li>Advertising identifiers</li>
-  </ul>
-</section>
-
-<section>
-  <h2>10. Local storage and cached data</h2>
-
-  <p>
-    AirAware stores application settings and operational data locally on
-    the user's device. Depending on the features used, this may include:
-  </p>
-
-  <ul>
-    <li>Application settings</li>
-    <li>Cached environmental provider responses</li>
-    <li>Selected coordinates</li>
-    <li>Manual location selections</li>
-    <li>Personal Allergy Profile selections</li>
-    <li>Notification preferences</li>
-    <li>Cached widget snapshot data</li>
-  </ul>
-
-  <p>
-    AirAware does not operate a cloud account or server-side user profile
-    for this information.
-  </p>
-</section>
-
-<section>
-  <h2>11. Data retention and deletion</h2>
-
-  <p>
-    Because AirAware has no account system and no server-side user profile,
-    clearing the application's storage or uninstalling the application
-    removes locally stored settings, cached provider responses, selected
-    coordinates, Personal Allergy Profile selections, and other locally
-    stored application data.
-  </p>
-
-  <p>
-    RevenueCat uses anonymous application user identifiers for purchase
-    entitlement management. The Restore purchases feature remains
-    available so eligible Google Play purchases can be recovered.
-  </p>
-
-  <p>
-    Data processed independently by Google Play, RevenueCat, Open-Meteo,
-    OpenStreetMap, or an Overpass API provider is subject to the retention
-    and deletion practices of those respective services.
-  </p>
-</section>
-
-<section>
-  <h2>12. Third-party services</h2>
-
-  <p>
-    AirAware may interact with the following third-party services:
-  </p>
-
-  <ul>
-    <li>
-      <a href="https://open-meteo.com/" rel="noopener noreferrer">
-        Open-Meteo
-      </a>
-      for weather, air-quality, pollen, and related environmental data.
-    </li>
-
-    <li>
-      <a href="https://www.openstreetmap.org/" rel="noopener noreferrer">
-        OpenStreetMap
-      </a>
-      for map tiles and mapped geographic information.
-    </li>
-
-    <li>
-      An OpenStreetMap Overpass API provider for nearby vegetation and
-      land-use queries.
-    </li>
-
-    <li>
-      <a href="https://www.revenuecat.com/" rel="noopener noreferrer">
-        RevenueCat
-      </a>
-      for purchase entitlement management.
-    </li>
-
-    <li>
-      <a href="https://play.google.com/" rel="noopener noreferrer">
-        Google Play
-      </a>
-      for application distribution and payment processing.
-    </li>
-  </ul>
-
-  <p>
-    These services may receive technical information such as IP addresses,
-    request metadata, device or application metadata, and other information
-    ordinarily transmitted when connecting to an internet service.
-  </p>
-
-  <p>
-    Their handling of information is governed by their respective privacy
-    policies and terms.
-  </p>
-</section>
-
-<section>
-  <h2>13. Advertising, analytics, and sale of data</h2>
-
-  <p>
-    AirAware does not display advertising, use advertising identifiers, or
-    use analytics or telemetry services.
-  </p>
-
-  <p>
-    AirAware does not sell personal information.
-  </p>
-
-  <p>
-    AirAware does not use personal information for behavioral advertising
-    or cross-application tracking.
-  </p>
-</section>
-
-<section>
-  <h2>14. Children's privacy</h2>
-
-  <p>
-    AirAware is not designed to collect personal information from children.
-    The application does not provide user accounts, social features,
-    advertising, or direct messaging.
-  </p>
-
-  <p>
-    If you believe that a child has provided personal information through
-    AirAware, contact the developer using the information below.
-  </p>
-</section>
-
-<section>
-  <h2>15. Security</h2>
-
-  <p>
-    AirAware minimizes data collection and stores personal configuration
-    locally wherever possible.
-  </p>
-
-  <p>
-    No method of electronic storage or internet transmission is completely
-    secure. AirAware therefore cannot guarantee absolute security,
-    particularly for information transmitted to third-party environmental
-    or purchase-management services.
-  </p>
-</section>
-
-<section>
-  <h2>16. Changes to this policy</h2>
-
-  <p>
-    This Privacy Policy may be updated when AirAware's features, data
-    practices, third-party providers, or legal requirements change.
-  </p>
-
-  <p>
-    The effective date shown at the top of this page will be updated when a
-    revised policy is published.
-  </p>
-</section>
-
-<section>
-  <h2>17. Contact</h2>
-
-  <p>
-    For privacy questions, requests, or concerns, contact:
-  </p>
-
-  <p>
-    <strong>Developer:</strong> Kevin Bougé<br>
-    <strong>Email:</strong>
-    <a href="mailto:YOUR_EMAIL@example.com">
-      YOUR_EMAIL@example.com
-    </a>
-  </p>
-</section>
-
-<footer>
-  <p>
-    This privacy policy applies to the AirAware Android application.
-  </p>
-</footer>
-```
-
-  </main>
-</body>
+
+      main {
+        width: min(880px, calc(100% - 32px));
+        margin: 40px auto;
+        padding: 44px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        box-shadow: 0 10px 35px rgb(0 0 0 / 8%);
+      }
+
+      h1,
+      h2 {
+        line-height: 1.25;
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: clamp(2rem, 5vw, 2.7rem);
+      }
+
+      h2 {
+        margin-top: 2.4rem;
+        margin-bottom: 0.7rem;
+        font-size: 1.35rem;
+      }
+
+      p {
+        margin: 0.8rem 0;
+      }
+
+      ul {
+        padding-left: 1.4rem;
+      }
+
+      li {
+        margin: 0.45rem 0;
+      }
+
+      a {
+        color: var(--accent);
+        overflow-wrap: anywhere;
+      }
+
+      .updated {
+        margin-top: 0;
+        color: var(--muted);
+      }
+
+      .summary {
+        margin: 2rem 0;
+        padding: 18px 20px;
+        background: var(--notice-background);
+        border-left: 4px solid var(--notice-border);
+        border-radius: 8px;
+      }
+
+      footer {
+        margin-top: 3rem;
+        padding-top: 1.5rem;
+        color: var(--muted);
+        border-top: 1px solid var(--border);
+      }
+
+      @media (max-width: 600px) {
+        main {
+          width: min(100% - 20px, 880px);
+          margin: 10px auto;
+          padding: 26px 20px;
+          border-radius: 12px;
+        }
+
+        body {
+          font-size: 16px;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <main>
+      <header>
+        <h1>AirAware Privacy Policy</h1>
+        <p class="updated">Effective date: August 4, 2026</p>
+      </header>
+
+      ```
+      <section class="summary" aria-label="Privacy summary">
+        <strong>Privacy summary:</strong>
+        AirAware does not use analytics, advertising identifiers, user accounts, telemetry, cloud
+        synchronization, or remote configuration. Most data is processed and stored locally on the
+        user's device.
+      </section>
+
+      <section>
+        <h2>1. Overview</h2>
+
+        <p>
+          This Privacy Policy explains how AirAware handles information when you use the AirAware
+          Android application.
+        </p>
+
+        <p>
+          AirAware provides environmental information related to pollen, air quality, weather-based
+          mold potential, ultraviolet conditions, nearby vegetation, and related environmental
+          measurements.
+        </p>
+
+        <p>
+          AirAware does not use analytics, advertising identifiers, accounts, telemetry, cloud sync,
+          or remote configuration.
+        </p>
+      </section>
+
+      <section>
+        <h2>2. Location information</h2>
+
+        <p>
+          AirAware requests only approximate foreground location. It does not request precise
+          location or background location.
+        </p>
+
+        <p>
+          Coordinates are sent to Open-Meteo to retrieve local environmental data, including
+          optional advanced measurements when available. This occurs only after the user accepts the
+          location explanation or selects a manual location.
+        </p>
+
+        <p>
+          Manual map selections are saved locally on the device and are used to refresh
+          environmental data for the selected coordinates.
+        </p>
+
+        <p>AirAware does not maintain its own server-side location history.</p>
+      </section>
+
+      <section>
+        <h2>3. OpenStreetMap and nearby vegetation</h2>
+
+        <p>
+          When the manual map picker is displayed, OpenStreetMap tile servers receive requests
+          necessary to provide map tiles for the visible map area.
+        </p>
+
+        <p>
+          When the Nearby vegetation feature is used, the active latitude and longitude are sent to
+          the configured OpenStreetMap Overpass API. These coordinates are used to request mapped
+          vegetation and land-use features near the selected location.
+        </p>
+
+        <p>
+          AirAware does not send Personal Allergy Profile selections, notification settings, shared
+          summaries, or purchase information to OpenStreetMap or the Overpass API.
+        </p>
+      </section>
+
+      <section>
+        <h2>4. Personal Allergy Profile</h2>
+
+        <p>Personal Allergy Profile selections are stored locally on the user's device.</p>
+
+        <p>
+          These selections are not sent to Open-Meteo, OpenStreetMap, RevenueCat, or any other
+          environmental data provider.
+        </p>
+
+        <p>
+          AirAware uses these locally stored selections only to personalize environmental risk
+          calculations and presentation within the app.
+        </p>
+      </section>
+
+      <section>
+        <h2>5. Purchases and RevenueCat</h2>
+
+        <p>
+          AirAware uses RevenueCat to manage AirAware Pro purchase entitlement. Google Play
+          processes payments. AirAware does not directly receive, process, or store card or payment
+          information.
+        </p>
+
+        <p>
+          RevenueCat may process information required to validate and manage purchases, including:
+        </p>
+
+        <ul>
+          <li>Anonymous application user identifiers</li>
+          <li>Purchase records</li>
+          <li>Product identifiers</li>
+          <li>Subscription or entitlement state</li>
+          <li>Device and application metadata required for billing operations</li>
+        </ul>
+
+        <p>AirAware does not send RevenueCat:</p>
+
+        <ul>
+          <li>Location coordinates</li>
+          <li>Environmental readings</li>
+          <li>Personal Allergy Profile selections</li>
+          <li>Nearby vegetation data</li>
+          <li>Shared summaries</li>
+          <li>Notification settings</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>6. Shared summaries</h2>
+
+        <p>
+          Shared summaries are generated locally and passed to the Android share sheet. AirAware
+          does not upload these summaries.
+        </p>
+
+        <p>Shared summaries never include:</p>
+
+        <ul>
+          <li>Location coordinates</li>
+          <li>Raw provider JSON</li>
+          <li>Personal Allergy Profile factor lists</li>
+        </ul>
+
+        <p>
+          When the Android share sheet is used, the application selected by the user to receive the
+          summary may handle that information according to its own privacy policy.
+        </p>
+      </section>
+
+      <section>
+        <h2>7. Android widgets</h2>
+
+        <p>Android widgets display locally cached AirAware snapshot data.</p>
+
+        <p>
+          Widgets do not independently contact Open-Meteo, do not include coordinates, and do not
+          display Personal Allergy Profile selections. Widget data is not uploaded by AirAware.
+        </p>
+
+        <p>
+          Android launchers may capture, cache, or display widget content as part of normal Android
+          system behavior.
+        </p>
+
+        <p>
+          Locked advanced widgets do not expose environmental data when AirAware Pro is unavailable.
+        </p>
+      </section>
+
+      <section>
+        <h2>8. Notifications</h2>
+
+        <p>
+          Notification permission is requested only if the user enables risk transition
+          notifications in Settings.
+        </p>
+
+        <p>AirAware does not request notification permission on first launch.</p>
+
+        <p>
+          Notification preferences are stored locally and are not sent to environmental data
+          providers or RevenueCat.
+        </p>
+      </section>
+
+      <section>
+        <h2>9. Permissions AirAware does not request</h2>
+
+        <p>AirAware does not request access to:</p>
+
+        <ul>
+          <li>Background location</li>
+          <li>Precise location</li>
+          <li>Contacts</li>
+          <li>Camera</li>
+          <li>Microphone</li>
+          <li>SMS messages</li>
+          <li>Call logs</li>
+          <li>Health permissions</li>
+          <li>Installed application inventory</li>
+          <li>Advertising identifiers</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>10. Local storage and cached data</h2>
+
+        <p>
+          AirAware stores application settings and operational data locally on the user's device.
+          Depending on the features used, this may include:
+        </p>
+
+        <ul>
+          <li>Application settings</li>
+          <li>Cached environmental provider responses</li>
+          <li>Selected coordinates</li>
+          <li>Manual location selections</li>
+          <li>Personal Allergy Profile selections</li>
+          <li>Notification preferences</li>
+          <li>Cached widget snapshot data</li>
+        </ul>
+
+        <p>
+          AirAware does not operate a cloud account or server-side user profile for this
+          information.
+        </p>
+      </section>
+
+      <section>
+        <h2>11. Data retention and deletion</h2>
+
+        <p>
+          Because AirAware has no account system and no server-side user profile, clearing the
+          application's storage or uninstalling the application removes locally stored settings,
+          cached provider responses, selected coordinates, Personal Allergy Profile selections, and
+          other locally stored application data.
+        </p>
+
+        <p>
+          RevenueCat uses anonymous application user identifiers for purchase entitlement
+          management. The Restore purchases feature remains available so eligible Google Play
+          purchases can be recovered.
+        </p>
+
+        <p>
+          Data processed independently by Google Play, RevenueCat, Open-Meteo, OpenStreetMap, or an
+          Overpass API provider is subject to the retention and deletion practices of those
+          respective services.
+        </p>
+      </section>
+
+      <section>
+        <h2>12. Third-party services</h2>
+
+        <p>AirAware may interact with the following third-party services:</p>
+
+        <ul>
+          <li>
+            <a href="https://open-meteo.com/" rel="noopener noreferrer"> Open-Meteo </a>
+            for weather, air-quality, pollen, and related environmental data.
+          </li>
+
+          <li>
+            <a href="https://www.openstreetmap.org/" rel="noopener noreferrer"> OpenStreetMap </a>
+            for map tiles and mapped geographic information.
+          </li>
+
+          <li>
+            An OpenStreetMap Overpass API provider for nearby vegetation and land-use queries.
+          </li>
+
+          <li>
+            <a href="https://www.revenuecat.com/" rel="noopener noreferrer"> RevenueCat </a>
+            for purchase entitlement management.
+          </li>
+
+          <li>
+            <a href="https://play.google.com/" rel="noopener noreferrer"> Google Play </a>
+            for application distribution and payment processing.
+          </li>
+        </ul>
+
+        <p>
+          These services may receive technical information such as IP addresses, request metadata,
+          device or application metadata, and other information ordinarily transmitted when
+          connecting to an internet service.
+        </p>
+
+        <p>
+          Their handling of information is governed by their respective privacy policies and terms.
+        </p>
+      </section>
+
+      <section>
+        <h2>13. Advertising, analytics, and sale of data</h2>
+
+        <p>
+          AirAware does not display advertising, use advertising identifiers, or use analytics or
+          telemetry services.
+        </p>
+
+        <p>AirAware does not sell personal information.</p>
+
+        <p>
+          AirAware does not use personal information for behavioral advertising or cross-application
+          tracking.
+        </p>
+      </section>
+
+      <section>
+        <h2>14. Children's privacy</h2>
+
+        <p>
+          AirAware is not designed to collect personal information from children. The application
+          does not provide user accounts, social features, advertising, or direct messaging.
+        </p>
+
+        <p>
+          If you believe that a child has provided personal information through AirAware, contact
+          the developer using the information below.
+        </p>
+      </section>
+
+      <section>
+        <h2>15. Security</h2>
+
+        <p>
+          AirAware minimizes data collection and stores personal configuration locally wherever
+          possible.
+        </p>
+
+        <p>
+          No method of electronic storage or internet transmission is completely secure. AirAware
+          therefore cannot guarantee absolute security, particularly for information transmitted to
+          third-party environmental or purchase-management services.
+        </p>
+      </section>
+
+      <section>
+        <h2>16. Changes to this policy</h2>
+
+        <p>
+          This Privacy Policy may be updated when AirAware's features, data practices, third-party
+          providers, or legal requirements change.
+        </p>
+
+        <p>
+          The effective date shown at the top of this page will be updated when a revised policy is
+          published.
+        </p>
+      </section>
+
+      <section>
+        <h2>17. Contact</h2>
+
+        <p>For privacy questions, requests, or concerns, contact:</p>
+
+        <p>
+          <strong>Developer:</strong> Kevin Bougé<br />
+          <strong>Email:</strong>
+          <a href="mailto:YOUR_EMAIL@example.com"> YOUR_EMAIL@example.com </a>
+        </p>
+      </section>
+
+      <footer>
+        <p>This privacy policy applies to the AirAware Android application.</p>
+      </footer>
+      ```
+    </main>
+  </body>
 </html>
-

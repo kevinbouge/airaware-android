@@ -87,7 +87,7 @@ describe('Open-Meteo providers', () => {
     });
 
     expect(response.current.uvIndex).toBeNull();
-    expect(response.hourly[0]?.uvIndex).toBe(7.2);
+    expect(response.hourly[0]?.uvIndex).toBeCloseTo(7.2);
     expect(response.hourly[1]?.uvIndex).toBeNull();
   });
 

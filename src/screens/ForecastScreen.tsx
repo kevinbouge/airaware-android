@@ -1,4 +1,4 @@
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View, type DimensionValue } from 'react-native';
 import { forecastDaysForCapabilities } from '../capabilities/forecast';
 import { categoryLabel } from '../core/categories';
 import { RiskForecastTimeline } from '../components/RiskForecastTimeline';
@@ -18,15 +18,26 @@ interface DailyForecastScore {
 }
 
 function DailyForecastRow({ label, score }: { label: string; score: DailyForecastScore | null }) {
-  const available = score?.available === true && score.category !== 'unavailable';
+  const available =
+    score?.available === true &&
+    score.category !== 'unavailable' &&
+    typeof score.score === 'number' &&
+    Number.isFinite(score.score);
   const accent = available ? riskColor(score.category) : colors.unavailable;
-  const value = available
-    ? `${categoryLabel(score.category)} (${formatScore(score.score)})`
-    : 'Unavailable';
+  const fillWidth = `${Math.max(2, Math.min(100, score?.score ?? 0))}%` as DimensionValue;
+  const value = available ? formatScore(score.score) : 'Unavailable';
+  const accessibilityLabel = available
+    ? `${label} ${categoryLabel(score.category)} ${value}`
+    : `${label} unavailable`;
 
   return (
-    <View style={styles.dailyRow}>
+    <View accessibilityLabel={accessibilityLabel} style={styles.dailyRow}>
       <Text style={styles.dailyLabel}>{label}</Text>
+      <View style={styles.dailyTrack}>
+        {available ? (
+          <View style={[styles.dailyFill, { backgroundColor: accent, width: fillWidth }]} />
+        ) : null}
+      </View>
       <Text style={[styles.dailyValue, { color: accent }]}>{value}</Text>
     </View>
   );
@@ -115,21 +126,33 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
   dailyLabel: {
-    color: colors.text,
-    flex: 1,
-    fontSize: 15,
+    color: colors.muted,
+    fontSize: 13,
+    minWidth: 76,
   },
   dailyRow: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: spacing.md,
-    justifyContent: 'space-between',
+    gap: spacing.sm,
     minHeight: 30,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.xs,
+  },
+  dailyFill: {
+    borderRadius: 999,
+    height: '100%',
+  },
+  dailyTrack: {
+    backgroundColor: '#E6ECE7',
+    borderRadius: 999,
+    flex: 1,
+    height: 12,
+    overflow: 'hidden',
   },
   dailyValue: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '700',
-    minWidth: 116,
+    minWidth: 40,
     textAlign: 'right',
   },
   screen: {

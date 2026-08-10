@@ -1,0 +1,5 @@
+.codex/
+.agents/
+android/
+coverage/
+node_modules/

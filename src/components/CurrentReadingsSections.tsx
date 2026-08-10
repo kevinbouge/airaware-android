@@ -247,6 +247,7 @@ interface CurrentReadingsSectionsProps {
   capabilities: AppCapabilities;
   collapsedSections: Record<string, boolean>;
   onToggleSection: (sectionId: string) => void;
+  onOpenVariable?: ((variableId: EnvironmentalVariableId) => void) | undefined;
   beforeAdvancedSections?: ReactNode;
 }
 
@@ -466,6 +467,7 @@ export function CurrentReadingsSections({
   capabilities,
   collapsedSections,
   onToggleSection,
+  onOpenVariable,
   beforeAdvancedSections,
 }: CurrentReadingsSectionsProps) {
   const moldSunRows = moldAndSunRows(current, capabilities);
@@ -482,7 +484,15 @@ export function CurrentReadingsSections({
         onToggle={() => onToggleSection(CURRENT_READING_SECTION_IDS.pollen)}
       >
         {pollenRows.length > 0 ? (
-          pollenRows.map((row) => <ReadingRow key={row.id} label={row.label} value={row.value} />)
+          pollenRows.map((row) => (
+            <ReadingRow
+              key={row.id}
+              label={row.label}
+              value={row.value}
+              variableId={row.id}
+              onPress={onOpenVariable}
+            />
+          ))
         ) : (
           <NoDataMessage />
         )}
@@ -497,7 +507,14 @@ export function CurrentReadingsSections({
       >
         {airQualityRows.length > 0 ? (
           airQualityRows.map((row) => (
-            <ReadingRow key={row.id} label={row.label} value={row.value} detail={row.detail} />
+            <ReadingRow
+              key={row.id}
+              label={row.label}
+              value={row.value}
+              detail={row.detail}
+              variableId={row.id}
+              onPress={onOpenVariable}
+            />
           ))
         ) : (
           <NoDataMessage />
@@ -511,7 +528,15 @@ export function CurrentReadingsSections({
         onToggle={() => onToggleSection(CURRENT_READING_SECTION_IDS.moldAndUv)}
       >
         {moldSunRows.length > 0 ? (
-          moldSunRows.map((row) => <ReadingRow key={row.id} label={row.label} value={row.value} />)
+          moldSunRows.map((row) => (
+            <ReadingRow
+              key={row.id}
+              label={row.label}
+              value={row.value}
+              variableId={row.id}
+              onPress={onOpenVariable}
+            />
+          ))
         ) : (
           <NoDataMessage />
         )}
@@ -530,7 +555,13 @@ export function CurrentReadingsSections({
             onToggle={() => onToggleSection(section.id)}
           >
             {section.rows.map((row) => (
-              <ReadingRow key={row.id} label={row.label} value={row.value} />
+              <ReadingRow
+                key={row.id}
+                label={row.label}
+                value={row.value}
+                variableId={row.id}
+                onPress={onOpenVariable}
+              />
             ))}
           </SectionCard>
         ))}

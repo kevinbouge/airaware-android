@@ -1,5 +1,6 @@
 import { deriveEnvironmentState } from '../src/state/derivedEnvironment';
 import { calculateMoldPotential } from '../src/core/moldPotential';
+import { calculatePersonalizedScore } from '../src/core/profileScoring';
 import { calculateEnvironmentalScore } from '../src/core/scoring';
 import type { HourlyEnvironmentalReading, NormalizedEnvironment } from '../src/models/environment';
 import { DEFAULT_PROFILE, type PersonalAllergyProfile } from '../src/models/profile';
@@ -160,5 +161,61 @@ describe('derived environment forecast state', () => {
       derived.personalizedForecastDays[0]?.score?.score ?? 0,
     );
     expect(environment.forecastDays[0]?.score?.available).toBe(true);
+  });
+
+  it('does not use past current-day hours for personalized daily forecasts', () => {
+    const hourly = [
+      hour('2026-08-01T06:00:00Z', 180),
+      hour('2026-08-01T13:00:00Z', 20),
+      hour('2026-08-02T12:00:00Z', 120),
+    ];
+    const current = hourly[1]!;
+    const environment: NormalizedEnvironment = {
+      provider: 'open-meteo',
+      coordinates: { latitude: 50, longitude: 14 },
+      placeName: 'Prague',
+      fetchedAt: '2026-08-01T12:00:00Z',
+      current: {
+        timestamp: '2026-08-01T12:00:00Z',
+        pollen: current.pollen,
+        regulatedPollutants: current.regulatedPollutants,
+        pollutantAqi: current.pollutantAqi,
+        aqiLabel: current.aqiLabel,
+        atmosphericIrritants: current.atmosphericIrritants,
+        weather: current.weather,
+        moldPotential: current.moldPotential,
+        uvIndex: current.uvIndex,
+      },
+      hourly,
+      forecastDays: [
+        {
+          date: '2026-08-01',
+          label: 'Today',
+          score: calculateEnvironmentalScore(current),
+        },
+        {
+          date: '2026-08-02',
+          label: 'Tomorrow',
+          score: calculateEnvironmentalScore(hourly[2]!),
+        },
+      ],
+      metadata: {
+        timezone: 'UTC',
+        airQualityFetchedAt: '2026-08-01T12:00:00Z',
+        weatherFetchedAt: '2026-08-01T12:00:00Z',
+        airQualitySource: 'fresh',
+        weatherSource: 'fresh',
+        partial: false,
+      },
+    };
+    const testProfile = profile();
+    const derived = deriveEnvironmentState(environment, testProfile, 2);
+
+    expect(derived.personalizedForecastDays[0]?.score?.score).toBe(
+      calculatePersonalizedScore(current, testProfile).score,
+    );
+    expect(derived.personalizedForecastDays[0]?.score?.score).toBeLessThan(
+      derived.personalizedForecastDays[1]?.score?.score ?? 0,
+    );
   });
 });

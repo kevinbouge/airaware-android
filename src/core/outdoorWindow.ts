@@ -18,6 +18,8 @@ interface HourlyPersonalizedRisk {
   partial: boolean;
 }
 
+type OutdoorWindowDurationHours = 1 | 2 | 3;
+
 export interface PersonalizedForecast {
   hours: HourlyPersonalizedRisk[];
   peak: HourlyPersonalizedRisk | null;
@@ -143,7 +145,7 @@ function addOneHourPreservingTimestampStyle(timestamp: string | undefined): stri
 export function calculatePersonalizedForecast(
   hourly: HourlyEnvironmentalReading[],
   profile: PersonalAllergyProfile,
-  durationHours: 1 | 2 | 3,
+  durationHours: OutdoorWindowDurationHours,
   now = new Date(),
 ): PersonalizedForecast {
   if (!profile.enabled) {
@@ -179,7 +181,7 @@ export function calculatePersonalizedForecast(
 
 export function calculateEnvironmentalOutdoorWindow(
   hourly: HourlyEnvironmentalReading[],
-  durationHours: 1 | 2 | 3,
+  durationHours: OutdoorWindowDurationHours,
   now = new Date(),
 ): OutdoorWindow {
   const hours = next24Hours(hourly, now).map((hour) => ({
@@ -192,7 +194,7 @@ export function calculateEnvironmentalOutdoorWindow(
 
 export function calculateEnvironmentalForecast(
   hourly: HourlyEnvironmentalReading[],
-  durationHours: 1 | 2 | 3,
+  durationHours: OutdoorWindowDurationHours,
   now = new Date(),
 ): EnvironmentalForecast {
   const hours = next24Hours(hourly, now).map((hour) => ({
@@ -218,7 +220,7 @@ export function calculateEnvironmentalForecast(
 
 function selectBestOutdoorWindow(
   hours: HourlyPersonalizedRisk[],
-  durationHours: 1 | 2 | 3,
+  durationHours: OutdoorWindowDurationHours,
 ): OutdoorWindow {
   let best: {
     startIndex: number;
@@ -284,7 +286,7 @@ function selectBestOutdoorWindow(
 
 function selectBestEnvironmentalOutdoorWindow(
   hours: HourlyEnvironmentalRisk[],
-  durationHours: 1 | 2 | 3,
+  durationHours: OutdoorWindowDurationHours,
 ): OutdoorWindow {
   let best: {
     startIndex: number;

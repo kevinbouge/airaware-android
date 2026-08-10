@@ -1,4 +1,5 @@
 import { ScrollView, StyleSheet } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { CurrentReadingsSections } from '../components/CurrentReadingsSections';
 import {
   NearbyVegetationSection,
@@ -8,8 +9,18 @@ import { StateView } from '../components/StateView';
 import { useCapabilities } from '../hooks/useCapabilities';
 import { useAppStore } from '../state/useAppStore';
 import { colors, spacing } from '../theme/theme';
+import type { EnvironmentalVariableId } from '../capabilities/types';
+import type { RootStackParamList } from '../navigation/AppNavigator';
+
+interface DataNavigation {
+  navigate: <RouteName extends keyof RootStackParamList>(
+    routeName: RouteName,
+    params: RootStackParamList[RouteName],
+  ) => void;
+}
 
 export function DataScreen() {
+  const navigation = useNavigation<DataNavigation>();
   const environment = useAppStore((state) => state.environment);
   const vegetation = useAppStore((state) => state.vegetation);
   const vegetationStale = useAppStore((state) => state.vegetationStale);
@@ -21,6 +32,9 @@ export function DataScreen() {
 
   const toggleSection = (sectionId: string) => {
     void toggleCollapsedSection(sectionId);
+  };
+  const openVariable = (variableId: EnvironmentalVariableId) => {
+    navigation.navigate('DataDetail', { variableId });
   };
 
   if (!environment) {
@@ -34,6 +48,7 @@ export function DataScreen() {
         collapsedSections={settings.collapsedSections}
         current={environment.current}
         onToggleSection={toggleSection}
+        onOpenVariable={openVariable}
         beforeAdvancedSections={
           <NearbyVegetationSection
             vegetation={vegetation}

@@ -80,10 +80,13 @@ function patchMainApplication(projectRoot, packageName) {
   }
 
   if (!contents.includes('AirAwareWidgetPackage()')) {
-    contents = contents.replace(
-      /(\s+)return packages/,
-      '$1packages.add(AirAwareWidgetPackage())\n$1return packages',
-    );
+    const lines = contents.split('\n');
+    const returnIndex = lines.findIndex((line) => line.trim() === 'return packages');
+    if (returnIndex >= 0) {
+      const indent = lines[returnIndex].match(/^\s*/)?.[0] ?? '';
+      lines.splice(returnIndex, 0, `${indent}packages.add(AirAwareWidgetPackage())`);
+      contents = lines.join('\n');
+    }
   }
 
   fs.writeFileSync(mainApplicationPath, contents);

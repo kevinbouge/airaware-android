@@ -67,9 +67,25 @@ function calculatePersonalizedForecastDays(
   environment: NormalizedEnvironment,
   profile: PersonalAllergyProfile,
 ): PersonalizedForecastDay[] {
+  const currentDate = environment.current.timestamp?.slice(0, 10) ?? null;
+  const currentTime = environment.current.timestamp
+    ? Date.parse(environment.current.timestamp)
+    : null;
+
   return environment.forecastDays.map((day) => {
     const peak = environment.hourly
-      .filter((hour) => hour.timestamp.slice(0, 10) === day.date)
+      .filter((hour) => {
+        if (hour.timestamp.slice(0, 10) !== day.date) return false;
+        const hourTime = Date.parse(hour.timestamp);
+        return !(
+          currentDate &&
+          day.date === currentDate &&
+          currentTime !== null &&
+          Number.isFinite(currentTime) &&
+          Number.isFinite(hourTime) &&
+          hourTime < currentTime
+        );
+      })
       .map((hour) => calculatePersonalizedScore(toCurrentReading(hour), profile))
       .filter((score) => score.available)
       .sort((left, right) => (right.score ?? 0) - (left.score ?? 0))[0];

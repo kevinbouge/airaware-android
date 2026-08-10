@@ -1,10 +1,11 @@
 import { buildRiskTimelineRows, type TimelineScorePoint } from '../src/core/riskTimeline';
 
 function point(index: number, score: number | null): TimelineScorePoint {
+  const category = score === null || score > 70 ? 'high' : 'low';
   return {
     timestamp: new Date(Date.UTC(2026, 7, 1, index, 0, 0)).toISOString(),
     score,
-    category: score === null ? 'unavailable' : score > 70 ? 'high' : 'low',
+    category: score === null ? 'unavailable' : category,
   };
 }
 

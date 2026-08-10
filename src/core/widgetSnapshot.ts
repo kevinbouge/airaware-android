@@ -22,15 +22,18 @@ import { isFiniteNumber } from '../utils/number';
 
 const ADVANCED_WIDGET_FORECAST_DISPLAY_DAYS = 4;
 
+type SelectedWidgetHeadlineScore = {
+  type: WidgetScoreSnapshot['type'];
+  label: WidgetScoreSnapshot['label'];
+  score: EnvironmentalScoreResult | PersonalizedScoreResult | null;
+};
+type WidgetScoreResult = EnvironmentalScoreResult | PersonalizedScoreResult;
+
 function selectedHeadlineScore(input: {
   settings: AppSettings;
   environmentalScore: EnvironmentalScoreResult | null;
   personalizedScore: PersonalizedScoreResult;
-}): {
-  type: WidgetScoreSnapshot['type'];
-  label: WidgetScoreSnapshot['label'];
-  score: EnvironmentalScoreResult | PersonalizedScoreResult | null;
-} {
+}): SelectedWidgetHeadlineScore {
   if (input.settings.headlineScore === 'personalized' && input.personalizedScore.available) {
     return {
       type: 'personalized',
@@ -44,6 +47,24 @@ function selectedHeadlineScore(input: {
     label: 'Environmental burden',
     score: input.environmentalScore,
   };
+}
+
+function forecastScoreForDay(input: {
+  day: NormalizedEnvironment['forecastDays'][number];
+  currentDate: string | null;
+  headlineScoreResult: WidgetScoreResult | null;
+  headlineType: WidgetScoreSnapshot['type'];
+  personalizedByDate: Map<string, PersonalizedScoreResult | null>;
+}): WidgetScoreResult | null | undefined {
+  if (input.day.date === input.currentDate && input.headlineScoreResult) {
+    return input.headlineScoreResult;
+  }
+
+  if (input.headlineType === 'personalized') {
+    return input.personalizedByDate.get(input.day.date);
+  }
+
+  return input.day.score;
 }
 
 function scoreSnapshot(
@@ -101,12 +122,13 @@ function forecastDaySnapshots(input: {
 
   return forecastDaysForCapabilities(input.environment.forecastDays, input.capabilities).flatMap(
     (day) => {
-      const score =
-        day.date === currentDate && input.headlineScoreResult
-          ? input.headlineScoreResult
-          : input.headlineType === 'personalized'
-            ? personalizedByDate.get(day.date)
-            : day.score;
+      const score = forecastScoreForDay({
+        day,
+        currentDate,
+        headlineScoreResult: input.headlineScoreResult,
+        headlineType: input.headlineType,
+        personalizedByDate,
+      });
 
       if (!score?.available || !isFiniteNumber(score.score) || score.category === 'unavailable') {
         return [];

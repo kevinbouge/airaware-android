@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   loadEnvironmentCache,
   loadBillingEntitlementCache,
+  loadDataDetailCache,
   loadProfile,
   loadRiskNotificationTransitionState,
   loadSettings,
@@ -353,6 +354,68 @@ describe('settings storage', () => {
     );
 
     await expect(loadWidgetSnapshot()).resolves.toBeNull();
+  });
+
+  it('persists and rejects invalid data detail timeline caches', async () => {
+    await AsyncStorage.setItem(
+      'airaware.data-detail-cache.v1:50.08,14.44:pm25:24h:2026-08-10',
+      JSON.stringify({
+        version: 1,
+        savedAt: '2026-08-10T12:00:00Z',
+        cacheKey: '50.08,14.44:pm25:24h:2026-08-10',
+        data: {
+          variableId: 'pm25',
+          rangeId: '24h',
+          generatedAt: '2026-08-10T12:00:00Z',
+          coordinates: { latitude: 50.0755, longitude: 14.4378 },
+          timezone: 'Europe/Prague',
+          granularity: 'hourly',
+          historyAvailable: true,
+          forecastAvailable: true,
+          partial: false,
+          now: '2026-08-10T12:00:00Z',
+          nowOffsetRatio: 0.5,
+          points: [
+            {
+              id: 'history:2026-08-10T11:00:00Z',
+              startTime: '2026-08-10T11:00:00Z',
+              endTime: '2026-08-10T12:00:00Z',
+              label: '2026-08-10 11:00',
+              value: 8,
+              source: 'history',
+            },
+          ],
+          domain: { min: 0, max: 8 },
+          summary: {
+            current: null,
+            minimum: 8,
+            maximum: 8,
+            average: 8,
+          },
+          error: null,
+        },
+      }),
+    );
+
+    await expect(loadDataDetailCache('50.08,14.44:pm25:24h:2026-08-10')).resolves.toMatchObject({
+      data: { variableId: 'pm25', forecastTruncated: false, points: [{ value: 8 }] },
+    });
+
+    await AsyncStorage.setItem(
+      'airaware.data-detail-cache.v1:bad',
+      JSON.stringify({
+        version: 1,
+        savedAt: '2026-08-10T12:00:00Z',
+        cacheKey: 'bad',
+        data: {
+          variableId: 'pm25',
+          rangeId: '24h',
+          coordinates: { latitude: '50', longitude: 14 },
+        },
+      }),
+    );
+
+    await expect(loadDataDetailCache('bad')).resolves.toBeNull();
   });
 
   it('persists only normalized billing entitlement cache metadata', async () => {

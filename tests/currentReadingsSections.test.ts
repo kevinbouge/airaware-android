@@ -3,6 +3,11 @@ import {
   NO_DATA_AVAILABLE_LABEL,
   pollenReadingRows,
 } from '../src/components/CurrentReadingsSections';
+import {
+  currentDataDetailValue,
+  dataDetailRiskCategory,
+  dataDetailVariable,
+} from '../src/core/dataVariableMetadata';
 import { calculateMoldPotential } from '../src/core/moldPotential';
 import type { CurrentEnvironmentalReadings } from '../src/models/environment';
 
@@ -50,5 +55,39 @@ describe('Current readings sections', () => {
   it('uses a clear empty state when pollen data is unavailable', () => {
     expect(pollenReadingRows(currentReading(), FREE_CAPABILITIES)).toEqual([]);
     expect(NO_DATA_AVAILABLE_LABEL).toBe('No data available');
+  });
+
+  it('resolves current detail values from the current environmental model', () => {
+    const current = currentReading({
+      pollen: {
+        alder: null,
+        birch: null,
+        grass: 42,
+        mugwort: null,
+        olive: null,
+        ragweed: null,
+      },
+    });
+    const grass = dataDetailVariable('pollen_grass');
+    const mold = dataDetailVariable('moldPotential');
+    const uv = dataDetailVariable('uvIndex');
+
+    expect(grass && currentDataDetailValue(current, grass)).toBe(42);
+    expect(mold && currentDataDetailValue(current, mold)).toBe(current.moldPotential.score);
+    expect(uv && currentDataDetailValue(current, uv)).toBe(7);
+  });
+
+  it('maps scored detail values to existing risk categories without scoring advanced data', () => {
+    const grass = dataDetailVariable('pollen_grass');
+    const pm25 = dataDetailVariable('pm25');
+    const mold = dataDetailVariable('moldPotential');
+    const uv = dataDetailVariable('uvIndex');
+    const pressure = dataDetailVariable('pressureMsl');
+
+    expect(grass && dataDetailRiskCategory(grass, 80)).toBe('high');
+    expect(pm25 && dataDetailRiskCategory(pm25, 30)).toBe('high');
+    expect(mold && dataDetailRiskCategory(mold, 82)).toBe('veryHigh');
+    expect(uv && dataDetailRiskCategory(uv, 7)).toBe('high');
+    expect(pressure && dataDetailRiskCategory(pressure, 1018)).toBeNull();
   });
 });

@@ -227,10 +227,22 @@ function buildForecastDays(
 ): ForecastDay[] {
   const grouped = new Map<string, HourlyEnvironmentalReading[]>();
   const currentDate = currentTimestamp?.slice(0, 10) ?? hourly[0]?.timestamp.slice(0, 10) ?? null;
+  const currentTime = currentTimestamp ? Date.parse(currentTimestamp) : null;
 
   for (const hour of hourly) {
     const date = hour.timestamp.slice(0, 10);
     if (!date) continue;
+    const hourTime = Date.parse(hour.timestamp);
+    if (
+      currentDate &&
+      date === currentDate &&
+      currentTime !== null &&
+      Number.isFinite(currentTime) &&
+      Number.isFinite(hourTime) &&
+      hourTime < currentTime
+    ) {
+      continue;
+    }
     grouped.set(date, [...(grouped.get(date) ?? []), hour]);
   }
 

@@ -1,6 +1,7 @@
 import type { NormalizedAirQuality } from '../src/api/openMeteoAirQuality';
 import type { NormalizedWeather } from '../src/api/openMeteoWeather';
 import { calculateMoldPotential } from '../src/core/moldPotential';
+import { calculateEnvironmentalScore } from '../src/core/scoring';
 import { assembleEnvironment } from '../src/services/environmentAssembler';
 import type { NormalizedEnvironment, WeatherContext } from '../src/models/environment';
 
@@ -82,6 +83,15 @@ function airQualityWithDailyHours(dayCount: number): NormalizedAirQuality {
       timestamp: `2026-08-0${index + 1}T12:00:00+02:00`,
     })),
     partial: false,
+  };
+}
+
+function airQualityHour(timestamp: string, grass: number): NormalizedAirQuality['hourly'][number] {
+  const base = airQuality('2026-08-01T12:00:00Z');
+  return {
+    ...base.current,
+    timestamp,
+    pollen: { ...base.current.pollen, grass },
   };
 }
 
@@ -201,6 +211,36 @@ describe('environment assembler', () => {
       '2026-08-07',
     ]);
     expect(environment.forecastDays.every((day) => day.score?.available)).toBe(true);
+  });
+
+  it('does not score past hours as part of today forecast', () => {
+    const pastHigh = airQualityHour('2026-08-01T06:00:00+02:00', 400);
+    const futureLow = airQualityHour('2026-08-01T13:00:00+02:00', 5);
+    const tomorrowHigh = airQualityHour('2026-08-02T12:00:00+02:00', 300);
+    const environment = assembleEnvironment({
+      coordinates,
+      placeName: 'Prague',
+      airQuality: {
+        ...airQuality('2026-08-01T12:00:00Z'),
+        hourly: [pastHigh, futureLow, tomorrowHigh],
+        partial: false,
+      },
+      weather: null,
+    });
+    const assembledFutureLow = environment.hourly.find(
+      (hour) => hour.timestamp === futureLow.timestamp,
+    );
+    const assembledTomorrowHigh = environment.hourly.find(
+      (hour) => hour.timestamp === tomorrowHigh.timestamp,
+    );
+
+    expect(environment.forecastDays[0]?.date).toBe('2026-08-01');
+    expect(environment.forecastDays[0]?.score?.score).toBe(
+      calculateEnvironmentalScore(assembledFutureLow!).score,
+    );
+    expect(environment.forecastDays[1]?.score?.score).toBe(
+      calculateEnvironmentalScore(assembledTomorrowHigh!).score,
+    );
   });
 
   it('preserves the cached current timestamp when both providers fall back to cache', () => {
