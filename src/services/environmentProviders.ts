@@ -1,12 +1,23 @@
 import { fetchAirQuality, type NormalizedAirQuality } from '../api/openMeteoAirQuality';
 import { fetchWeather, type NormalizedWeather } from '../api/openMeteoWeather';
 import type { AppCapabilities, ProviderId } from '../capabilities/types';
+import type { ActivityId } from '../models/activities';
 import type { Coordinates } from '../models/environment';
+
+interface EnvironmentalProviderRequestOptions {
+  enabledActivities?: readonly ActivityId[];
+}
 
 export interface EnvironmentalProviderClient {
   id: ProviderId;
-  fetchAirQuality: (coordinates: Coordinates) => Promise<NormalizedAirQuality>;
-  fetchWeather: (coordinates: Coordinates) => Promise<NormalizedWeather>;
+  fetchAirQuality: (
+    coordinates: Coordinates,
+    options?: EnvironmentalProviderRequestOptions,
+  ) => Promise<NormalizedAirQuality>;
+  fetchWeather: (
+    coordinates: Coordinates,
+    options?: EnvironmentalProviderRequestOptions,
+  ) => Promise<NormalizedWeather>;
 }
 
 const OPEN_METEO_PROVIDER: EnvironmentalProviderClient = {

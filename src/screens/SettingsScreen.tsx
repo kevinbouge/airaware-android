@@ -5,6 +5,7 @@ import { AppButton } from '../components/AppButton';
 import { LocationMapPicker } from '../components/LocationMapPicker';
 import { SectionCard } from '../components/SectionCard';
 import { googlePlayPrivacyDisclosureText } from '../core/googlePlayCompliance';
+import { ACTIVITY_DEFINITIONS } from '../core/activityDefinitions';
 import { useCapabilities } from '../hooks/useCapabilities';
 import { parseManualCoordinates } from '../services/locationService';
 import { useAppStore } from '../state/useAppStore';
@@ -77,17 +78,13 @@ export function SettingsScreen() {
   const extendedForecastFeature = featureDefinitions(capabilities).find(
     (feature) => feature.id === 'extended_forecast',
   );
-  const extendedEnvironmentalDataFeature = featureDefinitions(capabilities).find(
-    (feature) => feature.id === 'extended_environmental_data',
-  );
   const advancedWidgetFeature = featureDefinitions(capabilities).find(
     (feature) => feature.id === 'advanced_home_widget',
   );
-  const proFeatures = [
-    extendedForecastFeature,
-    extendedEnvironmentalDataFeature,
-    advancedWidgetFeature,
-  ]
+  const activitiesFeature = featureDefinitions(capabilities).find(
+    (feature) => feature.id === 'activities',
+  );
+  const proFeatures = [extendedForecastFeature, activitiesFeature, advancedWidgetFeature]
     .filter(Boolean)
     .map((feature) => feature!.displayName);
   const purchaseAvailable =
@@ -235,24 +232,6 @@ export function SettingsScreen() {
           </View>
         </SectionCard>
 
-        <SectionCard title="Forecast score">
-          <View style={styles.twoButtonRow}>
-            <OptionButton
-              label="Environmental"
-              selected={settings.forecastScore === 'environmental'}
-              grow
-              onPress={() => updateSettings({ forecastScore: 'environmental' })}
-            />
-            <OptionButton
-              label="Personalized"
-              selected={settings.forecastScore === 'personalized'}
-              disabled={!profileEnabled}
-              grow
-              onPress={() => updateSettings({ forecastScore: 'personalized' })}
-            />
-          </View>
-        </SectionCard>
-
         <SectionCard
           title="Notifications"
           subtitle="Risk transition notifications are evaluated during app refreshes."
@@ -349,6 +328,35 @@ export function SettingsScreen() {
               onPress={() => updateSettings({ summaryLocation: 'hidden' })}
             />
           </View>
+        </SectionCard>
+
+        <SectionCard
+          title="Activities"
+          subtitle="Professional environmental profiles for activity-specific windows."
+        >
+          {!capabilities.activities.available ? (
+            <Text style={styles.notice}>Activities are available with AirAware Pro.</Text>
+          ) : null}
+          {ACTIVITY_DEFINITIONS.map((activity) => {
+            const enabled = settings.enabledActivities[activity.id] === true;
+            return (
+              <AppButton
+                key={activity.id}
+                title={`${enabled ? 'Enabled' : 'Disabled'} · ${activity.label}`}
+                selected={enabled}
+                disabled={!capabilities.activities.available || loading}
+                fullWidth
+                onPress={() =>
+                  updateSettings({
+                    enabledActivities: {
+                      ...settings.enabledActivities,
+                      [activity.id]: !enabled,
+                    },
+                  })
+                }
+              />
+            );
+          })}
         </SectionCard>
 
         <SectionCard title="AirAware Pro">

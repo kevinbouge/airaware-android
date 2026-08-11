@@ -64,7 +64,7 @@ describe('Google Play policy guardrails', () => {
 
   it('includes only approved billing SDK dependencies and no ads, analytics, tracking, or account SDKs', () => {
     const dependencies = Object.keys(packageDependencies());
-    const approvedBillingDependencies = ['react-native-purchases', 'react-native-purchases-ui'];
+    const approvedBillingDependencies = ['react-native-purchases'];
     const disallowedDependencyPatterns = [
       /firebase/i,
       /analytics/i,

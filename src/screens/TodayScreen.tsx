@@ -1,19 +1,32 @@
-import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useMemo } from 'react';
+import { useNavigation } from '@react-navigation/native';
 import { AppButton } from '../components/AppButton';
 import { ScoreCard } from '../components/ScoreCard';
 import { SectionCard } from '../components/SectionCard';
 import { StateView } from '../components/StateView';
 import { GasMaskIcon } from '../components/icons/GasMaskIcon';
+import { useCapabilities } from '../hooks/useCapabilities';
 import { useDerivedEnvironment } from '../hooks/useDerivedEnvironment';
+import {
+  activityCategoryLabel,
+  evaluateActivities,
+  formatActivityScore,
+  formatActivityWindow,
+} from '../core/activityEvaluator';
 import { useAppStore } from '../state/useAppStore';
 import { colors, riskColor, spacing } from '../theme/theme';
-import {
-  formatCategoryScore,
-  formatCoordinates,
-  formatShortTime,
-  formatTimestamp,
-} from '../utils/format';
+import { formatCoordinates, formatShortTime, formatTimestamp } from '../utils/format';
 import { contributorFromScore } from '../utils/contributorLabels';
+import type { ActivitySuitabilityCategory } from '../models/activities';
+import type { RootStackParamList } from '../navigation/AppNavigator';
+
+interface TodayNavigation {
+  navigate: <RouteName extends keyof RootStackParamList>(
+    routeName: RouteName,
+    params: RootStackParamList[RouteName],
+  ) => void;
+}
 
 function formatUpdateStatus(
   fetchedAt: string | null,
@@ -39,7 +52,38 @@ function formatUpdateStatus(
   return `Cached ${cachedParts.join(', ')}`;
 }
 
+function activityColor(category: ActivitySuitabilityCategory): string {
+  switch (category) {
+    case 'excellent':
+      return colors.low;
+    case 'good':
+      return colors.primary;
+    case 'fair':
+      return colors.moderate;
+    case 'poor':
+      return colors.high;
+    case 'unsuitable':
+      return colors.veryHigh;
+    case 'insufficientData':
+      return colors.unavailable;
+  }
+}
+
+function appendAvailableWindowDetail(
+  details: string[],
+  label: string,
+  window: { available: boolean; startTime: string | null; endTime: string | null } | null,
+) {
+  if (!window?.available || !window.startTime || !window.endTime) return details;
+
+  return [
+    ...details,
+    `${label}: ${formatShortTime(window.startTime)}–${formatShortTime(window.endTime)}`,
+  ];
+}
+
 export function TodayScreen() {
+  const navigation = useNavigation<TodayNavigation>();
   const hydrated = useAppStore((state) => state.hydrated);
   const loading = useAppStore((state) => state.loading);
   const stale = useAppStore((state) => state.stale);
@@ -51,12 +95,25 @@ export function TodayScreen() {
   const refresh = useAppStore((state) => state.refresh);
   const updateSettings = useAppStore((state) => state.updateSettings);
   const shareDailySummary = useAppStore((state) => state.shareDailySummary);
+  const capabilities = useCapabilities();
   const {
     environmentalScore,
     personalizedScore,
     environmentalBestOutdoorWindow,
     personalizedBestOutdoorWindow,
   } = useDerivedEnvironment();
+  const activityEvaluations = useMemo(
+    () =>
+      environment && capabilities.activities.available
+        ? evaluateActivities({
+            coordinates: environment.coordinates,
+            now: environment.current.timestamp ?? environment.fetchedAt,
+            hourly: environment.hourly,
+            enabledActivities: settings.enabledActivities,
+          })
+        : [],
+    [capabilities.activities.available, environment, settings.enabledActivities],
+  );
 
   const startLocationRefresh = async () => {
     await updateSettings({ locationOnboardingComplete: true });
@@ -81,10 +138,16 @@ export function TodayScreen() {
     stale,
     environment?.metadata ?? null,
   );
-  const bestOutdoorWindow =
-    settings.forecastScore === 'personalized' && personalizedBestOutdoorWindow
-      ? personalizedBestOutdoorWindow
-      : environmentalBestOutdoorWindow;
+  const environmentalDetails = appendAvailableWindowDetail(
+    [`Main factor: ${environmentalMainFactor.label ?? 'Unavailable'}`],
+    'Best window',
+    environmentalBestOutdoorWindow,
+  );
+  const personalizedDetails = appendAvailableWindowDetail(
+    [`Main factor: ${personalizedMainFactor.label ?? 'Unavailable'}`],
+    'Best window',
+    personalizedBestOutdoorWindow,
+  );
 
   return (
     <ScrollView
@@ -105,12 +168,13 @@ export function TodayScreen() {
 
       {error ? <Text style={styles.notice}>{error}</Text> : null}
 
-      {environmentalScore ? (
+      {environmentalScore?.available ? (
         <ScoreCard
           title="Environmental burden"
           score={environmentalScore.score}
           category={environmentalScore.category}
-          details={[`Main factor: ${environmentalMainFactor.label ?? 'Unavailable'}`]}
+          details={environmentalDetails}
+          onPress={() => navigation.navigate('EnvironmentalBurdenDetail', undefined)}
         />
       ) : null}
 
@@ -119,27 +183,39 @@ export function TodayScreen() {
           title="Personalized risk"
           score={personalizedScore.score}
           category={personalizedScore.category}
-          details={[`Main factor: ${personalizedMainFactor.label ?? 'Unavailable'}`]}
+          details={personalizedDetails}
+          onPress={() => navigation.navigate('PersonalizedRiskDetail', undefined)}
         />
       ) : null}
 
       {environment ? (
         <>
-          {bestOutdoorWindow?.available ? (
-            <SectionCard title="Best outdoor window">
-              <Text style={styles.windowValue}>
-                {formatShortTime(bestOutdoorWindow.startTime)}–
-                {formatShortTime(bestOutdoorWindow.endTime)}
-              </Text>
-              <Text
-                style={[
-                  styles.body,
-                  styles.windowScore,
-                  { color: riskColor(bestOutdoorWindow.category) },
-                ]}
-              >
-                {formatCategoryScore(bestOutdoorWindow.category, bestOutdoorWindow.averageScore)}
-              </Text>
+          {activityEvaluations.length > 0 ? (
+            <SectionCard title="Activities">
+              {activityEvaluations.map((activity) => (
+                <Pressable
+                  key={activity.id}
+                  accessibilityRole="button"
+                  onPress={() => navigation.navigate('ActivityDetail', { activityId: activity.id })}
+                  style={({ pressed }) => [styles.activityCard, pressed && styles.pressed]}
+                >
+                  <Text style={styles.activityTitle}>{activity.label}</Text>
+                  <Text
+                    style={[
+                      styles.activityScore,
+                      { color: activityColor(activity.current?.category ?? 'insufficientData') },
+                    ]}
+                  >
+                    {formatActivityScore(activity)}
+                  </Text>
+                  <Text style={styles.activityWindow}>
+                    Best window: {formatActivityWindow(activity.bestWindow)}
+                  </Text>
+                  {!activity.available ? (
+                    <Text style={styles.notice}>{activityCategoryLabel('insufficientData')}</Text>
+                  ) : null}
+                </Pressable>
+              ))}
             </SectionCard>
           ) : null}
 
@@ -178,6 +254,26 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginTop: spacing.sm,
   },
+  activityCard: {
+    borderRadius: 8,
+    paddingVertical: spacing.sm,
+  },
+  activityScore: {
+    fontSize: 18,
+    fontWeight: '800',
+    marginTop: spacing.xs,
+  },
+  activityTitle: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  activityWindow: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: spacing.xs,
+  },
   body: {
     color: colors.text,
     lineHeight: 20,
@@ -205,14 +301,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     padding: spacing.md,
   },
-  windowValue: {
-    color: colors.text,
-    fontSize: 24,
-    fontWeight: '800',
-  },
-  windowScore: {
-    fontWeight: '800',
-  },
   place: {
     color: colors.muted,
     fontSize: 16,
@@ -220,6 +308,9 @@ const styles = StyleSheet.create({
   },
   screen: {
     backgroundColor: colors.background,
+  },
+  pressed: {
+    opacity: 0.82,
   },
   shareMessage: {
     color: colors.muted,

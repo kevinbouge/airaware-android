@@ -11,6 +11,9 @@ import { loadBillingEntitlementCache, saveBillingEntitlementCache } from '../sto
 
 const REVENUECAT_PRO_ENTITLEMENT_ID = 'pro';
 const REVENUECAT_LIFETIME_PACKAGE_ID = 'lifetime';
+const PURCHASE_CANCELLED_ERROR_CODE = '1';
+const NETWORK_ERROR_CODES = new Set(['10', '35']);
+const PAYMENT_PENDING_ERROR_CODE = '20';
 
 type CustomerInfoLike = {
   entitlements?: {
@@ -41,6 +44,7 @@ type OfferingsLike = {
 type PurchasesClientLike = {
   configure: (config: { apiKey: string }) => void;
   setLogLevel?: (level: unknown) => void;
+  setLogHandler?: (handler: (logLevel: unknown, message: string) => void) => void;
   getCustomerInfo: () => Promise<CustomerInfoLike>;
   getOfferings: () => Promise<OfferingsLike>;
   purchasePackage: (
@@ -147,19 +151,62 @@ function isCancelledPurchase(error: unknown): boolean {
     error !== null &&
     typeof error === 'object' &&
     ((error as Record<string, unknown>).userCancelled === true ||
-      (error as Record<string, unknown>).code === 'PURCHASE_CANCELLED')
+      (error as Record<string, unknown>).code === PURCHASE_CANCELLED_ERROR_CODE ||
+      (error as Record<string, unknown>).code === 'PURCHASE_CANCELLED_ERROR')
+  );
+}
+
+function isPendingPurchase(error: unknown): boolean {
+  return (
+    error !== null &&
+    typeof error === 'object' &&
+    (error as Record<string, unknown>).code === PAYMENT_PENDING_ERROR_CODE
   );
 }
 
 function userSafeError(error: unknown): 'offline' | 'error' {
   if (error !== null && typeof error === 'object') {
     const code = (error as Record<string, unknown>).code;
-    if (typeof code === 'string' && code.toLowerCase().includes('network')) {
+    if (
+      typeof code === 'string' &&
+      (NETWORK_ERROR_CODES.has(code) || code.toLowerCase().includes('network'))
+    ) {
       return 'offline';
     }
   }
 
   return 'error';
+}
+
+function isKnownPaywallUiConfigLog(message: string): boolean {
+  return (
+    message.includes('Failed to ready ui_config before getOfferings') &&
+    message.includes('proceeding without it')
+  );
+}
+
+function installRevenueCatLogHandler(purchases: PurchasesClientLike, isDevelopment: boolean): void {
+  purchases.setLogHandler?.((logLevel, message) => {
+    const text = typeof message === 'string' ? message : String(message);
+
+    if (isKnownPaywallUiConfigLog(text)) {
+      return;
+    }
+
+    if (!isDevelopment) {
+      return;
+    }
+
+    const formatted = `[RevenueCat] ${text}`;
+    switch (String(logLevel)) {
+      case 'ERROR':
+      case 'WARN':
+        console.warn(formatted);
+        break;
+      default:
+        break;
+    }
+  });
 }
 
 export function createBillingGateway(
@@ -213,16 +260,18 @@ export function createBillingGateway(
     const cache = await loadBillingEntitlementCache();
     if (!cache) return state;
 
-    const entitlement = entitlementForBuild({
+    const cachedEntitlement = entitlementForBuild({
       storedEntitlement: cache.entitlement,
       isProduction: !isDevelopment,
     });
+    const cachedPro = cachedEntitlement.kind === 'pro_lifetime';
+
     state = {
       ...state,
-      entitlement,
-      entitlementStatus: entitlement.kind === 'pro_lifetime' ? 'cached_pro' : 'free',
+      entitlement: FREE_ENTITLEMENT,
+      entitlementStatus: cachedPro ? 'cached_pro' : 'free',
       entitlementSource: 'cached_revenuecat',
-      proActive: entitlement.kind === 'pro_lifetime',
+      proActive: false,
       lastSuccessfulEntitlementRefreshAt: cache.verifiedAt,
     };
     notify();
@@ -274,6 +323,8 @@ export function createBillingGateway(
         if (!purchases) {
           throw new Error('RevenueCat Purchases module is unavailable.');
         }
+
+        installRevenueCatLogHandler(purchases, isDevelopment);
 
         if (isDevelopment && module.LOG_LEVEL?.VERBOSE !== undefined) {
           purchases.setLogLevel?.(module.LOG_LEVEL.VERBOSE);
@@ -415,6 +466,19 @@ export function createBillingGateway(
           return { billingState: state, message: null, cancelled: true };
         }
 
+        if (isPendingPurchase(error)) {
+          state = {
+            ...state,
+            error: 'AirAware Pro purchase is pending confirmation.',
+          };
+          notify();
+          return {
+            billingState: state,
+            message: 'AirAware Pro purchase is pending confirmation.',
+            pending: true,
+          };
+        }
+
         console.warn('AirAware: RevenueCat purchase failed', error);
         state = {
           ...state,
@@ -488,6 +552,16 @@ export function createBillingGateway(
         return await setFreshCustomerInfo(await purchases.getCustomerInfo());
       } catch (error) {
         console.warn('AirAware: RevenueCat entitlement refresh failed', error);
+        if (state.entitlementSource === 'revenuecat') {
+          state = {
+            ...state,
+            billingStatus: userSafeError(error),
+            error: 'AirAware Pro entitlement refresh is currently unavailable.',
+          };
+          notify();
+          return state;
+        }
+
         await setCachedEntitlement();
         return state;
       }

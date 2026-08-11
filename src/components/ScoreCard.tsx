@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { RiskCategoryId } from '../models/environment';
 import { categoryLabel } from '../core/categories';
 import { colors, riskColor, spacing } from '../theme/theme';
@@ -10,12 +10,19 @@ interface ScoreCardProps {
   category: RiskCategoryId;
   subtitle?: string;
   details?: string[];
+  onPress?: (() => void) | undefined;
 }
 
-export function ScoreCard({ title, score, category, subtitle, details = [] }: ScoreCardProps) {
+export function ScoreCard({
+  title,
+  score,
+  category,
+  subtitle,
+  details = [],
+  onPress,
+}: ScoreCardProps) {
   const accent = riskColor(category);
-
-  return (
+  const content = (
     <View style={[styles.card, { borderLeftColor: accent }]}>
       <Text style={styles.title}>{title}</Text>
       <View style={styles.scoreRow}>
@@ -29,6 +36,19 @@ export function ScoreCard({ title, score, category, subtitle, details = [] }: Sc
         </Text>
       ))}
     </View>
+  );
+
+  if (!onPress) return content;
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${title}: ${formatScore(score)}, ${categoryLabel(category)}`}
+      onPress={onPress}
+      style={({ pressed }) => pressed && styles.pressed}
+    >
+      {content}
+    </Pressable>
   );
 }
 
@@ -51,6 +71,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     marginTop: spacing.xs,
+  },
+  pressed: {
+    opacity: 0.82,
   },
   score: {
     fontSize: 34,

@@ -59,14 +59,16 @@ export function featureDefinitions(capabilities: AppCapabilities): FeatureDefini
       description: 'Plan up to seven days with environmental and personalized forecast summaries.',
     },
     {
-      id: 'extended_environmental_data',
-      displayName: 'Advanced Environmental Data',
-      category: 'environmentalVariables',
-      available: capabilities.environmentalVariables.availableGroups.includes('extended'),
+      id: 'activities',
+      displayName: 'Professional Activities',
+      category: 'activities',
+      available: capabilities.activities.available,
       requiredEntitlement: 'pro_lifetime',
-      freeBehavior: 'Standard Environmental Data',
-      proBehavior: 'Additional atmospheric and weather measurements',
-      description: 'Informational measurements for advanced users. These do not affect scores.',
+      freeBehavior: 'Activity catalog visible but locked',
+      proBehavior:
+        'Activity profiles for photography, astronomy, farming, drone flying, outdoor sports, and outdoor work',
+      description:
+        'Professional activity-specific environmental intelligence using relevant forecast variables.',
     },
     {
       id: 'nearby_vegetation',
@@ -149,7 +151,7 @@ export function isFeatureAvailable(capabilities: AppCapabilities, featureId: Fea
 }
 
 export function featureStatusMessage(feature: FeatureDefinition): string {
-  if (feature.id === 'extended_environmental_data') {
+  if (feature.id === 'activities') {
     if (feature.available) {
       return `AirAware Pro active. ${feature.displayName} enabled.`;
     }

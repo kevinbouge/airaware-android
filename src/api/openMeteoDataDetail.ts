@@ -95,7 +95,13 @@ function arrayValue(
   if (!Array.isArray(values)) return null;
   const raw = values[index];
 
-  if (key === 'temperature_2m' || key === 'dew_point_2m' || key === 'wet_bulb_temperature_2m') {
+  if (
+    key === 'temperature_2m' ||
+    key === 'apparent_temperature' ||
+    key === 'dew_point_2m' ||
+    key === 'wet_bulb_temperature_2m' ||
+    key === 'soil_temperature_0cm'
+  ) {
     return isFiniteNumber(raw) ? raw : null;
   }
 

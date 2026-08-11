@@ -7,10 +7,7 @@ import { FREE_CAPABILITIES, PRO_LIFETIME_CAPABILITIES } from '../src/capabilitie
 import { DEFAULT_SETTINGS } from '../src/models/profile';
 import type { NormalizedEnvironment } from '../src/models/environment';
 
-function environmentWithForecastDays(
-  dayCount: number,
-  hasExtendedData = true,
-): NormalizedEnvironment {
+function environmentWithForecastDays(dayCount: number): NormalizedEnvironment {
   return {
     forecastDays: Array.from({ length: dayCount }, (_, index) => ({
       date: `2026-08-0${index + 1}`,
@@ -20,7 +17,7 @@ function environmentWithForecastDays(
     current: {
       extended: {
         airQuality: {
-          carbonDioxide: hasExtendedData ? 418 : null,
+          carbonDioxide: null,
           ammonia: null,
           methane: null,
           nitrogenMonoxide: null,
@@ -92,25 +89,13 @@ describe('app lifecycle refresh policy', () => {
     ).toBe(false);
   });
 
-  it('refreshes a Pro cache that predates extended current readings', () => {
+  it('does not refresh a Pro cache solely because generic extended readings are absent', () => {
     expect(
       shouldRefreshAfterHydration({
         hydrated: true,
-        environment: environmentWithForecastDays(7, false),
+        environment: environmentWithForecastDays(7),
         locationOnboardingComplete: true,
         capabilities: PRO_LIFETIME_CAPABILITIES,
-      }),
-    ).toBe(true);
-  });
-
-  it('does not repeatedly refresh a Pro cache when extended values remain unavailable', () => {
-    expect(
-      shouldRefreshAfterHydration({
-        hydrated: true,
-        environment: environmentWithForecastDays(7, false),
-        locationOnboardingComplete: true,
-        capabilities: PRO_LIFETIME_CAPABILITIES,
-        extendedRefreshAttempted: true,
       }),
     ).toBe(false);
   });
@@ -119,7 +104,7 @@ describe('app lifecycle refresh policy', () => {
     expect(
       shouldRefreshAfterHydration({
         hydrated: true,
-        environment: environmentWithForecastDays(3, false),
+        environment: environmentWithForecastDays(3),
         locationOnboardingComplete: true,
         capabilities: FREE_CAPABILITIES,
       }),

@@ -1,5 +1,6 @@
 import type { AppCapabilities } from './types';
 import type { EntitlementState } from './entitlements';
+import { ACTIVITY_IDS } from '../core/activityDefinitions';
 
 export const FORECAST_DAY_LIMITS = {
   free: 3,
@@ -15,6 +16,10 @@ const BASE_CAPABILITIES = {
   },
   environmentalVariables: {
     availableGroups: ['standard'],
+  },
+  activities: {
+    available: false,
+    availableActivities: [],
   },
   notifications: {
     availableGroups: ['basic_transition_notifications'],
@@ -49,8 +54,9 @@ export const PRO_LIFETIME_CAPABILITIES: AppCapabilities = {
     maxDays: FORECAST_DAY_LIMITS.proLifetime,
     defaultDays: FORECAST_DAY_LIMITS.proLifetime,
   },
-  environmentalVariables: {
-    availableGroups: ['standard', 'extended'],
+  activities: {
+    available: true,
+    availableActivities: ACTIVITY_IDS,
   },
   notifications: {
     availableGroups: ['basic_transition_notifications', 'advanced_environment_notifications'],

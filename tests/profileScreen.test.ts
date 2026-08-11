@@ -11,7 +11,7 @@ describe('Profile screen factor sections', () => {
   it('shows profile factors in meaningful sections', () => {
     const sections = profileFactorSections(PRO_LIFETIME_CAPABILITIES);
 
-    expect(sections.extendedAvailable).toBe(true);
+    expect(sections.extendedAvailable).toBe(false);
     expect(sections.regulatedPollution).toEqual([
       ['pm25', 'PM2.5'],
       ['pm10', 'PM10'],

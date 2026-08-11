@@ -36,6 +36,8 @@ const EMPTY_EXTENDED_AIR_QUALITY: ExtendedAirQualityReadings = {
 };
 
 const EMPTY_EXTENDED_WEATHER: ExtendedWeatherReadings = {
+  apparentTemperature: null,
+  precipitationProbability: null,
   pressureMsl: null,
   surfacePressure: null,
   visibility: null,
@@ -51,6 +53,10 @@ const EMPTY_EXTENDED_WEATHER: ExtendedWeatherReadings = {
   diffuseRadiation: null,
   sunshineDuration: null,
   cape: null,
+  soilMoisture0To1cm: null,
+  soilTemperature0cm: null,
+  et0FaoEvapotranspiration: null,
+  vapourPressureDeficit: null,
 };
 
 const EMPTY_EXTENDED: ExtendedEnvironmentalReadings = {

@@ -74,6 +74,7 @@ import {
 } from '../services/notificationService';
 import { settingsForProfileState } from './settingsPolicy';
 import { shouldRefreshAfterLocationSettingsChange } from './appLifecycle';
+import { enabledActivityIds } from '../core/activityDefinitions';
 
 interface AppStore {
   hydrated: boolean;
@@ -269,6 +270,20 @@ function enqueueProfileSave(profile: PersonalAllergyProfile): Promise<void> {
   return profileSaveQueue;
 }
 
+function enabledProviderActivities(settings: AppSettings, entitlement: EntitlementState) {
+  const capabilities = capabilitiesForEntitlement(entitlement);
+  if (!capabilities.activities.available) return [];
+
+  const allowed = new Set(capabilities.activities.availableActivities);
+  return enabledActivityIds(settings.enabledActivities).filter((activityId) =>
+    allowed.has(activityId),
+  );
+}
+
+function entitlementChanged(previous: EntitlementState, next: EntitlementState): boolean {
+  return previous.kind !== next.kind;
+}
+
 export const useAppStore = create<AppStore>((set, get) => ({
   hydrated: false,
   loading: false,
@@ -407,10 +422,13 @@ export const useAppStore = create<AppStore>((set, get) => ({
       const cachedForLocation = cacheForCoordinates(cached, location.coordinates);
       const capabilities = capabilitiesForEntitlement(get().entitlement);
       const provider = activeEnvironmentalProvider(capabilities);
+      const providerOptions = {
+        enabledActivities: enabledProviderActivities(settings, get().entitlement),
+      };
 
       const [airResult, weatherResult] = await Promise.allSettled([
-        provider.fetchAirQuality(location.coordinates),
-        provider.fetchWeather(location.coordinates),
+        provider.fetchAirQuality(location.coordinates, providerOptions),
+        provider.fetchWeather(location.coordinates, providerOptions),
       ]);
       const airQuality = airResult.status === 'fulfilled' ? airResult.value : null;
       const weather = weatherResult.status === 'fulfilled' ? weatherResult.value : null;
@@ -588,6 +606,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
         if (settingsPatch.nearbyVegetationRadiusMeters !== undefined) {
           void get().refreshVegetation(true);
         }
+        if (settingsPatch.enabledActivities !== undefined) {
+          void get().refresh();
+        }
         if (
           shouldRefreshAfterLocationSettingsChange({
             previousSettings: currentSettings,
@@ -745,6 +766,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   purchaseProLifetime: async () => {
+    const previousEntitlement = get().entitlement;
     const result = await billingGateway.purchaseProLifetime();
     const effective = effectiveBillingState(
       result.billingState,
@@ -762,9 +784,13 @@ export const useAppStore = create<AppStore>((set, get) => ({
       entitlement: effective.entitlement,
       stale: get().stale,
     });
+    if (entitlementChanged(previousEntitlement, effective.entitlement)) {
+      void get().refresh();
+    }
   },
 
   restorePurchases: async () => {
+    const previousEntitlement = get().entitlement;
     const result = await billingGateway.restorePurchases();
     const effective = effectiveBillingState(
       result.billingState,
@@ -782,9 +808,13 @@ export const useAppStore = create<AppStore>((set, get) => ({
       entitlement: effective.entitlement,
       stale: get().stale,
     });
+    if (entitlementChanged(previousEntitlement, effective.entitlement)) {
+      void get().refresh();
+    }
   },
 
   refreshBilling: async () => {
+    const previousEntitlement = get().entitlement;
     const rawBillingState = await billingGateway.refreshEntitlement();
     const effective = effectiveBillingState(rawBillingState, get().developmentEntitlementOverride);
     set({
@@ -799,10 +829,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
       entitlement: effective.entitlement,
       stale: get().stale,
     });
+    if (entitlementChanged(previousEntitlement, effective.entitlement)) {
+      void get().refresh();
+    }
   },
 
   setDevelopmentEntitlement: async (kind) => {
     if (!__DEV__) return;
+    const previousEntitlement = get().entitlement;
 
     let developmentOverride = null;
     if (kind === 'pro_lifetime') {
@@ -832,6 +866,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
       entitlement,
       stale: get().stale,
     });
+    if (entitlementChanged(previousEntitlement, entitlement)) {
+      void get().refresh();
+    }
   },
 
   refreshVegetation: async (force = false) => {

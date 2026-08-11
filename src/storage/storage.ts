@@ -35,6 +35,8 @@ import {
   type ProfileFactorId,
 } from '../models/profile';
 import { isFiniteNumber } from '../utils/number';
+import { ACTIVITY_IDS, DEFAULT_ACTIVITY_SETTINGS } from '../core/activityDefinitions';
+import type { ActivitySettings } from '../models/activities';
 
 const SETTINGS_KEY = 'airaware.settings.v1';
 const PROFILE_KEY = 'airaware.profile.v1';
@@ -110,6 +112,16 @@ function validRiskTransitionThreshold(
   return value === 'highAndVeryHigh' || value === 'veryHighOnly'
     ? value
     : DEFAULT_SETTINGS.riskTransitionNotificationThreshold;
+}
+
+function knownActivities(value: unknown): ActivitySettings {
+  const activities = booleanRecord(value);
+  return Object.fromEntries(
+    ACTIVITY_IDS.map((activityId) => [
+      activityId,
+      activities[activityId] ?? DEFAULT_ACTIVITY_SETTINGS[activityId],
+    ]),
+  ) as ActivitySettings;
 }
 
 function stringOrDefault(value: unknown, fallback: string): string {
@@ -327,6 +339,8 @@ const EMPTY_EXTENDED_AIR_QUALITY: ExtendedAirQualityReadings = {
 };
 
 const EMPTY_EXTENDED_WEATHER: ExtendedWeatherReadings = {
+  apparentTemperature: null,
+  precipitationProbability: null,
   pressureMsl: null,
   surfacePressure: null,
   visibility: null,
@@ -342,6 +356,10 @@ const EMPTY_EXTENDED_WEATHER: ExtendedWeatherReadings = {
   diffuseRadiation: null,
   sunshineDuration: null,
   cape: null,
+  soilMoisture0To1cm: null,
+  soilTemperature0cm: null,
+  et0FaoEvapotranspiration: null,
+  vapourPressureDeficit: null,
 };
 
 function normalizeExtendedReadings(value: unknown): ExtendedEnvironmentalReadings {
@@ -415,13 +433,13 @@ export async function loadSettings(): Promise<AppSettings> {
     nearbyVegetationRadiusMeters: validVegetationRadius(object?.nearbyVegetationRadiusMeters),
     outdoorWindowDurationHours: validOutdoorWindowDuration(object?.outdoorWindowDurationHours),
     headlineScore: validScorePreference(object?.headlineScore, DEFAULT_SETTINGS.headlineScore),
-    forecastScore: validScorePreference(object?.forecastScore, DEFAULT_SETTINGS.forecastScore),
     summaryScore: validScorePreference(object?.summaryScore, DEFAULT_SETTINGS.summaryScore),
     summaryLocation: validSummaryLocation(object?.summaryLocation),
     riskTransitionNotificationsEnabled: object?.riskTransitionNotificationsEnabled === true,
     riskTransitionNotificationThreshold: validRiskTransitionThreshold(
       object?.riskTransitionNotificationThreshold,
     ),
+    enabledActivities: knownActivities(object?.enabledActivities),
     collapsedSections: booleanRecord(object?.collapsedSections),
     locationOnboardingComplete: object?.locationOnboardingComplete === true,
   };

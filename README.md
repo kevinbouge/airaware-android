@@ -20,7 +20,7 @@ provide medical advice.
 ### Application Architecture
 
 - Functional React components
-- React Navigation bottom tabs for Today, Data, Forecast, Profile, and Settings
+- React Navigation bottom tabs for Today, Data, Activities, Forecast, Profile, and Settings
 - Zustand for local app state and refresh orchestration
 - Capability-driven feature configuration for Free/Pro behavior
 - Pure TypeScript modules for environmental scoring, personalization, mold potential, forecast logic,
@@ -47,8 +47,6 @@ provide medical advice.
 - Small native bridge for writing widget snapshots into Android shared preferences
 - `react-native-svg` for the gas-mask identity and tab icons
 - `react-native-purchases` for RevenueCat purchase and entitlement integration
-- `react-native-purchases-ui` is installed for future RevenueCat-hosted paywall support, but the
-  current app uses AirAware's own Settings purchase UI
 
 ### Quality Tooling
 
@@ -83,16 +81,16 @@ nvm use 22.13.1
   freshness tracked independently
 - Dedicated Data tab for raw environmental measurements
 - Nearby vegetation and land-use context from OpenStreetMap, available to Free and Pro users
+- Pro-only Activities for photography, astronomy, farming, drone flying, outdoor sports, and
+  outdoor work
 - Local plain-text daily summary sharing
 - Android home-screen widgets:
   - Free compact widget with current score and main factor
   - Advanced home-screen widget with current score, best outdoor window, and compact forecast
     summaries
 - Optional Free risk transition notifications for the active headline score
-- Advanced Environmental Data capability for additional informational measurements where
-  Open-Meteo supports them
 - Gas-mask app icon and risk-colored Today icon
-- Capability-based Free/Pro forecast horizon and advanced data/widget access
+- Capability-based Free/Pro forecast horizon, Activities, and advanced widget access
 - AirAware Pro lifetime purchase entitlement managed through RevenueCat and Google Play when a
   public RevenueCat SDK key is configured
 
@@ -101,16 +99,17 @@ nvm use 22.13.1
 - **Today**: headline scores, location, update status, main factor, best outdoor window, refresh,
   and share summary
 - **Data**: raw environmental measurements in collapsible sections for Pollen, Air quality, Mold
-  and UV, Nearby vegetation, and Advanced Environmental Data when available
+  and UV, and Nearby vegetation
+- **Activities**: enabled Pro activity profiles with suitability, best windows, concise reasons, and
+  tappable condition rows that open the shared environmental detail timeline
 - **Forecast**: daily score summary and 24-hour risk timeline. The forecast can use either the
   environmental burden score or the personalized risk score, and the highlighted range marks the
   best outdoor window
-- **Profile**: local Personal Allergy Profile toggles, including Mold potential and UV index.
-  Informational advanced measurements remain display-only on Data
+- **Profile**: local Personal Allergy Profile toggles, including Mold potential and UV index
 - **Settings**: location mode, manual map selection, refresh interval, outdoor-window duration,
-  headline score, forecast score, notification preferences, daily-summary score, AirAware Pro
-  purchase/restore status, privacy and attribution notes, and a development-only capability preview
-  switch
+  headline score, forecast score, notification preferences, daily-summary score, Activity toggles,
+  AirAware Pro purchase/restore status, privacy and attribution notes, and a development-only
+  capability preview switch
 
 ## Android Home-Screen Widgets
 
@@ -151,12 +150,13 @@ Regulated pollution uses the highest available supported pollutant-specific AQI 
 irritants use carbon monoxide, aerosol optical depth, dust, and smoke-related PM10 where available.
 Missing components are omitted and remaining weights are renormalized.
 
-Advanced Environmental Data is displayed separately from scored environmental variables. Additional
-atmospheric and weather measurements are informational only and do not influence environmental
-burden, personalized risk, notifications, best outdoor window calculations, or daily summaries. Mold
-potential and UV index are standard AirAware readings available to Free and Pro users. Mold remains
-part of the base environmental burden formula so the environmental burden score keeps a consistent
-meaning.
+Professional Activity condition rows may use additional Open-Meteo weather or air-quality variables
+such as visibility, cloud cover, wind gusts, soil moisture, ET0, VPD, radiation, PM2.5, or ozone.
+Those variables are surfaced in context inside enabled Activities rather than as a generic raw-data
+catalog. They are informational Activity inputs only and do not influence environmental burden,
+personalized risk, notifications, daily summaries, or the core best outdoor window. Mold potential
+and UV index are standard AirAware readings available to Free and Pro users. Mold remains part of
+the base environmental burden formula so the environmental burden score keeps a consistent meaning.
 
 The Personal Allergy Profile is disabled by default. When enabled, it calculates a separate
 personalized environmental risk score from selected local factors available to the active capability
@@ -179,12 +179,10 @@ concentration.
 
 Availability varies by variable, region, model domain, and season.
 
-Advanced Environmental Data uses supported Open-Meteo variables such as CO₂, ammonia, methane,
-nitrogen monoxide, formaldehyde, NMVOC, pressure, visibility, cloud cover, dew point, wet-bulb
-temperature, wind gusts, radiation, sunshine duration, and CAPE where available.
-
-These extended variables are requested as part of the existing Open-Meteo provider calls and are
-hidden automatically when the upstream response does not provide a valid numeric value.
+Activities request only the additional Open-Meteo variables needed by enabled profiles. Examples
+include visibility, cloud cover, wind gusts, precipitation probability, soil moisture, soil
+temperature, ET0, VPD, radiation, temperature, humidity, PM2.5, and ozone where supported. Missing
+values are omitted rather than treated as zero.
 
 ## Nearby Vegetation
 
@@ -205,22 +203,24 @@ the selected location changes, or the nearby-vegetation radius changes.
 AirAware does not use analytics, advertising identifiers, accounts, telemetry, cloud sync, or remote
 configuration.
 
-Coordinates are sent to Open-Meteo to retrieve local environmental data, including optional advanced
-measurements when available, only after the user accepts the location explanation or selects a manual
-location. Manual map selections are saved locally and refresh the environmental data for the selected
-coordinates. When the manual map picker is shown, OpenStreetMap tile servers receive requests for
-the visible map area. When Nearby vegetation is used, the active latitude and longitude are sent to
-the configured OpenStreetMap Overpass API to request mapped vegetation and land-use features near
-the selected coordinates. Personal Allergy Profile selections remain in local app storage and are not
-sent to Open-Meteo, OpenStreetMap, RevenueCat, or any other environmental provider. Shared summaries
-are generated locally and passed to the Android share sheet; AirAware does not upload them.
+Coordinates are sent to Open-Meteo to retrieve local environmental data only after the user accepts
+the location explanation or selects a manual location. When Pro Activities are enabled, AirAware may
+request additional Open-Meteo variables required by those enabled profiles. Manual map selections
+are saved locally and refresh the environmental data for the selected coordinates. When the manual
+map picker is shown, OpenStreetMap tile servers receive requests for the visible map area. When
+Nearby vegetation is used, the active latitude and longitude are sent to the configured
+OpenStreetMap Overpass API to request mapped vegetation and land-use features near the selected
+coordinates. Personal Allergy Profile selections and Activity selections remain in local app storage
+and are not sent to Open-Meteo, OpenStreetMap, RevenueCat, or any other environmental provider.
+Shared summaries are generated locally and passed to the Android share sheet; AirAware does not
+upload them.
 
 AirAware uses RevenueCat to manage AirAware Pro purchase entitlement. Google Play processes
 payments; AirAware does not directly handle card or payment information. RevenueCat may process
 anonymous app identifiers, purchase records, product identifiers, entitlement state, and device/app
 metadata needed for billing. AirAware does not send RevenueCat coordinates, environmental readings,
-Personal Allergy Profile selections, nearby vegetation data, shared summaries, or notification
-settings.
+Personal Allergy Profile selections, Activity selections, nearby vegetation data, shared summaries,
+or notification settings.
 
 Shared summaries never include coordinates, raw provider JSON, or profile factor lists.
 
@@ -275,8 +275,7 @@ Before submitting to Google Play:
 The guardrail tests fail if the project adds obvious policy-sensitive dependencies such as ads,
 analytics, tracking, unapproved billing, unrelated in-app purchase/payment, or account SDKs, or if
 Android location permissions expand beyond approximate foreground location. The approved billing
-dependencies are `react-native-purchases` and `react-native-purchases-ui`; RevenueCat imports must
-stay isolated in the billing gateway.
+dependency is `react-native-purchases`; RevenueCat imports must stay isolated in the billing gateway.
 
 ## Free and Pro
 
@@ -305,10 +304,17 @@ Forecast availability depends on upstream model coverage. Some measurements may 
 later days, and missing values are omitted rather than treated as zero. The 24-hour risk timeline
 and Best outdoor window remain short-term features.
 
-Advanced Environmental Data:
+Professional Activities:
 
-- Free: Standard Environmental Data
-- Pro lifetime: additional informational atmospheric and weather measurements where available
+- Free: Activity catalog visible, but Activity profiles cannot be enabled
+- Pro lifetime: Photography, Astronomy, Farming, Drone Flying, Outdoor Sports, and Outdoor Work
+  profiles can be enabled individually
+
+Activities are disabled by default. Enabled Activities use relevant Open-Meteo forecast variables to
+identify activity-specific environmental windows and concise reasons. Activity selections stay local
+and are not sent to RevenueCat or environmental providers. Additional measurements used by
+Activities are surfaced in context inside Activity details; Pro no longer exposes a generic
+Advanced Environmental Data catalog.
 
 Android home-screen widgets:
 
@@ -347,10 +353,10 @@ build distribution setup.
 
 AirAware Pro purchases are managed through RevenueCat and Google Play.
 
-Install the RevenueCat SDK packages with Expo-compatible dependency resolution:
+Install the RevenueCat SDK package with Expo-compatible dependency resolution:
 
 ```sh
-npx expo install react-native-purchases react-native-purchases-ui
+npx expo install react-native-purchases
 ```
 
 Configure the public RevenueCat SDK key in local environment configuration:
@@ -467,9 +473,9 @@ widgets because Android widgets are not pure React Native views.
 In development builds, Settings includes an **AirAware Pro** section with a local capability preview:
 
 - Use RevenueCat: use the configured RevenueCat entitlement.
-- Preview Free shows the Free forecast horizon, Standard Environmental Data, and compact widget
-  access.
-- Preview Pro enables Extended Forecast, Advanced Environmental Data, and the advanced widget.
+- Preview Free shows the Free forecast horizon, Standard Environmental Data, compact widget access,
+  and locked Activities.
+- Preview Pro enables Extended Forecast, Activities, and the advanced widget.
 
 The preview is persisted in local app storage for development convenience. It is guarded by
 `__DEV__`, ignored in production builds, and does not modify RevenueCat customer information,
@@ -495,13 +501,13 @@ integrations.
 ```text
 src/api/          Open-Meteo and OpenStreetMap network providers and response normalization
 src/capabilities/ Static capability profiles, feature metadata, and availability selectors
-src/core/         Pure scoring, mold, personalization, forecast, and summary logic
+src/core/         Pure scoring, mold, personalization, forecast, activity, and summary logic
 src/models/       Provider-independent TypeScript domain models
 src/services/     Location, billing gateway, notifications, widgets, and environment assembly
 src/storage/      AsyncStorage-backed settings and cache
 src/state/        Zustand app store and refresh orchestration
 src/components/   Reusable UI primitives
-src/screens/      Today, Data, Forecast, Profile, and Settings screens
+src/screens/      Today, Data, Activities, Forecast, Profile, and Settings screens
 src/navigation/   React Navigation setup
 src/theme/        Shared colors and spacing
 src/utils/        Formatting and numeric helpers
@@ -518,13 +524,14 @@ provider.
 
 AirAware uses a capability-driven architecture so application code depends on what the active build
 can do, not on hard-coded product tiers. The current Free capability profile enables every core
-feature present in this MVP, while Pro capability metadata unlocks Extended Forecast, Advanced
-Environmental Data, and the advanced home-screen widget.
+feature present in this MVP, while Pro capability metadata unlocks Extended Forecast, Activities,
+and the advanced home-screen widget.
 
 Capabilities describe stable application concepts:
 
 - Forecast horizon, including maximum days, default days, and whether the horizon is configurable
-- Environmental variable groups, currently `standard` and `extended`
+- Environmental variable groups, currently `standard` plus internal activity variables requested
+  only when enabled Activities need them
 - Location support, currently automatic foreground location and one manual location
 - Provider availability, currently Open-Meteo
 - Sharing support, currently local daily summary sharing through the Android share sheet
@@ -545,13 +552,18 @@ Pro access is derived from RevenueCat customer information for the `pro` entitle
 capability preview can override presentation only in `__DEV__` builds.
 
 The current production entitlement defaults to Free unless RevenueCat verifies AirAware Pro.
-Pro lifetime is represented as an entitlement and capability profile for Extended Forecast, Advanced
-Environmental Data, and the advanced home-screen widget. Standard Forecast shows today plus 2
-additional days, for 3 total forecast days. Extended Forecast shows today plus 6 additional days, for
-up to 7 total forecast days. Advanced Environmental Data exposes additional informational readings
-where the provider supports them. Mold potential and UV index remain standard readings and optional
-Personal Allergy Profile factors for Free and Pro users. These capabilities do not change the
-environmental burden formula, cache behavior, location behavior, notifications, or sharing.
+Pro lifetime is represented as an entitlement and capability profile for Extended Forecast,
+Activities, and the advanced home-screen widget. Standard Forecast shows today plus 2 additional
+days, for 3 total forecast days. Extended Forecast shows today plus 6 additional days, for up to 7
+total forecast days. Activities expose professional environmental profiles instead of a generic
+advanced data dump. Mold potential and UV index remain standard readings and optional Personal
+Allergy Profile factors for Free and Pro users. These capabilities do not change the environmental
+burden formula, cache behavior, location behavior, notifications, or sharing.
+
+Activity logic is configuration-driven. Each Activity definition declares required and optional
+environmental variables, Open-Meteo request variables, suitability rules, best-window duration, and
+detail rows. Activity detail rows use the same environmental variable metadata and detail timeline
+screen as Data rows whenever legitimate history/forecast support exists.
 
 Widget capabilities are separate from scoring and provider access. The compact widget is available
 to Free and Pro users. The advanced widget is a Pro capability and uses the same active headline
@@ -578,8 +590,8 @@ this milestone.
 - Reverse geocoding is best-effort and may be unavailable.
 - Transition notifications are evaluated only when the app refreshes environmental data. They are
   not background alerts while the app is closed.
-- Advanced Environmental Data availability depends on the selected Open-Meteo model, geography, and
-  provider coverage. Missing variables are hidden automatically.
+- Activity measurements depend on the selected Open-Meteo model, geography, forecast horizon, and
+  provider coverage. Missing variables are omitted rather than treated as zero.
 - Nearby vegetation depends on OpenStreetMap and Overpass coverage. Missing mapped features do not
   mean vegetation is absent.
 - Widgets update when the app writes a fresh local widget snapshot. They do not perform aggressive
@@ -588,8 +600,8 @@ this milestone.
   or long-term history are included in this Android milestone.
 - AirAware Pro purchase testing requires RevenueCat and Google Play configuration plus an Android
   development or release build. Expo Go cannot validate native purchases.
-- The currently implemented Pro capabilities are Extended Forecast, Advanced Environmental Data, and
-  the advanced home-screen widget; advanced environmental notifications are capability metadata only.
+- The currently implemented Pro capabilities are Extended Forecast, Activities, and the advanced
+  home-screen widget; advanced environmental notifications are capability metadata only.
 
 ## License
 

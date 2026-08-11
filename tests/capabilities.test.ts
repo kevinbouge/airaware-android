@@ -36,7 +36,7 @@ describe('capabilities', () => {
     expect(isFeatureAvailable(FREE_CAPABILITIES, 'advanced_home_widget')).toBe(false);
     expect(isFeatureAvailable(FREE_CAPABILITIES, 'basic_transition_notifications')).toBe(true);
     expect(isFeatureAvailable(FREE_CAPABILITIES, 'advanced_environment_notifications')).toBe(false);
-    expect(isFeatureAvailable(FREE_CAPABILITIES, 'extended_environmental_data')).toBe(false);
+    expect(isFeatureAvailable(FREE_CAPABILITIES, 'activities')).toBe(false);
     expect(isFeatureAvailable(FREE_CAPABILITIES, 'nearby_vegetation')).toBe(true);
   });
 
@@ -131,7 +131,7 @@ describe('capabilities', () => {
       'current_readings',
       'forecast',
       'extended_forecast',
-      'extended_environmental_data',
+      'activities',
       'nearby_vegetation',
       'best_outdoor_window',
       'automatic_location',
@@ -149,12 +149,11 @@ describe('capabilities', () => {
       proBehavior: 'Today plus 6 additional days',
       description: 'Plan up to seven days with environmental and personalized forecast summaries.',
     });
-    expect(features.find((feature) => feature.id === 'extended_environmental_data')).toMatchObject({
-      displayName: 'Advanced Environmental Data',
+    expect(features.find((feature) => feature.id === 'activities')).toMatchObject({
+      displayName: 'Professional Activities',
       available: false,
       requiredEntitlement: 'pro_lifetime',
-      freeBehavior: 'Standard Environmental Data',
-      proBehavior: 'Additional atmospheric and weather measurements',
+      freeBehavior: 'Activity catalog visible but locked',
     });
     expect(features.find((feature) => feature.id === 'nearby_vegetation')).toMatchObject({
       displayName: 'Nearby vegetation',
@@ -167,7 +166,7 @@ describe('capabilities', () => {
         .filter(
           (feature) =>
             feature.id !== 'extended_forecast' &&
-            feature.id !== 'extended_environmental_data' &&
+            feature.id !== 'activities' &&
             feature.id !== 'advanced_home_widget' &&
             feature.id !== 'advanced_environment_notifications',
         )
@@ -230,10 +229,12 @@ describe('capabilities', () => {
   it('keeps all Free behavior in Pro lifetime while extending configured Pro capabilities', () => {
     expect(PRO_LIFETIME_CAPABILITIES.environmentalVariables).toEqual(
       expect.objectContaining({
-        availableGroups: ['standard', 'extended'],
+        availableGroups: ['standard'],
       }),
     );
+    expect(PRO_LIFETIME_CAPABILITIES.activities.available).toBe(true);
     expect(FREE_CAPABILITIES.environmentalVariables.availableGroups).toEqual(['standard']);
+    expect(FREE_CAPABILITIES.activities.available).toBe(false);
     expect(PRO_LIFETIME_CAPABILITIES.locations).toEqual(FREE_CAPABILITIES.locations);
     expect(PRO_LIFETIME_CAPABILITIES.providers).toEqual(FREE_CAPABILITIES.providers);
     expect(PRO_LIFETIME_CAPABILITIES.sharing).toEqual(FREE_CAPABILITIES.sharing);

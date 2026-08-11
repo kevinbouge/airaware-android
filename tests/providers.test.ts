@@ -12,12 +12,19 @@ describe('Open-Meteo providers', () => {
     expect(url).toContain(`forecast_days=${FORECAST_DAY_LIMITS.providerRequest}`);
     expect(url).toContain('us_aqi_pm2_5');
     expect(url).toContain('ragweed_pollen');
-    expect(url).toContain('carbon_dioxide');
-    expect(url).toContain('ammonia');
-    expect(url).toContain('methane');
-    expect(url).toContain('nitrogen_monoxide');
-    expect(url).toContain('formaldehyde');
-    expect(url).toContain('non_methane_volatile_organic_compounds');
+    expect(url).not.toContain('carbon_dioxide');
+    expect(url).not.toContain('ammonia');
+  });
+
+  it('requests professional air-quality variables only when enabled activities need them', () => {
+    const url = buildAirQualityUrl(
+      { latitude: 40.7, longitude: -74 },
+      { enabledActivities: ['outdoor_sports'] },
+    );
+
+    expect(url).toContain('pm2_5');
+    expect(url).toContain('ozone');
+    expect(url).not.toContain('methane');
   });
 
   it('normalizes US AQI only for United States timezones', () => {
@@ -59,10 +66,10 @@ describe('Open-Meteo providers', () => {
   it('requests and normalizes UV without invalidating weather when UV is missing or invalid', () => {
     const url = buildWeatherUrl({ latitude: 50, longitude: 14 });
     expect(url).toContain('uv_index');
-    expect(url).toContain('pressure_msl');
-    expect(url).toContain('wet_bulb_temperature_2m');
-    expect(url).toContain('shortwave_radiation');
-    expect(url).toContain('cape');
+    expect(url).not.toContain('pressure_msl');
+    expect(url).not.toContain('wet_bulb_temperature_2m');
+    expect(url).not.toContain('shortwave_radiation');
+    expect(url).not.toContain('cape');
     expect(url).toContain('timezone=auto');
     expect(url).toContain('wind_speed_unit=ms');
     expect(url).toContain(`forecast_days=${FORECAST_DAY_LIMITS.providerRequest}`);
@@ -89,6 +96,19 @@ describe('Open-Meteo providers', () => {
     expect(response.current.uvIndex).toBeNull();
     expect(response.hourly[0]?.uvIndex).toBeCloseTo(7.2);
     expect(response.hourly[1]?.uvIndex).toBeNull();
+  });
+
+  it('requests professional weather variables only when enabled activities need them', () => {
+    const url = buildWeatherUrl(
+      { latitude: 50, longitude: 14 },
+      { enabledActivities: ['photography', 'farming'] },
+    );
+
+    expect(url).toContain('cloud_cover');
+    expect(url).toContain('shortwave_radiation');
+    expect(url).toContain('soil_moisture_0_1cm');
+    expect(url).toContain('et0_fao_evapotranspiration');
+    expect(url).not.toContain('cape');
   });
 
   it('keeps valid negative weather temperatures and applies provider UTC offsets', () => {
@@ -213,12 +233,18 @@ describe('Open-Meteo providers', () => {
         cloud_cover_high: 12,
         dew_point_2m: 14.2,
         wet_bulb_temperature_2m: 17.3,
+        apparent_temperature: 21.2,
+        precipitation_probability: 15,
         wind_gusts_10m: 28,
         shortwave_radiation: 520,
         direct_normal_irradiance: 430,
         diffuse_radiation: 90,
         sunshine_duration: 3600,
         cape: Number.POSITIVE_INFINITY,
+        soil_moisture_0_1cm: 0.22,
+        soil_temperature_0cm: 16.4,
+        et0_fao_evapotranspiration: 0.18,
+        vapour_pressure_deficit: 1.1,
       },
       hourly: {
         time: ['2026-08-01T12:00'],
@@ -240,12 +266,18 @@ describe('Open-Meteo providers', () => {
       cloudCoverHigh: 12,
       dewPoint: 14.2,
       wetBulbTemperature: 17.3,
+      apparentTemperature: 21.2,
+      precipitationProbability: 15,
       windGusts: 28,
       shortwaveRadiation: 520,
       directNormalIrradiance: 430,
       diffuseRadiation: 90,
       sunshineDuration: 3600,
       cape: null,
+      soilMoisture0To1cm: 0.22,
+      soilTemperature0cm: 16.4,
+      et0FaoEvapotranspiration: 0.18,
+      vapourPressureDeficit: 1.1,
     });
     expect(response.hourly[0]?.extended.pressureMsl).toBe(1019);
     expect(response.hourly[0]?.extended.sunshineDuration).toBe(1800);

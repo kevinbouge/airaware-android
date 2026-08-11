@@ -7,6 +7,10 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before 
 Also check the latest open meteo API: https://open-meteo.com/en/docs
 And the latest openstreetmap API: https://taginfo.openstreetmap.org/taginfo/apidoc and https://wiki.openstreetmap.org/wiki/Map_features
 
+# API
+
+Check revenuecat: https://www.revenuecat.com/docs/api-v2
+
 # AirAware Development Instructions
 
 AirAware is an Android application that estimates environmental allergy burden.

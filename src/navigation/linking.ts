@@ -8,13 +8,14 @@ export const linking: LinkingOptions<RootStackParamList> = {
       MainTabs: {
         screens: {
           Today: 'today',
-          Data: 'data',
-          Forecast: 'forecast',
           Profile: 'profile',
           Settings: 'settings',
         },
       },
+      EnvironmentalBurdenDetail: 'environmental-burden',
+      PersonalizedRiskDetail: 'personalized-risk',
       DataDetail: 'data/:variableId',
+      ActivityDetail: 'activities/:activityId',
     },
   },
 };

@@ -87,6 +87,14 @@ const ENVIRONMENTAL_VARIABLES: readonly EnvironmentalVariableDefinition[] = [
     profileFactorId: 'mold',
   },
   { id: 'uvIndex', displayName: 'UV index', group: 'standard', profileFactorId: 'uv_index' },
+  { id: 'temperature', displayName: 'Temperature', group: 'extended' },
+  { id: 'apparentTemperature', displayName: 'Apparent temperature', group: 'extended' },
+  { id: 'relativeHumidity', displayName: 'Humidity', group: 'extended' },
+  { id: 'dewPoint', displayName: 'Dew point', group: 'extended' },
+  { id: 'precipitation', displayName: 'Precipitation', group: 'extended' },
+  { id: 'precipitationProbability', displayName: 'Precipitation probability', group: 'extended' },
+  { id: 'windSpeed', displayName: 'Wind', group: 'extended' },
+  { id: 'windGusts', displayName: 'Wind gusts', group: 'extended' },
   { id: 'carbonDioxide', displayName: 'CO₂', group: 'extended' },
   { id: 'ammonia', displayName: 'NH₃', group: 'extended' },
   { id: 'methane', displayName: 'CH₄', group: 'extended' },
@@ -116,6 +124,10 @@ const ENVIRONMENTAL_VARIABLES: readonly EnvironmentalVariableDefinition[] = [
   { id: 'diffuseRadiation', displayName: 'Diffuse radiation', group: 'extended' },
   { id: 'sunshineDuration', displayName: 'Sunshine duration', group: 'extended' },
   { id: 'cape', displayName: 'CAPE', group: 'extended' },
+  { id: 'soilMoisture0To1cm', displayName: 'Soil moisture', group: 'extended' },
+  { id: 'soilTemperature0cm', displayName: 'Soil temperature', group: 'extended' },
+  { id: 'et0FaoEvapotranspiration', displayName: 'ET0', group: 'extended' },
+  { id: 'vapourPressureDeficit', displayName: 'VPD', group: 'extended' },
 ] as const;
 
 function availableGroups(capabilities: AppCapabilities): Set<string> {

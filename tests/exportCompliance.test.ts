@@ -29,7 +29,7 @@ function packageDependencies(): string[] {
 describe('export compliance guardrails', () => {
   it('does not include crypto, secure storage, unapproved billing, IAP, or payment SDK dependencies', () => {
     const dependencyNames = packageDependencies();
-    const approvedBillingDependencies = ['react-native-purchases', 'react-native-purchases-ui'];
+    const approvedBillingDependencies = ['react-native-purchases'];
     const controlledDependencyPatterns = [
       /^expo-crypto$/,
       /^expo-secure-store$/,

@@ -1,11 +1,13 @@
 import { FORECAST_DAY_LIMITS } from '../capabilities/config';
+import { activityOpenMeteoVariables } from '../core/activityDefinitions';
+import type { ActivityId } from '../models/activities';
 import type { Coordinates, ExtendedWeatherReadings, WeatherContext } from '../models/environment';
 import { fetchJson } from './http';
 import { coordinateNumber, isFiniteNumber, nullableNumber } from '../utils/number';
 import { timestampWithUtcOffset } from '../utils/time';
 
 const WEATHER_URL = 'https://api.open-meteo.com/v1/forecast';
-const VARIABLES = [
+const BASE_VARIABLES = [
   'temperature_2m',
   'relative_humidity_2m',
   'dew_point_2m',
@@ -15,6 +17,8 @@ const VARIABLES = [
   'wind_gusts_10m',
   'visibility',
   'uv_index',
+] as const;
+const DEFAULT_EXTENDED_VARIABLES = [
   'pressure_msl',
   'surface_pressure',
   'cloud_cover',
@@ -27,7 +31,7 @@ const VARIABLES = [
   'diffuse_radiation',
   'sunshine_duration',
   'cape',
-];
+] as const;
 const DAILY_VARIABLES = [
   'leaf_wetness_probability_mean',
   'temperature_2m_mean',
@@ -140,6 +144,8 @@ function extendedFrom(
     index === undefined ? signedValue(source, key) : signedArrayValue(source, key, index);
 
   return {
+    apparentTemperature: signedFrom('apparent_temperature'),
+    precipitationProbability: from('precipitation_probability'),
     pressureMsl: from('pressure_msl'),
     surfacePressure: from('surface_pressure'),
     visibility: from('visibility'),
@@ -155,6 +161,10 @@ function extendedFrom(
     diffuseRadiation: from('diffuse_radiation'),
     sunshineDuration: from('sunshine_duration'),
     cape: from('cape'),
+    soilMoisture0To1cm: from('soil_moisture_0_1cm'),
+    soilTemperature0cm: signedFrom('soil_temperature_0cm'),
+    et0FaoEvapotranspiration: from('et0_fao_evapotranspiration'),
+    vapourPressureDeficit: from('vapour_pressure_deficit'),
   };
 }
 
@@ -172,12 +182,40 @@ function hasAnyNumeric(values: object): boolean {
   return Object.values(values).some((item) => typeof item === 'number' && Number.isFinite(item));
 }
 
-export function buildWeatherUrl(coordinates: Coordinates): string {
+function weatherVariablesFor(activityIds: readonly ActivityId[] = []): string[] {
+  const activityVariables = activityOpenMeteoVariables(activityIds).weather;
+  return Array.from(
+    new Set([
+      ...BASE_VARIABLES,
+      ...DEFAULT_EXTENDED_VARIABLES.filter((variable) => activityVariables.includes(variable)),
+      ...activityVariables,
+    ]),
+  );
+}
+
+function currentWeatherVariablesFor(hourlyVariables: readonly string[]): string[] {
+  const allowed = new Set([
+    ...BASE_VARIABLES,
+    'apparent_temperature',
+    'pressure_msl',
+    'surface_pressure',
+    'cloud_cover',
+    'wind_gusts_10m',
+  ]);
+
+  return hourlyVariables.filter((variable) => allowed.has(variable));
+}
+
+export function buildWeatherUrl(
+  coordinates: Coordinates,
+  options: { enabledActivities?: readonly ActivityId[] } = {},
+): string {
+  const variables = weatherVariablesFor(options.enabledActivities ?? []);
   const params = new URLSearchParams({
     latitude: String(coordinates.latitude),
     longitude: String(coordinates.longitude),
-    current: VARIABLES.join(','),
-    hourly: VARIABLES.join(','),
+    current: currentWeatherVariablesFor(variables).join(','),
+    hourly: variables.join(','),
     daily: DAILY_VARIABLES.join(','),
     forecast_days: String(FORECAST_DAY_LIMITS.providerRequest),
     timezone: 'auto',
@@ -252,7 +290,10 @@ export function normalizeWeather(payload: OpenMeteoWeatherPayload): NormalizedWe
   };
 }
 
-export async function fetchWeather(coordinates: Coordinates): Promise<NormalizedWeather> {
-  const payload = await fetchJson<OpenMeteoWeatherPayload>(buildWeatherUrl(coordinates));
+export async function fetchWeather(
+  coordinates: Coordinates,
+  options: { enabledActivities?: readonly ActivityId[] } = {},
+): Promise<NormalizedWeather> {
+  const payload = await fetchJson<OpenMeteoWeatherPayload>(buildWeatherUrl(coordinates, options));
   return normalizeWeather(payload);
 }

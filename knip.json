@@ -1,7 +1,7 @@
 {
   "entry": ["App.tsx", "tests/**/*.test.ts"],
   "project": ["src/**/*.{ts,tsx}", "tests/**/*.{ts,tsx}", "*.config.js"],
-  "ignoreDependencies": ["expo-updates", "react-native-purchases-ui"],
+  "ignoreDependencies": ["expo-updates"],
   "jest": {
     "config": ["package.json"]
   }

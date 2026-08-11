@@ -1,3 +1,6 @@
+import { DEFAULT_ACTIVITY_SETTINGS } from '../core/activityDefinitions';
+import type { ActivitySettings } from './activities';
+
 type PollenFactorId =
   | 'pollen_alder'
   | 'pollen_birch'
@@ -51,11 +54,11 @@ export interface AppSettings {
   nearbyVegetationRadiusMeters: 1000 | 2000 | 5000;
   outdoorWindowDurationHours: 1 | 2 | 3;
   headlineScore: 'environmental' | 'personalized';
-  forecastScore: 'environmental' | 'personalized';
   summaryScore: 'environmental' | 'personalized';
   summaryLocation: 'place' | 'hidden';
   riskTransitionNotificationsEnabled: boolean;
   riskTransitionNotificationThreshold: 'highAndVeryHigh' | 'veryHighOnly';
+  enabledActivities: ActivitySettings;
   collapsedSections: Record<string, boolean>;
   locationOnboardingComplete: boolean;
 }
@@ -68,11 +71,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   nearbyVegetationRadiusMeters: 2000,
   outdoorWindowDurationHours: 2,
   headlineScore: 'environmental',
-  forecastScore: 'environmental',
   summaryScore: 'environmental',
   summaryLocation: 'place',
   riskTransitionNotificationsEnabled: false,
   riskTransitionNotificationThreshold: 'highAndVeryHigh',
+  enabledActivities: DEFAULT_ACTIVITY_SETTINGS,
   collapsedSections: {},
   locationOnboardingComplete: false,
 };

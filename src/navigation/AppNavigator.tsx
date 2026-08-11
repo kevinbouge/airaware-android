@@ -4,13 +4,15 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { NavigatorScreenParams } from '@react-navigation/native';
 import { TodayScreen } from '../screens/TodayScreen';
-import { DataScreen } from '../screens/DataScreen';
-import { ForecastScreen } from '../screens/ForecastScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { DataDetailScreen } from '../screens/DataDetailScreen';
+import { ActivityDetailScreen } from '../screens/ActivityDetailScreen';
+import { EnvironmentalBurdenDetailScreen } from '../screens/EnvironmentalBurdenDetailScreen';
+import { PersonalizedRiskDetailScreen } from '../screens/PersonalizedRiskDetailScreen';
 import { TabIcon, type TabIconName } from '../components/icons/TabIcon';
 import type { EnvironmentalVariableId } from '../capabilities/types';
+import type { ActivityId } from '../models/activities';
 import { profileForCapabilities } from '../capabilities/variables';
 import { calculatePersonalizedScore } from '../core/profileScoring';
 import { calculateEnvironmentalScore } from '../core/scoring';
@@ -21,15 +23,16 @@ import { linking } from './linking';
 
 type RootTabParamList = {
   Today: undefined;
-  Data: undefined;
-  Forecast: undefined;
   Profile: undefined;
   Settings: undefined;
 };
 
 export type RootStackParamList = {
   MainTabs: NavigatorScreenParams<RootTabParamList> | undefined;
+  EnvironmentalBurdenDetail: undefined;
+  PersonalizedRiskDetail: undefined;
   DataDetail: { variableId: EnvironmentalVariableId };
+  ActivityDetail: { activityId: ActivityId };
 };
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
@@ -39,10 +42,6 @@ function iconNameForRoute(routeName: keyof RootTabParamList): TabIconName {
   switch (routeName) {
     case 'Today':
       return 'today';
-    case 'Data':
-      return 'data';
-    case 'Forecast':
-      return 'forecast';
     case 'Profile':
       return 'profile';
     case 'Settings':
@@ -90,8 +89,6 @@ function MainTabs() {
       })}
     >
       <Tab.Screen name="Today" component={TodayScreen} />
-      <Tab.Screen name="Data" component={DataScreen} />
-      <Tab.Screen name="Forecast" component={ForecastScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
       <Tab.Screen name="Settings" component={SettingsScreen} />
     </Tab.Navigator>
@@ -104,8 +101,18 @@ export function AppNavigator() {
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="MainTabs" component={MainTabs} />
         <Stack.Screen
+          name="EnvironmentalBurdenDetail"
+          component={EnvironmentalBurdenDetailScreen}
+        />
+        <Stack.Screen name="PersonalizedRiskDetail" component={PersonalizedRiskDetailScreen} />
+        <Stack.Screen
           name="DataDetail"
           component={DataDetailScreen}
+          options={{ gestureEnabled: false }}
+        />
+        <Stack.Screen
+          name="ActivityDetail"
+          component={ActivityDetailScreen}
           options={{ gestureEnabled: false }}
         />
       </Stack.Navigator>

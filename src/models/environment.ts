@@ -54,6 +54,8 @@ export interface ExtendedAirQualityReadings {
 }
 
 export interface ExtendedWeatherReadings {
+  apparentTemperature?: number | null;
+  precipitationProbability?: number | null;
   pressureMsl: number | null;
   surfacePressure: number | null;
   visibility: number | null;
@@ -69,6 +71,10 @@ export interface ExtendedWeatherReadings {
   diffuseRadiation: number | null;
   sunshineDuration: number | null;
   cape: number | null;
+  soilMoisture0To1cm?: number | null;
+  soilTemperature0cm?: number | null;
+  et0FaoEvapotranspiration?: number | null;
+  vapourPressureDeficit?: number | null;
 }
 
 export interface ExtendedEnvironmentalReadings {

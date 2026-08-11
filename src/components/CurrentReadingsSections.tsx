@@ -2,29 +2,15 @@ import type { ReactNode } from 'react';
 import { Text, StyleSheet } from 'react-native';
 import { ReadingRow } from './ReadingRow';
 import { SectionCard } from './SectionCard';
-import { isFeatureAvailable } from '../capabilities/features';
 import {
   irritantVariableId,
   isEnvironmentalVariableAvailable,
   pollenVariableId,
   pollutantVariableId,
 } from '../capabilities/variables';
-import type {
-  CurrentEnvironmentalReadings,
-  ExtendedAirQualityReadings,
-  ExtendedWeatherReadings,
-} from '../models/environment';
-import type {
-  AppCapabilities,
-  EnvironmentalVariableId,
-  ExtendedEnvironmentalVariableId,
-} from '../capabilities/types';
-import {
-  formatDurationSeconds,
-  formatMeasurement,
-  formatNumber,
-  formatVisibilityMeters,
-} from '../utils/format';
+import type { CurrentEnvironmentalReadings } from '../models/environment';
+import type { AppCapabilities, EnvironmentalVariableId } from '../capabilities/types';
+import { formatMeasurement, formatNumber } from '../utils/format';
 import { IRRITANT_LABELS, POLLEN_LABELS, POLLUTANT_LABELS } from '../utils/readingLabels';
 import { colors } from '../theme/theme';
 
@@ -32,215 +18,16 @@ const CURRENT_READING_SECTION_IDS = {
   pollen: 'today.pollen',
   airQuality: 'today.airQuality',
   moldAndUv: 'today.moldAndUv',
-  atmosphericComposition: 'today.atmosphericComposition',
-  pressureVisibility: 'today.pressureVisibility',
-  cloudsMoisture: 'today.cloudsMoisture',
-  solarConvection: 'today.solarConvection',
-  wind: 'today.wind',
 } as const;
 
 export const NO_DATA_AVAILABLE_LABEL = 'No data available';
 
-interface ExtendedReadingRow {
+interface ReadingSectionRow {
   id: EnvironmentalVariableId;
   label: string;
   value: string;
+  detail?: string;
 }
-
-interface ProReadingSection {
-  id: string;
-  title: string;
-  rows: ExtendedReadingRow[];
-}
-
-const EXTENDED_SECTION_DEFINITIONS = [
-  {
-    id: CURRENT_READING_SECTION_IDS.atmosphericComposition,
-    title: 'Atmospheric composition',
-  },
-  {
-    id: CURRENT_READING_SECTION_IDS.pressureVisibility,
-    title: 'Pressure and visibility',
-  },
-  {
-    id: CURRENT_READING_SECTION_IDS.cloudsMoisture,
-    title: 'Clouds and moisture',
-  },
-  {
-    id: CURRENT_READING_SECTION_IDS.solarConvection,
-    title: 'Solar and convection',
-  },
-  {
-    id: CURRENT_READING_SECTION_IDS.wind,
-    title: 'Wind',
-  },
-] as const;
-
-const EXTENDED_AIR_QUALITY_ROWS: {
-  id: ExtendedEnvironmentalVariableId;
-  key: keyof ExtendedAirQualityReadings;
-  label: string;
-  format: (value: number | null) => string;
-}[] = [
-  {
-    id: 'carbonDioxide',
-    key: 'carbonDioxide',
-    label: 'CO₂',
-    format: (value) => formatMeasurement(value, 'ppm'),
-  },
-  {
-    id: 'ammonia',
-    key: 'ammonia',
-    label: 'NH₃',
-    format: (value) => formatMeasurement(value, 'µg/m³'),
-  },
-  {
-    id: 'methane',
-    key: 'methane',
-    label: 'CH₄',
-    format: (value) => formatMeasurement(value, 'µg/m³'),
-  },
-  {
-    id: 'nitrogenMonoxide',
-    key: 'nitrogenMonoxide',
-    label: 'NO',
-    format: (value) => formatMeasurement(value, 'µg/m³'),
-  },
-  {
-    id: 'formaldehyde',
-    key: 'formaldehyde',
-    label: 'Formaldehyde',
-    format: (value) => formatMeasurement(value, 'µg/m³'),
-  },
-  {
-    id: 'nonMethaneVolatileOrganicCompounds',
-    key: 'nonMethaneVolatileOrganicCompounds',
-    label: 'NMVOC',
-    format: (value) => formatMeasurement(value, 'µg/m³'),
-  },
-];
-
-const PRESSURE_VISIBILITY_ROWS: {
-  id: ExtendedEnvironmentalVariableId;
-  key: keyof ExtendedWeatherReadings;
-  label: string;
-  format: (value: number | null) => string;
-}[] = [
-  {
-    id: 'pressureMsl',
-    key: 'pressureMsl',
-    label: 'Mean sea-level pressure',
-    format: (value) => formatMeasurement(value, 'hPa'),
-  },
-  {
-    id: 'surfacePressure',
-    key: 'surfacePressure',
-    label: 'Surface pressure',
-    format: (value) => formatMeasurement(value, 'hPa'),
-  },
-  {
-    id: 'extendedVisibility',
-    key: 'visibility',
-    label: 'Visibility',
-    format: formatVisibilityMeters,
-  },
-];
-
-const CLOUDS_MOISTURE_ROWS: {
-  id: ExtendedEnvironmentalVariableId;
-  key: keyof ExtendedWeatherReadings;
-  label: string;
-  format: (value: number | null) => string;
-}[] = [
-  {
-    id: 'cloudCover',
-    key: 'cloudCover',
-    label: 'Cloud cover',
-    format: (value) => formatMeasurement(value, '%'),
-  },
-  {
-    id: 'cloudCoverLow',
-    key: 'cloudCoverLow',
-    label: 'Low cloud cover',
-    format: (value) => formatMeasurement(value, '%'),
-  },
-  {
-    id: 'cloudCoverMid',
-    key: 'cloudCoverMid',
-    label: 'Mid cloud cover',
-    format: (value) => formatMeasurement(value, '%'),
-  },
-  {
-    id: 'cloudCoverHigh',
-    key: 'cloudCoverHigh',
-    label: 'High cloud cover',
-    format: (value) => formatMeasurement(value, '%'),
-  },
-  {
-    id: 'extendedDewPoint',
-    key: 'dewPoint',
-    label: 'Dew point',
-    format: (value) => formatMeasurement(value, '°C', 1),
-  },
-  {
-    id: 'wetBulbTemperature',
-    key: 'wetBulbTemperature',
-    label: 'Wet-bulb temperature',
-    format: (value) => formatMeasurement(value, '°C', 1),
-  },
-];
-
-const SOLAR_CONVECTION_ROWS: {
-  id: ExtendedEnvironmentalVariableId;
-  key: keyof ExtendedWeatherReadings;
-  label: string;
-  format: (value: number | null) => string;
-}[] = [
-  {
-    id: 'shortwaveRadiation',
-    key: 'shortwaveRadiation',
-    label: 'Solar radiation',
-    format: (value) => formatMeasurement(value, 'W/m²'),
-  },
-  {
-    id: 'directNormalIrradiance',
-    key: 'directNormalIrradiance',
-    label: 'Direct normal irradiance',
-    format: (value) => formatMeasurement(value, 'W/m²'),
-  },
-  {
-    id: 'diffuseRadiation',
-    key: 'diffuseRadiation',
-    label: 'Diffuse radiation',
-    format: (value) => formatMeasurement(value, 'W/m²'),
-  },
-  {
-    id: 'sunshineDuration',
-    key: 'sunshineDuration',
-    label: 'Sunshine duration',
-    format: formatDurationSeconds,
-  },
-  {
-    id: 'cape',
-    key: 'cape',
-    label: 'CAPE',
-    format: (value) => formatMeasurement(value, 'J/kg'),
-  },
-];
-
-const WIND_ROWS: {
-  id: ExtendedEnvironmentalVariableId;
-  key: keyof ExtendedWeatherReadings;
-  label: string;
-  format: (value: number | null) => string;
-}[] = [
-  {
-    id: 'extendedWindGusts',
-    key: 'windGusts',
-    label: 'Wind gusts',
-    format: (value) => formatMeasurement(value, 'm/s', 1),
-  },
-];
 
 interface CurrentReadingsSectionsProps {
   current: CurrentEnvironmentalReadings;
@@ -259,17 +46,10 @@ function NoDataMessage() {
   return <Text style={styles.empty}>{NO_DATA_AVAILABLE_LABEL}</Text>;
 }
 
-export function extendedEnvironmentalReadingRows(
-  current: CurrentEnvironmentalReadings,
-  capabilities: AppCapabilities,
-): ExtendedReadingRow[] {
-  return proCurrentReadingSections(current, capabilities).flatMap((section) => section.rows);
-}
-
 export function pollenReadingRows(
   current: CurrentEnvironmentalReadings,
   capabilities: AppCapabilities,
-): ExtendedReadingRow[] {
+): ReadingSectionRow[] {
   return Object.entries(POLLEN_LABELS)
     .filter(
       ([key]) =>
@@ -288,7 +68,7 @@ export function pollenReadingRows(
 function pollutantReadingRows(
   current: CurrentEnvironmentalReadings,
   capabilities: AppCapabilities,
-): (ExtendedReadingRow & { detail?: string })[] {
+): ReadingSectionRow[] {
   return Object.entries(POLLUTANT_LABELS)
     .filter(
       ([key]) =>
@@ -315,20 +95,10 @@ function pollutantReadingRows(
     });
 }
 
-function airQualityReadingRows(
-  current: CurrentEnvironmentalReadings,
-  capabilities: AppCapabilities,
-): (ExtendedReadingRow & { detail?: string })[] {
-  return [
-    ...pollutantReadingRows(current, capabilities),
-    ...irritantReadingRows(current, capabilities),
-  ];
-}
-
 function irritantReadingRows(
   current: CurrentEnvironmentalReadings,
   capabilities: AppCapabilities,
-): ExtendedReadingRow[] {
+): ReadingSectionRow[] {
   return Object.entries(IRRITANT_LABELS)
     .filter(
       ([key]) =>
@@ -349,10 +119,20 @@ function irritantReadingRows(
     }));
 }
 
+function airQualityReadingRows(
+  current: CurrentEnvironmentalReadings,
+  capabilities: AppCapabilities,
+): ReadingSectionRow[] {
+  return [
+    ...pollutantReadingRows(current, capabilities),
+    ...irritantReadingRows(current, capabilities),
+  ];
+}
+
 function moldAndSunRows(
   current: CurrentEnvironmentalReadings,
   capabilities: AppCapabilities,
-): ExtendedReadingRow[] {
+): ReadingSectionRow[] {
   return [
     ...(isEnvironmentalVariableAvailable(capabilities, 'moldPotential') &&
     current.moldPotential.available &&
@@ -378,90 +158,6 @@ function moldAndSunRows(
   ];
 }
 
-function airQualityRows(
-  current: CurrentEnvironmentalReadings,
-  capabilities: AppCapabilities,
-): ExtendedReadingRow[] {
-  return EXTENDED_AIR_QUALITY_ROWS.flatMap((definition) => {
-    const value = current.extended?.airQuality[definition.key];
-    if (!isEnvironmentalVariableAvailable(capabilities, definition.id)) {
-      return [];
-    }
-    if (!isFiniteReading(value)) {
-      return [];
-    }
-
-    return [
-      {
-        id: definition.id,
-        label: definition.label,
-        value: definition.format(value),
-      },
-    ];
-  });
-}
-
-function weatherRows(
-  current: CurrentEnvironmentalReadings,
-  capabilities: AppCapabilities,
-  definitions: {
-    id: ExtendedEnvironmentalVariableId;
-    key: keyof ExtendedWeatherReadings;
-    label: string;
-    format: (value: number | null) => string;
-  }[],
-): ExtendedReadingRow[] {
-  return definitions.flatMap((definition) => {
-    const value = current.extended?.weather[definition.key];
-    if (!isEnvironmentalVariableAvailable(capabilities, definition.id)) {
-      return [];
-    }
-    if (!isFiniteReading(value)) {
-      return [];
-    }
-
-    return [
-      {
-        id: definition.id,
-        label: definition.label,
-        value: definition.format(value),
-      },
-    ];
-  });
-}
-
-export function proCurrentReadingSections(
-  current: CurrentEnvironmentalReadings,
-  capabilities: AppCapabilities,
-): ProReadingSection[] {
-  if (!isFeatureAvailable(capabilities, 'extended_environmental_data')) return [];
-
-  const sections: ProReadingSection[] = [
-    {
-      ...EXTENDED_SECTION_DEFINITIONS[0],
-      rows: airQualityRows(current, capabilities),
-    },
-    {
-      ...EXTENDED_SECTION_DEFINITIONS[1],
-      rows: weatherRows(current, capabilities, PRESSURE_VISIBILITY_ROWS),
-    },
-    {
-      ...EXTENDED_SECTION_DEFINITIONS[2],
-      rows: weatherRows(current, capabilities, CLOUDS_MOISTURE_ROWS),
-    },
-    {
-      ...EXTENDED_SECTION_DEFINITIONS[3],
-      rows: weatherRows(current, capabilities, SOLAR_CONVECTION_ROWS),
-    },
-    {
-      ...EXTENDED_SECTION_DEFINITIONS[4],
-      rows: weatherRows(current, capabilities, WIND_ROWS),
-    },
-  ];
-
-  return sections;
-}
-
 export function CurrentReadingsSections({
   current,
   capabilities,
@@ -470,10 +166,9 @@ export function CurrentReadingsSections({
   onOpenVariable,
   beforeAdvancedSections,
 }: CurrentReadingsSectionsProps) {
-  const moldSunRows = moldAndSunRows(current, capabilities);
-  const proSections = proCurrentReadingSections(current, capabilities);
   const pollenRows = pollenReadingRows(current, capabilities);
   const airQualityRows = airQualityReadingRows(current, capabilities);
+  const moldSunRows = moldAndSunRows(current, capabilities);
 
   return (
     <>
@@ -543,28 +238,6 @@ export function CurrentReadingsSections({
       </SectionCard>
 
       {beforeAdvancedSections}
-
-      {proSections
-        .filter((section) => section.rows.length > 0)
-        .map((section) => (
-          <SectionCard
-            key={section.id}
-            title={section.title}
-            collapsible
-            collapsed={collapsedSections[section.id] === true}
-            onToggle={() => onToggleSection(section.id)}
-          >
-            {section.rows.map((row) => (
-              <ReadingRow
-                key={row.id}
-                label={row.label}
-                value={row.value}
-                variableId={row.id}
-                onPress={onOpenVariable}
-              />
-            ))}
-          </SectionCard>
-        ))}
     </>
   );
 }

@@ -1,4 +1,6 @@
 import { FORECAST_DAY_LIMITS } from '../capabilities/config';
+import { activityOpenMeteoVariables } from '../core/activityDefinitions';
+import type { ActivityId } from '../models/activities';
 import type {
   AtmosphericIrritants,
   Coordinates,
@@ -13,19 +15,13 @@ import { timestampWithUtcOffset } from '../utils/time';
 
 const AIR_QUALITY_URL = 'https://air-quality-api.open-meteo.com/v1/air-quality';
 
-const VARIABLES = [
+const BASE_VARIABLES = [
   'pm10',
   'pm2_5',
   'nitrogen_dioxide',
   'ozone',
   'sulphur_dioxide',
   'carbon_monoxide',
-  'carbon_dioxide',
-  'ammonia',
-  'methane',
-  'nitrogen_monoxide',
-  'formaldehyde',
-  'non_methane_volatile_organic_compounds',
   'aerosol_optical_depth',
   'dust',
   'european_aqi',
@@ -47,7 +43,16 @@ const VARIABLES = [
   'olive_pollen',
   'ragweed_pollen',
   'pm10_wildfires',
-];
+] as const;
+
+const EXTENDED_AIR_QUALITY_VARIABLES = [
+  'carbon_dioxide',
+  'ammonia',
+  'methane',
+  'nitrogen_monoxide',
+  'formaldehyde',
+  'non_methane_volatile_organic_compounds',
+] as const;
 
 export interface NormalizedAirQuality {
   coordinates: Coordinates;
@@ -220,12 +225,27 @@ function hasAnyNumeric(values: object): boolean {
   return Object.values(values).some((item) => typeof item === 'number' && Number.isFinite(item));
 }
 
-export function buildAirQualityUrl(coordinates: Coordinates): string {
+function airQualityVariablesFor(activityIds: readonly ActivityId[] = []): string[] {
+  const activityVariables = activityOpenMeteoVariables(activityIds).airQuality;
+  return Array.from(
+    new Set([
+      ...BASE_VARIABLES,
+      ...EXTENDED_AIR_QUALITY_VARIABLES.filter((variable) => activityVariables.includes(variable)),
+      ...activityVariables,
+    ]),
+  );
+}
+
+export function buildAirQualityUrl(
+  coordinates: Coordinates,
+  options: { enabledActivities?: readonly ActivityId[] } = {},
+): string {
+  const variables = airQualityVariablesFor(options.enabledActivities ?? []);
   const params = new URLSearchParams({
     latitude: String(coordinates.latitude),
     longitude: String(coordinates.longitude),
-    current: VARIABLES.join(','),
-    hourly: VARIABLES.join(','),
+    current: variables.join(','),
+    hourly: variables.join(','),
     forecast_days: String(FORECAST_DAY_LIMITS.providerRequest),
     timezone: 'auto',
   });
@@ -299,7 +319,10 @@ export function normalizeAirQuality(payload: OpenMeteoPayload): NormalizedAirQua
   };
 }
 
-export async function fetchAirQuality(coordinates: Coordinates): Promise<NormalizedAirQuality> {
-  const payload = await fetchJson<OpenMeteoPayload>(buildAirQualityUrl(coordinates));
+export async function fetchAirQuality(
+  coordinates: Coordinates,
+  options: { enabledActivities?: readonly ActivityId[] } = {},
+): Promise<NormalizedAirQuality> {
+  const payload = await fetchJson<OpenMeteoPayload>(buildAirQualityUrl(coordinates, options));
   return normalizeAirQuality(payload);
 }

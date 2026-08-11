@@ -7,14 +7,12 @@ describe('settings policy', () => {
       {
         ...DEFAULT_SETTINGS,
         headlineScore: 'personalized',
-        forecastScore: 'personalized',
         summaryScore: 'personalized',
       },
       { ...DEFAULT_PROFILE, enabled: false },
     );
 
     expect(settings.headlineScore).toBe('environmental');
-    expect(settings.forecastScore).toBe('environmental');
     expect(settings.summaryScore).toBe('environmental');
   });
 
@@ -22,7 +20,6 @@ describe('settings policy', () => {
     const original = {
       ...DEFAULT_SETTINGS,
       headlineScore: 'personalized' as const,
-      forecastScore: 'personalized' as const,
       summaryScore: 'personalized' as const,
     };
     const settings = settingsForProfileState(original, { ...DEFAULT_PROFILE, enabled: true });

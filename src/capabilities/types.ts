@@ -5,10 +5,12 @@ import type {
 } from '../models/environment';
 import type { EntitlementKind } from './entitlements';
 import type { ProfileFactorId } from '../models/profile';
+import type { ActivityId } from '../models/activities';
 
 type CapabilityCategory =
   | 'forecast'
   | 'environmentalVariables'
+  | 'activities'
   | 'notifications'
   | 'locations'
   | 'widgets'
@@ -26,7 +28,7 @@ export type ProviderId = 'open-meteo';
 type PollenVariableId = `pollen_${keyof PollenReadings}`;
 type RegulatedPollutantVariableId = keyof RegulatedPollutants;
 type AtmosphericIrritantVariableId = keyof AtmosphericIrritants;
-export type ExtendedEnvironmentalVariableId =
+type ExtendedEnvironmentalVariableId =
   | 'carbonDioxide'
   | 'ammonia'
   | 'methane'
@@ -47,12 +49,21 @@ export type ExtendedEnvironmentalVariableId =
   | 'directNormalIrradiance'
   | 'diffuseRadiation'
   | 'sunshineDuration'
-  | 'cape';
+  | 'cape'
+  | 'apparentTemperature'
+  | 'precipitationProbability'
+  | 'soilMoisture0To1cm'
+  | 'soilTemperature0cm'
+  | 'et0FaoEvapotranspiration'
+  | 'vapourPressureDeficit';
+type WeatherEnvironmentalVariableId =
+  'temperature' | 'relativeHumidity' | 'dewPoint' | 'precipitation' | 'windSpeed' | 'windGusts';
 export type EnvironmentalVariableId =
   | PollenVariableId
   | RegulatedPollutantVariableId
   | AtmosphericIrritantVariableId
   | ExtendedEnvironmentalVariableId
+  | WeatherEnvironmentalVariableId
   | 'moldPotential'
   | 'uvIndex';
 
@@ -62,7 +73,7 @@ export type FeatureId =
   | 'current_readings'
   | 'forecast'
   | 'extended_forecast'
-  | 'extended_environmental_data'
+  | 'activities'
   | 'nearby_vegetation'
   | 'best_outdoor_window'
   | 'automatic_location'
@@ -79,6 +90,11 @@ interface ForecastCapability {
 
 interface EnvironmentalVariableCapability {
   availableGroups: readonly EnvironmentalVariableGroupId[];
+}
+
+interface ActivitiesCapability {
+  available: boolean;
+  availableActivities: readonly ActivityId[];
 }
 
 interface NotificationCapability {
@@ -112,6 +128,7 @@ interface SharingCapability {
 export interface AppCapabilities {
   forecast: ForecastCapability;
   environmentalVariables: EnvironmentalVariableCapability;
+  activities: ActivitiesCapability;
   notifications: NotificationCapability;
   locations: LocationCapability;
   history: HistoryCapability;

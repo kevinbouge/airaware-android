@@ -90,6 +90,21 @@ const AIR_QUALITY_VARIABLES = [
 ] as const;
 
 const WEATHER_VARIABLES = [
+  ['temperature', 'Temperature', 'temperature_2m', 'average', '°C', 1],
+  ['apparentTemperature', 'Apparent temperature', 'apparent_temperature', 'average', '°C', 1],
+  ['relativeHumidity', 'Humidity', 'relative_humidity_2m', 'average', '%', 0],
+  ['dewPoint', 'Dew point', 'dew_point_2m', 'average', '°C', 1],
+  ['precipitation', 'Precipitation', 'precipitation', 'sum', 'mm', 1],
+  [
+    'precipitationProbability',
+    'Precipitation probability',
+    'precipitation_probability',
+    'maximum',
+    '%',
+    0,
+  ],
+  ['windSpeed', 'Wind', 'wind_speed_10m', 'average', 'm/s', 1],
+  ['windGusts', 'Wind gusts', 'wind_gusts_10m', 'maximum', 'm/s', 1],
   ['uvIndex', 'UV index', 'uv_index', 'maximum', '', 1],
   ['pressureMsl', 'Mean sea-level pressure', 'pressure_msl', 'average', 'hPa', 0],
   ['surfacePressure', 'Surface pressure', 'surface_pressure', 'average', 'hPa', 0],
@@ -113,6 +128,10 @@ const WEATHER_VARIABLES = [
   ['diffuseRadiation', 'Diffuse radiation', 'diffuse_radiation', 'maximum', 'W/m²', 0],
   ['sunshineDuration', 'Sunshine duration', 'sunshine_duration', 'sum', 's', 0],
   ['cape', 'CAPE', 'cape', 'maximum', 'J/kg', 0],
+  ['soilMoisture0To1cm', 'Soil moisture', 'soil_moisture_0_1cm', 'average', 'm³/m³', 2],
+  ['soilTemperature0cm', 'Soil temperature', 'soil_temperature_0cm', 'average', '°C', 1],
+  ['et0FaoEvapotranspiration', 'ET0', 'et0_fao_evapotranspiration', 'sum', 'mm', 2],
+  ['vapourPressureDeficit', 'VPD', 'vapour_pressure_deficit', 'average', 'kPa', 2],
 ] as const;
 
 const MOLD_WEATHER_VARIABLES = [
@@ -180,7 +199,13 @@ function weatherDefinition(
   unit: string,
   precision: number,
 ): DataDetailVariableDefinition {
-  const negativeCapable = id === 'extendedDewPoint' || id === 'wetBulbTemperature';
+  const negativeCapable =
+    id === 'temperature' ||
+    id === 'apparentTemperature' ||
+    id === 'dewPoint' ||
+    id === 'extendedDewPoint' ||
+    id === 'wetBulbTemperature' ||
+    id === 'soilTemperature0cm';
   const relativeScale = id === 'pressureMsl' || id === 'surfacePressure';
 
   return {

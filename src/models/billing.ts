@@ -41,6 +41,7 @@ export interface BillingOperationResult {
   billingState: BillingState;
   message: string | null;
   cancelled?: boolean;
+  pending?: boolean;
 }
 
 export const UNCONFIGURED_BILLING_STATE: BillingState = {

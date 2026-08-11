@@ -6,18 +6,13 @@ export function settingsForProfileState(
 ): AppSettings {
   if (profile.enabled) return settings;
 
-  if (
-    settings.headlineScore === 'environmental' &&
-    settings.forecastScore === 'environmental' &&
-    settings.summaryScore === 'environmental'
-  ) {
+  if (settings.headlineScore === 'environmental' && settings.summaryScore === 'environmental') {
     return settings;
   }
 
   return {
     ...settings,
     headlineScore: 'environmental',
-    forecastScore: 'environmental',
     summaryScore: 'environmental',
   };
 }

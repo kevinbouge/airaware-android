@@ -7,7 +7,7 @@ export function formatScore(score: number | null): string {
   return isFiniteNumber(score) ? `${Math.round(score)}%` : 'Unavailable';
 }
 
-export function formatCategoryScore(category: RiskCategoryId, score: number | null): string {
+function formatCategoryScore(category: RiskCategoryId, score: number | null): string {
   if (!isFiniteNumber(score) || category === 'unavailable') return 'Unavailable';
   return `${categoryLabel(category)} (${formatScore(score)})`;
 }
