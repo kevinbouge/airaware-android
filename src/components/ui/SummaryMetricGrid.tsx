@@ -5,6 +5,7 @@ interface SummaryMetric {
   label: string;
   value: string;
   accent?: string;
+  compact?: boolean;
 }
 
 interface SummaryMetricGridProps {
@@ -17,7 +18,13 @@ export function SummaryMetricGrid({ metrics }: SummaryMetricGridProps) {
       {metrics.map((metric) => (
         <View key={metric.label} style={styles.item}>
           <Text style={styles.label}>{metric.label}</Text>
-          <Text style={[styles.value, metric.accent ? { color: metric.accent } : null]}>
+          <Text
+            style={[
+              styles.value,
+              metric.compact ? styles.compactValue : null,
+              metric.accent ? { color: metric.accent } : null,
+            ]}
+          >
             {metric.value}
           </Text>
         </View>
@@ -30,7 +37,8 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing.lg,
+    columnGap: spacing.lg,
+    rowGap: spacing.sm,
   },
   item: {
     flexBasis: 132,
@@ -46,9 +54,13 @@ const styles = StyleSheet.create({
   },
   value: {
     color: colors.text,
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '800',
     flexShrink: 1,
-    lineHeight: 29,
+    lineHeight: 26,
+  },
+  compactValue: {
+    fontSize: 17,
+    lineHeight: 22,
   },
 });

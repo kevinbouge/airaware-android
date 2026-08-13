@@ -18,7 +18,7 @@ import type {
 import type { EntitlementState } from '../capabilities/entitlements';
 import type { DerivedEnvironmentState } from '../state/derivedEnvironment';
 import { contributorFromScore } from '../utils/contributorLabels';
-import { formatScore, formatShortTime } from '../utils/format';
+import { formatScore, formatTimeRangeWithTomorrow } from '../utils/format';
 import { isFiniteNumber } from '../utils/number';
 
 const ADVANCED_WIDGET_FORECAST_DISPLAY_DAYS = 4;
@@ -100,6 +100,7 @@ function uvCategoryLabel(value: number | null): string | null {
 function bestOutdoorWindowLabel(
   derived: DerivedEnvironmentState,
   headlineType: WidgetScoreSnapshot['type'],
+  referenceTime: string | null,
 ): string | null {
   const window =
     headlineType === 'personalized'
@@ -107,7 +108,7 @@ function bestOutdoorWindowLabel(
       : derived.environmentalBestOutdoorWindow;
 
   if (!window?.available || !window.startTime || !window.endTime) return null;
-  return `${formatShortTime(window.startTime)}–${formatShortTime(window.endTime)}`;
+  return formatTimeRangeWithTomorrow(window.startTime, window.endTime, referenceTime);
 }
 
 function forecastDaySnapshots(input: {
@@ -181,7 +182,11 @@ export function buildWidgetSnapshot(input: {
     mainFactorLabel: contributor.label,
     uvCategoryLabel: uvCategoryLabel(input.environment?.current.uvIndex ?? null),
     bestOutdoorWindowLabel: headlineScore
-      ? bestOutdoorWindowLabel(input.derived, headlineScore.type)
+      ? bestOutdoorWindowLabel(
+          input.derived,
+          headlineScore.type,
+          input.environment?.current.timestamp ?? input.environment?.fetchedAt ?? null,
+        )
       : null,
     forecastDays:
       input.environment && headlineScore

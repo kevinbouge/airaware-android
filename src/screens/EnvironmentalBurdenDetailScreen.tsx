@@ -20,7 +20,7 @@ import { useDerivedEnvironment } from '../hooks/useDerivedEnvironment';
 import { useAppStore } from '../state/useAppStore';
 import { colors, riskColor, spacing } from '../theme/theme';
 import { contributorFromScore } from '../utils/contributorLabels';
-import { formatScore, formatShortTime } from '../utils/format';
+import { formatScore, formatTimeRangeWithTomorrow } from '../utils/format';
 import type { EnvironmentalVariableId } from '../capabilities/types';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrToday, type DetailBackNavigation } from '../navigation/detailNavigation';
@@ -86,9 +86,11 @@ export function EnvironmentalBurdenDetailScreen() {
     environmentalBestOutdoorWindow?.available &&
     environmentalBestOutdoorWindow.startTime &&
     environmentalBestOutdoorWindow.endTime
-      ? `${formatShortTime(environmentalBestOutdoorWindow.startTime)}–${formatShortTime(
+      ? formatTimeRangeWithTomorrow(
+          environmentalBestOutdoorWindow.startTime,
           environmentalBestOutdoorWindow.endTime,
-        )}`
+          environment.current.timestamp ?? environment.fetchedAt,
+        )
       : 'Unavailable';
 
   return (
@@ -108,6 +110,7 @@ export function EnvironmentalBurdenDetailScreen() {
               {
                 label: 'Best window',
                 value: bestWindowValue,
+                compact: true,
               },
             ]}
           />
@@ -115,14 +118,13 @@ export function EnvironmentalBurdenDetailScreen() {
         </SectionCard>
 
         <DailyForecastSection
-          title="Environmental burden forecast"
+          title="Daily forecast"
           days={environment.forecastDays}
           capabilities={capabilities}
           scoreForDate={dailyScore}
         />
         <RiskTimelineSection
-          title="Environmental burden timeline"
-          subtitle="Next 24 hours. The highlighted range marks the best outdoor window."
+          title="24-hour forecast"
           current={currentTimelinePoint}
           hourly={hourlyTimelinePoints}
           bestWindow={environmentalBestOutdoorWindow}

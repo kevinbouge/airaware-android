@@ -47,11 +47,13 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: '700',
     lineHeight: 34,
+    marginTop: -5,
   },
   backLabel: {
     color: colors.primary,
     fontSize: 16,
     fontWeight: '700',
+    lineHeight: 24,
   },
   container: {
     alignItems: 'center',

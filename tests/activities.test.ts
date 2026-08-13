@@ -351,7 +351,42 @@ describe('Activities capability and model', () => {
 
     expect(result.bestWindow.startTime).toBe('2026-08-02T18:00:00+02:00');
     expect(timelineBestWindow.startTime).toBe('2026-08-01T12:00:00+02:00');
+    expect(formatActivityWindow(timelineBestWindow, '2026-08-01T12:00:00+02:00')).toBe(
+      '12:00–14:00',
+    );
     expect(rows.some((row) => row.markerLabel === 'Best')).toBe(true);
+  });
+
+  it('labels activity best windows that start tomorrow', () => {
+    expect(
+      formatActivityWindow(
+        {
+          available: true,
+          startTime: '2026-08-02T18:00:00+02:00',
+          endTime: '2026-08-02T20:00:00+02:00',
+          averageScore: 88,
+          minimumScore: 88,
+          category: 'excellent',
+        },
+        '2026-08-01T12:00:00+02:00',
+      ),
+    ).toBe('18:00–20:00 (tomorrow)');
+  });
+
+  it('does not label activity best windows as tomorrow when only the end crosses midnight', () => {
+    expect(
+      formatActivityWindow(
+        {
+          available: true,
+          startTime: '2026-08-01T23:00:00+02:00',
+          endTime: '2026-08-02T01:00:00+02:00',
+          averageScore: 82,
+          minimumScore: 82,
+          category: 'good',
+        },
+        '2026-08-01T12:00:00+02:00',
+      ),
+    ).toBe('23:00–01:00');
   });
 
   it('marks missing required variables as insufficient data without fabricating zeroes', () => {

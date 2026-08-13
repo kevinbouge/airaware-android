@@ -10,7 +10,12 @@ import type {
 } from '../models/environment';
 import type { AppSettings } from '../models/profile';
 import { contributorFromScore } from '../utils/contributorLabels';
-import { formatDateLabel, formatShortTime, headlineWithEmoji } from '../utils/format';
+import {
+  formatDateLabel,
+  formatShortTime,
+  formatTimeRangeWithTomorrow,
+  headlineWithEmoji,
+} from '../utils/format';
 
 function scoreChoice(input: {
   environment: NormalizedEnvironment;
@@ -99,6 +104,7 @@ export function buildDailySummary(input: {
   return {
     title,
     dateLabel: formatDateLabel(referenceTime),
+    referenceTime,
     scoreLabel: selectedScore.label,
     score: selectedScore.score,
     mainFactorLabel: factor.mainFactorLabel,
@@ -155,7 +161,11 @@ export function formatDailySummary(summary: DailySummary): string {
     lines.push(
       '',
       '🌤️ Best outdoor window',
-      `${formatShortTime(summary.bestOutdoorWindow.startTime)}–${formatShortTime(summary.bestOutdoorWindow.endTime)}`,
+      formatTimeRangeWithTomorrow(
+        summary.bestOutdoorWindow.startTime,
+        summary.bestOutdoorWindow.endTime,
+        summary.referenceTime,
+      ),
     );
   }
 

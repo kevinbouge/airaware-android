@@ -18,7 +18,7 @@ import type {
 import type { EnvironmentalVariableId } from '../capabilities/types';
 import type { HourlyEnvironmentalReading } from '../models/environment';
 import { isFiniteNumber } from '../utils/number';
-import { providerLocalTime } from '../utils/time';
+import { formatTimeRangeWithTomorrow } from '../utils/format';
 
 export { activityCategoryLabel, activityVariableValue } from './activityDefinitions';
 
@@ -469,11 +469,12 @@ export function evaluateActivities(input: ActivityEvaluationInput): ActivityEval
   );
 }
 
-export function formatActivityWindow(window: ActivityWindowResult): string {
+export function formatActivityWindow(
+  window: ActivityWindowResult,
+  referenceTime: string | null = null,
+): string {
   if (!window.available || !window.startTime || !window.endTime) return 'Unavailable';
-  const start = providerLocalTime(window.startTime);
-  const end = providerLocalTime(window.endTime);
-  return start && end ? `${start}–${end}` : 'Unavailable';
+  return formatTimeRangeWithTomorrow(window.startTime, window.endTime, referenceTime);
 }
 
 export function formatActivityScore(result: ActivityEvaluationResult): string {

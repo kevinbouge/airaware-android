@@ -100,11 +100,12 @@ nvm use 22.13.1
 - **Today**: headline scores, location, update status, main factor, best outdoor window, refresh,
   share summary, and enabled Activity summary cards
 - **Context detail screens**: Environmental burden, Personalized risk, and Activity details with
-  contextual forecasts and tappable environmental measurements
+  Daily forecast and 24-hour forecast graphs plus tappable environmental measurements
 - **Environmental variable details**: shared 24-hour, week, month, and year timeline for individual
   variables
 - **Profile**: local Personal Allergy Profile toggles, including Mold potential and UV index
-- **Pro**: AirAware Pro purchase/restore status and Activity toggles
+- **Pro**: AirAware Pro purchase/restore status, development capability preview, and Activity
+  toggles
 - **Settings**: location mode, manual map selection, refresh interval,
   notification preferences, daily-summary score, privacy and attribution notes, and disclaimers
 
@@ -155,14 +156,15 @@ personalized risk, notifications, daily summaries, or the core best outdoor wind
 and UV index are standard AirAware readings available to Free and Pro users. Mold remains part of
 the base environmental burden formula so the environmental burden score keeps a consistent meaning.
 
-The Personal Allergy Profile is disabled by default. When enabled, it calculates a separate
+The Personal Allergy Profile is enabled by default. When enabled, it calculates a separate
 personalized environmental risk score from selected local factors available to the active capability
 profile. Profile switches control only personalized-score inputs; they do not hide or show readings
-on Today. If personalization is disabled, headline, forecast, and daily-summary score settings fall
-back to Environmental burden. Disabled factors are not treated as environmentally absent, and missing
-selected readings are omitted rather than treated as zero. Mold potential and UV index are available
-to Free and Pro users as opt-in personalized-score factors and are disabled by default. UV does not
-change the original environmental burden score.
+on Today. The active headline score is Personalized risk when available and Environmental burden
+otherwise. Daily-summary score selection remains configurable and falls back to Environmental burden
+when personalization is unavailable. Disabled factors are not treated as environmentally absent, and
+missing selected readings are omitted rather than treated as zero. Mold potential and UV index are
+available to Free and Pro users as opt-in personalized-score factors and are disabled by default. UV
+does not change the original environmental burden score.
 
 Mold potential is inferred from environmental weather conditions. It is not a measured mold-spore
 concentration.
@@ -298,8 +300,11 @@ Extended Forecast is available with AirAware Pro:
 - Up to 7 total forecast days
 
 Forecast availability depends on upstream model coverage. Some measurements may be unavailable for
-later days, and missing values are omitted rather than treated as zero. The 24-hour risk timeline
-and Best outdoor window remain short-term features.
+later days, and missing values are omitted rather than treated as zero. Detail pages present two
+forecast views: **Daily forecast** for the active forecast horizon and **24-hour forecast** for the
+short-term timeline. The Best outdoor window remains a short-term feature. When a best window starts
+tomorrow, AirAware labels it with `(tomorrow)`; windows that start today and end after midnight are
+not labeled as tomorrow.
 
 Professional Activities:
 
@@ -327,11 +332,10 @@ lifetime purchase is `lifetime`. Production Pro access is granted only when Reve
 information reports the `pro` entitlement as active.
 
 If `EXPO_PUBLIC_REVENUECAT_API_KEY` is missing, billing is marked unconfigured and the app remains
-Free. Development builds include a capability preview control in Settings under **AirAware Pro** so
-Free and Pro surfaces can be smoke-tested. The preview is ignored in production, does not modify
-RevenueCat customer information, does not simulate a purchase, and does not store purchase tokens.
-Personal Allergy Profile data remains local and is not sent to RevenueCat, Open-Meteo, or any other
-provider.
+Free. Development builds include a capability preview control in the **Pro** tab so Free and Pro
+surfaces can be smoke-tested. The preview is ignored in production, does not modify RevenueCat
+customer information, does not simulate a purchase, and does not store purchase tokens. Personal
+Allergy Profile data remains local and is not sent to RevenueCat, Open-Meteo, or any other provider.
 
 Notification capabilities are modeled separately:
 
@@ -465,7 +469,7 @@ widgets because Android widgets are not pure React Native views.
 
 ### Development Free/Pro Smoke Testing
 
-In development builds, Settings includes an **AirAware Pro** section with a local capability preview:
+In development builds, the **Pro** tab includes a local capability preview:
 
 - Use RevenueCat: use the configured RevenueCat entitlement.
 - Preview Free shows the Free forecast horizon, standard environmental readings, compact widget

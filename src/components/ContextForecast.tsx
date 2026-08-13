@@ -5,7 +5,7 @@ import { ForecastBarSection } from './ForecastSections';
 import { SectionCard } from './SectionCard';
 import type { AppCapabilities } from '../capabilities/types';
 import type { OutdoorWindow, RiskCategoryId } from '../models/environment';
-import { colors, riskColor } from '../theme/theme';
+import { colors, riskColor, spacing } from '../theme/theme';
 import { displayScore } from '../utils/number';
 import { formatScore } from '../utils/format';
 
@@ -120,21 +120,19 @@ export function DailyForecastSection({
 
 export function RiskTimelineSection({
   title,
-  subtitle,
   current,
   hourly,
   bestWindow,
   unavailableLabel,
 }: {
   title: string;
-  subtitle: string;
   current: TimelinePointInput | null;
   hourly: TimelinePointInput[];
   bestWindow: OutdoorWindow | null;
   unavailableLabel: string;
 }) {
   return (
-    <SectionCard title={title} subtitle={subtitle}>
+    <SectionCard title={title} contentTopSpacing={spacing.lg}>
       <RiskForecastTimeline
         current={current}
         hourly={hourly}

@@ -5,6 +5,7 @@ import { colors, spacing } from '../theme/theme';
 interface SectionCardProps extends PropsWithChildren {
   title?: string;
   subtitle?: string | undefined;
+  contentTopSpacing?: number | undefined;
   collapsible?: boolean;
   collapsed?: boolean;
   onToggle?: (() => void) | undefined;
@@ -13,6 +14,7 @@ interface SectionCardProps extends PropsWithChildren {
 export function SectionCard({
   title,
   subtitle,
+  contentTopSpacing,
   children,
   collapsible = false,
   collapsed = false,
@@ -43,7 +45,17 @@ export function SectionCard({
       ) : (
         header
       )}
-      {!collapsed ? <View style={styles.content}>{children}</View> : null}
+      {!collapsed ? (
+        <View
+          style={[
+            styles.content,
+            !header ? styles.contentWithoutHeader : null,
+            header && contentTopSpacing !== undefined ? { marginTop: contentTopSpacing } : null,
+          ]}
+        >
+          {children}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -60,6 +72,9 @@ const styles = StyleSheet.create({
   content: {
     gap: spacing.sm,
     marginTop: spacing.md,
+  },
+  contentWithoutHeader: {
+    marginTop: 0,
   },
   arrow: {
     color: colors.muted,

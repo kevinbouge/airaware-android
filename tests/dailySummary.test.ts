@@ -184,6 +184,51 @@ describe('daily summary', () => {
     expect(text).not.toContain('NaN');
   });
 
+  it('labels best outdoor windows that start tomorrow', () => {
+    const summary = buildDailySummary({
+      environment,
+      personalizedScore: calculatePersonalizedScore(environment.current, DEFAULT_PROFILE),
+      bestOutdoorWindow: {
+        available: true,
+        startTime: '2026-08-02T06:00:00+02:00',
+        endTime: '2026-08-02T08:00:00+02:00',
+        durationHours: 2,
+        averageScore: 24,
+        maximumScore: 28,
+        category: 'low',
+        completeness: 1,
+      },
+      settings: { ...DEFAULT_SETTINGS, summaryScore: 'environmental' },
+      stale: false,
+    });
+
+    expect(formatDailySummary(summary!)).toContain('06:00–08:00 (tomorrow)');
+  });
+
+  it('does not label best outdoor windows as tomorrow when only the end crosses midnight', () => {
+    const summary = buildDailySummary({
+      environment,
+      personalizedScore: calculatePersonalizedScore(environment.current, DEFAULT_PROFILE),
+      bestOutdoorWindow: {
+        available: true,
+        startTime: '2026-08-01T23:00:00+02:00',
+        endTime: '2026-08-02T01:00:00+02:00',
+        durationHours: 2,
+        averageScore: 24,
+        maximumScore: 28,
+        category: 'low',
+        completeness: 1,
+      },
+      settings: { ...DEFAULT_SETTINGS, summaryScore: 'environmental' },
+      stale: false,
+    });
+
+    const text = formatDailySummary(summary!);
+
+    expect(text).toContain('23:00–01:00');
+    expect(text).not.toContain('(tomorrow)');
+  });
+
   it('uses the selected summary score for the main factor', () => {
     const summary = buildDailySummary({
       environment,

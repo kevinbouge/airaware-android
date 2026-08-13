@@ -269,7 +269,8 @@ export function ActivityDetailScreen() {
               },
               {
                 label: 'Best window',
-                value: formatActivityWindow(evaluation.bestWindow),
+                value: formatActivityWindow(timelineBestWindow, nowTimestamp),
+                compact: true,
               },
             ]}
           />
@@ -287,15 +288,12 @@ export function ActivityDetailScreen() {
         </SectionCard>
 
         <ForecastBarSection
-          title={`${definition.label} forecast`}
+          title="Daily forecast"
           rows={forecastRows}
           emptyLabel="Forecast data is unavailable."
         />
 
-        <SectionCard
-          title={`${definition.label} 24-hour outlook`}
-          subtitle="Next 24 hours. The highlighted range marks the best window."
-        >
+        <SectionCard title="24-hour forecast" contentTopSpacing={spacing.lg}>
           <ActivityForecastTimeline
             hours={evaluation.hours}
             now={evaluation.current?.timestamp ?? nowTimestamp}

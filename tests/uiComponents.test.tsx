@@ -8,10 +8,22 @@ import { ForecastBarRow } from '../src/components/ui/ForecastBarRow';
 import { InsightCard } from '../src/components/InsightCard';
 import { RiskForecastTimeline } from '../src/components/RiskForecastTimeline';
 import { ScoreCard } from '../src/components/ScoreCard';
+import { SectionCard } from '../src/components/SectionCard';
 import { SummaryMetricGrid } from '../src/components/ui/SummaryMetricGrid';
 import { FREE_CAPABILITIES } from '../src/capabilities/config';
 
 describe('shared UI components', () => {
+  it('does not add header spacing to untitled section cards', () => {
+    const card = SectionCard({
+      children: 'Summary',
+    }) as React.ReactElement<{ children?: React.ReactNode }>;
+    const children = React.Children.toArray(card.props.children);
+    const content = children.at(-1) as React.ReactElement<{ style?: unknown }>;
+    const contentStyle = StyleSheet.flatten(content.props.style) as ViewStyle;
+
+    expect(contentStyle.marginTop).toBe(0);
+  });
+
   it('keeps forecast bar rows exposed as one accessible forecast summary', () => {
     const row = ForecastBarRow({
       accent: '#2E7D32',
@@ -29,7 +41,7 @@ describe('shared UI components', () => {
     const grid = SummaryMetricGrid({
       metrics: [
         { label: 'Score', value: 'Very High · 100%' },
-        { label: 'Best window', value: 'Unavailable' },
+        { label: 'Best window', value: '06:00–08:00 (tomorrow)', compact: true },
       ],
     }) as React.ReactElement<{ children?: React.ReactNode; style?: unknown }>;
     const gridStyle = StyleSheet.flatten(grid.props.style) as ViewStyle;
@@ -52,11 +64,27 @@ describe('shared UI components', () => {
     }
 
     const valueStyle = StyleSheet.flatten(value.props.style) as TextStyle;
+    const secondMetric = metricRows[1];
+    if (!secondMetric) {
+      throw new Error('SummaryMetricGrid did not render the second metric');
+    }
+    const secondMetricTexts = React.Children.toArray(
+      secondMetric.props.children,
+    ) as React.ReactElement<{
+      style?: unknown;
+    }>[];
+    const compactValue = secondMetricTexts[1];
+    if (!compactValue) {
+      throw new Error('SummaryMetricGrid did not render the compact metric value');
+    }
+    const compactValueStyle = StyleSheet.flatten(compactValue.props.style) as TextStyle;
 
     expect(gridStyle.flexWrap).toBe('wrap');
+    expect(gridStyle.rowGap).toBe(8);
     expect(itemStyle.flexShrink).toBe(1);
     expect(itemStyle.minWidth).toBeGreaterThan(0);
     expect(valueStyle.flexShrink).toBe(1);
+    expect(compactValueStyle.fontSize).toBeLessThan(valueStyle.fontSize as number);
   });
 
   it('keeps tappable environmental reading rows at a comfortable touch target size', () => {

@@ -226,6 +226,7 @@ export interface CachedEnvironment {
 export interface DailySummary {
   title: string;
   dateLabel: string;
+  referenceTime: string;
   scoreLabel: 'Environmental burden' | 'Personalized risk';
   score: EnvironmentalScoreResult | PersonalizedScoreResult;
   mainFactorLabel: string | null;

@@ -11,13 +11,14 @@ import { useCapabilities } from '../hooks/useCapabilities';
 import { useDerivedEnvironment } from '../hooks/useDerivedEnvironment';
 import {
   activityCategoryLabel,
+  bestActivityWindowForRange,
   evaluateActivities,
   formatActivityScore,
   formatActivityWindow,
 } from '../core/activityEvaluator';
 import { useAppStore } from '../state/useAppStore';
 import { colors, riskColor, spacing } from '../theme/theme';
-import { formatCoordinates, formatShortTime, formatTimestamp } from '../utils/format';
+import { formatCoordinates, formatTimeRangeWithTomorrow, formatTimestamp } from '../utils/format';
 import { contributorFromScore } from '../utils/contributorLabels';
 import type { ActivitySuitabilityCategory } from '../models/activities';
 import type { RootStackParamList } from '../navigation/AppNavigator';
@@ -74,12 +75,13 @@ function appendAvailableWindowDetail(
   details: string[],
   label: string,
   window: { available: boolean; startTime: string | null; endTime: string | null } | null,
+  referenceTime: string | null,
 ) {
   if (!window?.available || !window.startTime || !window.endTime) return details;
 
   return [
     ...details,
-    `${label}: ${formatShortTime(window.startTime)}–${formatShortTime(window.endTime)}`,
+    `${label}: ${formatTimeRangeWithTomorrow(window.startTime, window.endTime, referenceTime)}`,
   ];
 }
 
@@ -138,15 +140,18 @@ export function TodayScreen() {
     stale,
     environment?.metadata ?? null,
   );
+  const referenceTime = environment?.current.timestamp ?? environment?.fetchedAt ?? null;
   const environmentalDetails = appendAvailableWindowDetail(
     [`Main factor: ${environmentalMainFactor.label ?? 'Unavailable'}`],
     'Best window',
     environmentalBestOutdoorWindow,
+    referenceTime,
   );
   const personalizedDetails = appendAvailableWindowDetail(
     [`Main factor: ${personalizedMainFactor.label ?? 'Unavailable'}`],
     'Best window',
     personalizedBestOutdoorWindow,
+    referenceTime,
   );
 
   return (
@@ -193,28 +198,38 @@ export function TodayScreen() {
           {activityEvaluations.length > 0 ? (
             <View style={styles.activitySection}>
               <Text style={styles.sectionTitle}>Activities</Text>
-              {activityEvaluations.map((activity) => (
-                <InsightCard
-                  key={activity.id}
-                  title={activity.label}
-                  accent={activityColor(activity.current?.category ?? 'insufficientData')}
-                  primary={
-                    activity.current
-                      ? activityCategoryLabel(activity.current.category)
-                      : 'Unavailable'
-                  }
-                  compact
-                  secondary={
-                    activity.current?.available ? `${activity.current.displayScore}%` : undefined
-                  }
-                  details={[
-                    `Best window: ${formatActivityWindow(activity.bestWindow)}`,
-                    ...(!activity.available ? [activityCategoryLabel('insufficientData')] : []),
-                  ]}
-                  accessibilityLabel={`${activity.label}: ${formatActivityScore(activity)}. Opens details.`}
-                  onPress={() => navigation.navigate('ActivityDetail', { activityId: activity.id })}
-                />
-              ))}
+              {activityEvaluations.map((activity) => {
+                const displayWindow = bestActivityWindowForRange(
+                  activity.hours,
+                  activity.current?.timestamp ?? referenceTime ?? '',
+                  24,
+                );
+
+                return (
+                  <InsightCard
+                    key={activity.id}
+                    title={activity.label}
+                    accent={activityColor(activity.current?.category ?? 'insufficientData')}
+                    primary={
+                      activity.current
+                        ? activityCategoryLabel(activity.current.category)
+                        : 'Unavailable'
+                    }
+                    compact
+                    secondary={
+                      activity.current?.available ? `${activity.current.displayScore}%` : undefined
+                    }
+                    details={[
+                      `Best window: ${formatActivityWindow(displayWindow, referenceTime)}`,
+                      ...(!activity.available ? [activityCategoryLabel('insufficientData')] : []),
+                    ]}
+                    accessibilityLabel={`${activity.label}: ${formatActivityScore(activity)}. Opens details.`}
+                    onPress={() =>
+                      navigation.navigate('ActivityDetail', { activityId: activity.id })
+                    }
+                  />
+                );
+              })}
             </View>
           ) : null}
 

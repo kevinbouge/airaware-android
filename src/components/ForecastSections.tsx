@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { colors } from '../theme/theme';
+import { colors, spacing } from '../theme/theme';
 import { ForecastBarRow } from './ui/ForecastBarRow';
 import { SectionCard } from './SectionCard';
 
@@ -28,7 +28,7 @@ export function ForecastBarSection({
   emptyLabel: string;
 }) {
   return (
-    <SectionCard title={title}>
+    <SectionCard title={title} contentTopSpacing={spacing.lg}>
       {rows.length > 0 ? (
         rows.map((row) => (
           <ForecastBarRow

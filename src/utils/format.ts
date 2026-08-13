@@ -112,6 +112,46 @@ export function formatShortTime(value: string | null): string {
   );
 }
 
+function addDaysToProviderDate(date: string, days: number): string | null {
+  const parts = date.split('-').map(Number);
+  const year = parts[0];
+  const month = parts[1];
+  const day = parts[2];
+
+  if (
+    !Number.isFinite(year) ||
+    !Number.isFinite(month) ||
+    !Number.isFinite(day) ||
+    year === undefined ||
+    month === undefined ||
+    day === undefined
+  ) {
+    return null;
+  }
+
+  const next = new Date(Date.UTC(year, month - 1, day + days, 12));
+  return next.toISOString().slice(0, 10);
+}
+
+export function formatTimeRangeWithTomorrow(
+  startTime: string | null,
+  endTime: string | null,
+  referenceTime: string | null,
+): string {
+  const startLabel = formatShortTime(startTime);
+  const endLabel = formatShortTime(endTime);
+
+  if (startLabel === 'Unavailable' || endLabel === 'Unavailable') return 'Unavailable';
+
+  const startDate = startTime ? providerLocalDate(startTime) : null;
+  const referenceDate = referenceTime ? providerLocalDate(referenceTime) : null;
+  const tomorrowDate = referenceDate ? addDaysToProviderDate(referenceDate, 1) : null;
+  const tomorrowSuffix =
+    startDate && tomorrowDate && startDate === tomorrowDate ? ' (tomorrow)' : '';
+
+  return `${startLabel}–${endLabel}${tomorrowSuffix}`;
+}
+
 export function headlineWithEmoji(category: RiskCategoryId, score: number | null): string {
   return `${categoryEmoji(category)} ${formatCategoryScore(category, score)}`;
 }

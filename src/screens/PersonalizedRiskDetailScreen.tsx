@@ -22,7 +22,7 @@ import { useDerivedEnvironment } from '../hooks/useDerivedEnvironment';
 import { useAppStore } from '../state/useAppStore';
 import { colors, riskColor, spacing } from '../theme/theme';
 import { contributorFromScore } from '../utils/contributorLabels';
-import { formatScore, formatShortTime } from '../utils/format';
+import { formatScore, formatTimeRangeWithTomorrow } from '../utils/format';
 import type { EnvironmentalVariableId } from '../capabilities/types';
 import type { ProfileFactorId } from '../models/profile';
 import type { RootStackParamList } from '../navigation/AppNavigator';
@@ -120,9 +120,11 @@ export function PersonalizedRiskDetailScreen() {
     personalizedBestOutdoorWindow?.available &&
     personalizedBestOutdoorWindow.startTime &&
     personalizedBestOutdoorWindow.endTime
-      ? `${formatShortTime(personalizedBestOutdoorWindow.startTime)}–${formatShortTime(
+      ? formatTimeRangeWithTomorrow(
+          personalizedBestOutdoorWindow.startTime,
           personalizedBestOutdoorWindow.endTime,
-        )}`
+          environment.current.timestamp ?? environment.fetchedAt,
+        )
       : 'Unavailable';
 
   return (
@@ -142,6 +144,7 @@ export function PersonalizedRiskDetailScreen() {
               {
                 label: 'Best window',
                 value: bestWindowValue,
+                compact: true,
               },
             ]}
           />
@@ -149,14 +152,13 @@ export function PersonalizedRiskDetailScreen() {
         </SectionCard>
 
         <DailyForecastSection
-          title="Personalized risk forecast"
+          title="Daily forecast"
           days={environment.forecastDays}
           capabilities={capabilities}
           scoreForDate={dailyScore}
         />
         <RiskTimelineSection
-          title="Personalized risk timeline"
-          subtitle="Next 24 hours. The highlighted range marks the best window."
+          title="24-hour forecast"
           current={currentTimelinePoint}
           hourly={hourlyTimelinePoints}
           bestWindow={personalizedBestOutdoorWindow}
