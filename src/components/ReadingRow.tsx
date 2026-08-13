@@ -11,6 +11,7 @@ interface ReadingRowProps {
 }
 
 export function ReadingRow({ label, value, detail, variableId, onPress }: ReadingRowProps) {
+  const tappable = Boolean(variableId && onPress);
   const content = (
     <View style={styles.row}>
       <Text style={styles.label}>{label}</Text>
@@ -18,6 +19,7 @@ export function ReadingRow({ label, value, detail, variableId, onPress }: Readin
         <Text style={styles.value}>{value}</Text>
         {detail ? <Text style={styles.detail}>{detail}</Text> : null}
       </View>
+      {tappable ? <Text style={styles.chevron}>›</Text> : null}
     </View>
   );
 
@@ -28,7 +30,7 @@ export function ReadingRow({ label, value, detail, variableId, onPress }: Readin
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${label}: ${value}`}
+      accessibilityLabel={`${label}: ${value}. Opens details.`}
       onPress={() => onPress(variableId)}
       style={({ pressed }) => [styles.pressable, pressed && styles.pressed]}
     >
@@ -38,6 +40,12 @@ export function ReadingRow({ label, value, detail, variableId, onPress }: Readin
 }
 
 const styles = StyleSheet.create({
+  chevron: {
+    color: colors.muted,
+    fontSize: 20,
+    fontWeight: '700',
+    lineHeight: 22,
+  },
   detail: {
     color: colors.muted,
     fontSize: 13,
@@ -57,9 +65,11 @@ const styles = StyleSheet.create({
   },
   pressable: {
     borderRadius: 8,
+    justifyContent: 'center',
+    minHeight: 44,
   },
   pressed: {
-    backgroundColor: '#EEF3EF',
+    backgroundColor: colors.pressedSurface,
   },
   value: {
     color: colors.text,

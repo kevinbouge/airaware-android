@@ -153,7 +153,7 @@ describe('derived environment forecast state', () => {
       },
     };
 
-    const derived = deriveEnvironmentState(environment, profile(), 2);
+    const derived = deriveEnvironmentState(environment, profile());
 
     expect(derived.personalizedForecastDays).toHaveLength(2);
     expect(derived.personalizedForecastDays[0]?.score?.available).toBe(true);
@@ -209,7 +209,7 @@ describe('derived environment forecast state', () => {
       },
     };
     const testProfile = profile();
-    const derived = deriveEnvironmentState(environment, testProfile, 2);
+    const derived = deriveEnvironmentState(environment, testProfile);
 
     expect(derived.personalizedForecastDays[0]?.score?.score).toBe(
       calculatePersonalizedScore(current, testProfile).score,

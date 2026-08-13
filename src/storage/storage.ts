@@ -89,16 +89,10 @@ function validVegetationRadius(value: unknown): AppSettings['nearbyVegetationRad
     : DEFAULT_SETTINGS.nearbyVegetationRadiusMeters;
 }
 
-function validOutdoorWindowDuration(value: unknown): AppSettings['outdoorWindowDurationHours'] {
-  return value === 1 || value === 2 || value === 3
-    ? value
-    : DEFAULT_SETTINGS.outdoorWindowDurationHours;
-}
-
 function validScorePreference(
   value: unknown,
-  fallback: AppSettings['headlineScore'],
-): AppSettings['headlineScore'] {
+  fallback: AppSettings['summaryScore'],
+): AppSettings['summaryScore'] {
   return value === 'environmental' || value === 'personalized' ? value : fallback;
 }
 
@@ -431,8 +425,6 @@ export async function loadSettings(): Promise<AppSettings> {
     manualLongitude: stringOrDefault(object?.manualLongitude, DEFAULT_SETTINGS.manualLongitude),
     refreshIntervalMinutes: validRefreshInterval(object?.refreshIntervalMinutes),
     nearbyVegetationRadiusMeters: validVegetationRadius(object?.nearbyVegetationRadiusMeters),
-    outdoorWindowDurationHours: validOutdoorWindowDuration(object?.outdoorWindowDurationHours),
-    headlineScore: validScorePreference(object?.headlineScore, DEFAULT_SETTINGS.headlineScore),
     summaryScore: validScorePreference(object?.summaryScore, DEFAULT_SETTINGS.summaryScore),
     summaryLocation: validSummaryLocation(object?.summaryLocation),
     riskTransitionNotificationsEnabled: object?.riskTransitionNotificationsEnabled === true,

@@ -101,7 +101,6 @@ function calculatePersonalizedForecastDays(
 export function deriveEnvironmentState(
   environment: NormalizedEnvironment | null,
   profile: PersonalAllergyProfile,
-  duration: 1 | 2 | 3,
   capabilities?: AppCapabilities,
 ): DerivedEnvironmentState {
   const effectiveProfile = capabilities ? profileForCapabilities(capabilities, profile) : profile;
@@ -110,10 +109,10 @@ export function deriveEnvironmentState(
     ? calculatePersonalizedScore(environment.current, effectiveProfile)
     : unavailablePersonalized;
   const environmentalForecast = environment
-    ? calculateEnvironmentalForecast(environment.hourly, duration)
+    ? calculateEnvironmentalForecast(environment.hourly)
     : null;
   const personalizedForecast = environment
-    ? calculatePersonalizedForecast(environment.hourly, effectiveProfile, duration)
+    ? calculatePersonalizedForecast(environment.hourly, effectiveProfile)
     : null;
   const personalizedForecastDays = environment
     ? calculatePersonalizedForecastDays(environment, effectiveProfile)

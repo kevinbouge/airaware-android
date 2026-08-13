@@ -29,7 +29,7 @@
         "expo-notifications",
         {
           "icon": "./assets/android-icon-monochrome.png",
-          "color": "#2F7D46",
+          "color": "#45BF75",
           "defaultChannel": "risk-changes"
         }
       ],

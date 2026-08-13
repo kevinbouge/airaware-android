@@ -129,7 +129,7 @@ export function featureDefinitions(capabilities: AppCapabilities): FeatureDefini
       available: hasNotificationCapability(capabilities, 'basic_transition_notifications'),
       freeBehavior: 'Active headline score transition notifications',
       proBehavior: 'Active headline score transition notifications',
-      description: 'Notifies when the selected headline score enters a configured high category.',
+      description: 'Notifies when the active headline score enters a configured high category.',
     },
     {
       id: 'advanced_environment_notifications',

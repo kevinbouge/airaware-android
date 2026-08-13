@@ -1,8 +1,13 @@
 import { FREE_CAPABILITIES, PRO_LIFETIME_CAPABILITIES } from '../src/capabilities/config';
 import { profileFactorSections } from '../src/core/profileSections';
-import { DEFAULT_PROFILE } from '../src/models/profile';
+import { DEFAULT_PROFILE, DEFAULT_SETTINGS } from '../src/models/profile';
 
 describe('Profile screen factor sections', () => {
+  it('defaults to personalized mode', () => {
+    expect(DEFAULT_PROFILE.enabled).toBe(true);
+    expect(DEFAULT_SETTINGS.summaryScore).toBe('personalized');
+  });
+
   it('defaults Pro profile factors off', () => {
     expect(DEFAULT_PROFILE.factors.mold).toBe(false);
     expect(DEFAULT_PROFILE.factors.uv_index).toBe(false);

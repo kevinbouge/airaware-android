@@ -9,6 +9,7 @@ export const linking: LinkingOptions<RootStackParamList> = {
         screens: {
           Today: 'today',
           Profile: 'profile',
+          Pro: 'pro',
           Settings: 'settings',
         },
       },

@@ -1,7 +1,8 @@
 import Svg, { Circle, Path, type SvgProps } from 'react-native-svg';
 import { GasMaskIcon } from './GasMaskIcon';
 
-export type TabIconName = 'today' | 'data' | 'activities' | 'forecast' | 'profile' | 'settings';
+export type TabIconName =
+  'today' | 'data' | 'activities' | 'forecast' | 'profile' | 'pro' | 'settings';
 
 interface TabIconProps extends SvgProps {
   name: TabIconName;
@@ -77,6 +78,15 @@ export function TabIcon({ name, size = 24, color, ...props }: TabIconProps) {
             strokeLinecap="round"
           />
         </>
+      ) : null}
+      {name === 'pro' ? (
+        <Path
+          d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1L12 16.9 6.6 19.8l1-6.1-4.4-4.3 6.1-.9L12 3Z"
+          stroke={color}
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       ) : null}
       {name === 'settings' ? (
         <>

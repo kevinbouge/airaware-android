@@ -1,4 +1,5 @@
 import { categoryLabel } from './categories';
+import { activeHeadlineScore } from './headlineScore';
 import type {
   Coordinates,
   EnvironmentalScoreResult,
@@ -13,12 +14,6 @@ import type {
 } from '../models/notifications';
 import type { AppSettings, PersonalAllergyProfile } from '../models/profile';
 import { displayScore, isFiniteNumber } from '../utils/number';
-
-interface HeadlineScoreSelection {
-  scoreType: HeadlineScoreType;
-  score: EnvironmentalScoreResult | PersonalizedScoreResult | null;
-  fallbackUsed: boolean;
-}
 
 interface TransitionContext {
   locationKey: string;
@@ -116,26 +111,6 @@ export function personalAllergyProfileFingerprint(profile: PersonalAllergyProfil
     .join('|');
 
   return `v1|enabled:${profile.enabled ? '1' : '0'}|${factors}`;
-}
-
-export function activeHeadlineScore(input: {
-  settings: Pick<AppSettings, 'headlineScore'>;
-  environmentalScore: EnvironmentalScoreResult | null;
-  personalizedScore: PersonalizedScoreResult;
-}): HeadlineScoreSelection {
-  if (input.settings.headlineScore === 'personalized' && input.personalizedScore.available) {
-    return {
-      scoreType: 'personalized',
-      score: input.personalizedScore,
-      fallbackUsed: false,
-    };
-  }
-
-  return {
-    scoreType: 'environmental',
-    score: input.environmentalScore,
-    fallbackUsed: input.settings.headlineScore === 'personalized',
-  };
 }
 
 function transitionContext(input: {

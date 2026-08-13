@@ -53,8 +53,6 @@ export interface ActivityDefinition {
   detailVariables: readonly EnvironmentalVariableId[];
   weatherVariables: readonly string[];
   airQualityVariables: readonly string[];
-  windowHours: number;
-  disclaimer?: string;
   rules: readonly ActivityRuleDefinition[];
 }
 
@@ -100,7 +98,6 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
       'shortwave_radiation',
     ],
     airQualityVariables: [],
-    windowHours: 2,
     rules: [
       rule({
         id: 'visibility',
@@ -198,7 +195,6 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
       'precipitation',
     ],
     airQualityVariables: [],
-    windowHours: 3,
     rules: [
       rule({
         id: 'cloud',
@@ -246,7 +242,6 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
         negativeText: 'Daylight limits astronomy use',
       }),
     ],
-    disclaimer: 'Environmental guidance only. This is not an observatory-grade seeing forecast.',
   },
   {
     id: 'farming',
@@ -287,9 +282,6 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
       'shortwave_radiation',
     ],
     airQualityVariables: [],
-    windowHours: 3,
-    disclaimer:
-      'General field-work context only. This does not provide pesticide, chemical, or crop-specific safety guidance.',
     rules: [
       rule({
         id: 'rain',
@@ -364,9 +356,6 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
       'temperature_2m',
     ],
     airQualityVariables: [],
-    windowHours: 2,
-    disclaimer:
-      'Environmental guidance only. Follow local aviation rules, manufacturer limits, and operator judgment.',
     rules: [
       rule({
         id: 'wind',
@@ -455,7 +444,6 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
       'uv_index',
     ],
     airQualityVariables: ['pm2_5', 'ozone'],
-    windowHours: 2,
     rules: [
       rule({
         id: 'temperature',
@@ -550,8 +538,6 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
       'shortwave_radiation',
     ],
     airQualityVariables: [],
-    windowHours: 2,
-    disclaimer: 'Environmental guidance only. This is not occupational safety certification.',
     rules: [
       rule({
         id: 'rain',

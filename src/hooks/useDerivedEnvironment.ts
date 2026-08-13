@@ -6,11 +6,10 @@ import { useCapabilities } from './useCapabilities';
 export function useDerivedEnvironment() {
   const environment = useAppStore((state) => state.environment);
   const profile = useAppStore((state) => state.profile);
-  const duration = useAppStore((state) => state.settings.outdoorWindowDurationHours);
   const capabilities = useCapabilities();
 
   return useMemo(
-    () => deriveEnvironmentState(environment, profile, duration, capabilities),
-    [capabilities, duration, environment, profile],
+    () => deriveEnvironmentState(environment, profile, capabilities),
+    [capabilities, environment, profile],
   );
 }

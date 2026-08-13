@@ -20,7 +20,8 @@ provide medical advice.
 ### Application Architecture
 
 - Functional React components
-- React Navigation bottom tabs for Today, Data, Activities, Forecast, Profile, and Settings
+- React Navigation bottom tabs for Today, Profile, Pro, and Settings, with stack drill-downs for
+  environmental, activity, and variable detail flows
 - Zustand for local app state and refresh orchestration
 - Capability-driven feature configuration for Free/Pro behavior
 - Pure TypeScript modules for environmental scoring, personalization, mold potential, forecast logic,
@@ -76,10 +77,10 @@ nvm use 22.13.1
 - Mold potential visibility and optional personalized-score factor, using humidity,
   precipitation, temperature, dew point, wind, and leaf wetness where available
 - UV index visibility and optional personalized-score factor
-- Best outdoor window based on the selected forecast score mode
+- Best outdoor window based on the active headline score
 - Local cache fallback for offline or failed refreshes, with air-quality, weather, and vegetation
   freshness tracked independently
-- Dedicated Data tab for raw environmental measurements
+- Contextual environmental measurement drill-downs from Today detail screens
 - Nearby vegetation and land-use context from OpenStreetMap, available to Free and Pro users
 - Pro-only Activities for photography, astronomy, farming, drone flying, outdoor sports, and
   outdoor work
@@ -97,19 +98,15 @@ nvm use 22.13.1
 ## Screens
 
 - **Today**: headline scores, location, update status, main factor, best outdoor window, refresh,
-  and share summary
-- **Data**: raw environmental measurements in collapsible sections for Pollen, Air quality, Mold
-  and UV, and Nearby vegetation
-- **Activities**: enabled Pro activity profiles with suitability, best windows, concise reasons, and
-  tappable condition rows that open the shared environmental detail timeline
-- **Forecast**: daily score summary and 24-hour risk timeline. The forecast can use either the
-  environmental burden score or the personalized risk score, and the highlighted range marks the
-  best outdoor window
+  share summary, and enabled Activity summary cards
+- **Context detail screens**: Environmental burden, Personalized risk, and Activity details with
+  contextual forecasts and tappable environmental measurements
+- **Environmental variable details**: shared 24-hour, week, month, and year timeline for individual
+  variables
 - **Profile**: local Personal Allergy Profile toggles, including Mold potential and UV index
-- **Settings**: location mode, manual map selection, refresh interval, outdoor-window duration,
-  headline score, forecast score, notification preferences, daily-summary score, Activity toggles,
-  AirAware Pro purchase/restore status, privacy and attribution notes, and a development-only
-  capability preview switch
+- **Pro**: AirAware Pro purchase/restore status and Activity toggles
+- **Settings**: location mode, manual map selection, refresh interval,
+  notification preferences, daily-summary score, privacy and attribution notes, and disclaimers
 
 ## Android Home-Screen Widgets
 
@@ -313,8 +310,8 @@ Professional Activities:
 Activities are disabled by default. Enabled Activities use relevant Open-Meteo forecast variables to
 identify activity-specific environmental windows and concise reasons. Activity selections stay local
 and are not sent to RevenueCat or environmental providers. Additional measurements used by
-Activities are surfaced in context inside Activity details; Pro no longer exposes a generic
-Advanced Environmental Data catalog.
+Activities are surfaced in context inside Activity details rather than as a generic advanced data
+catalog.
 
 Android home-screen widgets:
 
@@ -375,14 +372,12 @@ changes safe.
 AirAware can optionally send local transition notifications when a refreshed active headline score
 enters a configured high category from a different previous category.
 
-The active headline score is the same score selected in Settings:
+The active headline score is derived automatically:
 
-- Environmental burden
 - Personalized risk, when enabled and available
+- Environmental burden otherwise
 
-If personalized risk is selected but unavailable, AirAware uses the same environmental-burden
-fallback as the headline display. Missing scores are not treated as zero, and the first valid score
-only establishes a baseline.
+Missing scores are not treated as zero, and the first valid score only establishes a baseline.
 
 Notification thresholds:
 
@@ -390,8 +385,8 @@ Notification thresholds:
 - Very High only
 
 AirAware does not send recovery notifications and does not repeat notifications while the category is
-unchanged. Transition state is local and is reset when the score mode, effective location, or
-personalized profile context changes.
+unchanged. Transition state is local and is reset when the effective headline score type, effective
+location, or personalized profile context changes.
 
 In this MVP, notifications are evaluated during app refreshes. AirAware does not add background
 fetch, background location, alarm scheduling, headless tasks, or foreground services.
@@ -473,8 +468,8 @@ widgets because Android widgets are not pure React Native views.
 In development builds, Settings includes an **AirAware Pro** section with a local capability preview:
 
 - Use RevenueCat: use the configured RevenueCat entitlement.
-- Preview Free shows the Free forecast horizon, Standard Environmental Data, compact widget access,
-  and locked Activities.
+- Preview Free shows the Free forecast horizon, standard environmental readings, compact widget
+  access, and locked Activities.
 - Preview Pro enables Extended Forecast, Activities, and the advanced widget.
 
 The preview is persisted in local app storage for development convenience. It is guarded by
@@ -507,7 +502,7 @@ src/services/     Location, billing gateway, notifications, widgets, and environ
 src/storage/      AsyncStorage-backed settings and cache
 src/state/        Zustand app store and refresh orchestration
 src/components/   Reusable UI primitives
-src/screens/      Today, Data, Activities, Forecast, Profile, and Settings screens
+src/screens/      Today, Profile, Pro, Settings, and stack detail screens
 src/navigation/   React Navigation setup
 src/theme/        Shared colors and spacing
 src/utils/        Formatting and numeric helpers
@@ -561,9 +556,9 @@ Allergy Profile factors for Free and Pro users. These capabilities do not change
 burden formula, cache behavior, location behavior, notifications, or sharing.
 
 Activity logic is configuration-driven. Each Activity definition declares required and optional
-environmental variables, Open-Meteo request variables, suitability rules, best-window duration, and
-detail rows. Activity detail rows use the same environmental variable metadata and detail timeline
-screen as Data rows whenever legitimate history/forecast support exists.
+environmental variables, Open-Meteo request variables, suitability rules, and detail rows. Activity
+detail rows use the same environmental variable metadata and detail timeline screen as other
+environmental rows whenever legitimate history/forecast support exists.
 
 Widget capabilities are separate from scoring and provider access. The compact widget is available
 to Free and Pro users. The advanced widget is a Pro capability and uses the same active headline

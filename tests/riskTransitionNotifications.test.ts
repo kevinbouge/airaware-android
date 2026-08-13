@@ -1,5 +1,4 @@
 import {
-  activeHeadlineScore,
   evaluateRiskTransition,
   formatRiskTransitionNotification,
   personalAllergyProfileFingerprint,
@@ -7,6 +6,7 @@ import {
   riskNotificationLocationKey,
   riskTransitionStateAfterDeliveryAttempt,
 } from '../src/core/riskTransitionNotifications';
+import { activeHeadlineScore } from '../src/core/headlineScore';
 import type {
   EnvironmentalScoreResult,
   PersonalizedScoreResult,
@@ -178,11 +178,6 @@ describe('risk transition notifications', () => {
       evaluatedAt: '2026-08-01T11:00:00Z',
     };
     const result = evaluate({
-      settings: {
-        ...DEFAULT_SETTINGS,
-        headlineScore: 'personalized',
-        riskTransitionNotificationsEnabled: true,
-      },
       environmentalScore: score('low', 20),
       personalizedScore: personalized('high', 72),
       previousState,
@@ -195,13 +190,12 @@ describe('risk transition notifications', () => {
 
   it('falls back to environmental headline score when personalized is unavailable', () => {
     const result = activeHeadlineScore({
-      settings: { ...DEFAULT_SETTINGS, headlineScore: 'personalized' },
       environmentalScore: score('moderate', 52),
       personalizedScore: { ...personalized('high', 72), available: false },
     });
 
     expect(result.scoreType).toBe('environmental');
-    expect(result.fallbackUsed).toBe(true);
+    expect(result.score).toMatchObject({ category: 'moderate' });
   });
 
   it('does not notify for Low to Moderate or Very High to High transitions', () => {
@@ -294,11 +288,6 @@ describe('risk transition notifications', () => {
       evaluatedAt: '2026-08-01T11:00:00Z',
     };
     const result = evaluate({
-      settings: {
-        ...DEFAULT_SETTINGS,
-        headlineScore: 'personalized',
-        riskTransitionNotificationsEnabled: true,
-      },
       personalizedScore: personalized('high', 72),
       previousState,
       profile: newProfile,

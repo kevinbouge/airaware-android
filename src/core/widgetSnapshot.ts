@@ -2,6 +2,7 @@ import { isFeatureAvailable } from '../capabilities/features';
 import { forecastDaysForCapabilities, forecastDayLimit } from '../capabilities/forecast';
 import type { AppCapabilities } from '../capabilities/types';
 import { categoryLabel } from './categories';
+import { activeHeadlineScore } from './headlineScore';
 import type {
   EnvironmentalScoreResult,
   NormalizedEnvironment,
@@ -30,22 +31,23 @@ type SelectedWidgetHeadlineScore = {
 type WidgetScoreResult = EnvironmentalScoreResult | PersonalizedScoreResult;
 
 function selectedHeadlineScore(input: {
-  settings: AppSettings;
   environmentalScore: EnvironmentalScoreResult | null;
   personalizedScore: PersonalizedScoreResult;
 }): SelectedWidgetHeadlineScore {
-  if (input.settings.headlineScore === 'personalized' && input.personalizedScore.available) {
+  const active = activeHeadlineScore(input);
+
+  if (active.scoreType === 'personalized') {
     return {
       type: 'personalized',
       label: 'Personalized risk',
-      score: input.personalizedScore,
+      score: active.score,
     };
   }
 
   return {
     type: 'environmental',
     label: 'Environmental burden',
-    score: input.environmentalScore,
+    score: active.score,
   };
 }
 
@@ -158,7 +160,6 @@ export function buildWidgetSnapshot(input: {
   const compactAvailable = isFeatureAvailable(input.capabilities, 'compact_home_widget');
   const advancedAvailable = isFeatureAvailable(input.capabilities, 'advanced_home_widget');
   const selected = selectedHeadlineScore({
-    settings: input.settings,
     environmentalScore: input.derived.environmentalScore,
     personalizedScore: input.derived.personalizedScore,
   });

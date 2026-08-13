@@ -54,7 +54,7 @@ function profile(): PersonalAllergyProfile {
 
 describe('personalized risk', () => {
   it('is unavailable when personalization is disabled', () => {
-    const result = calculatePersonalizedScore(baseReading, DEFAULT_PROFILE);
+    const result = calculatePersonalizedScore(baseReading, { ...DEFAULT_PROFILE, enabled: false });
     expect(result.available).toBe(false);
     expect(result.reason).toBe('disabled');
   });

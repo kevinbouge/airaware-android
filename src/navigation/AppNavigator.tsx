@@ -5,6 +5,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { NavigatorScreenParams } from '@react-navigation/native';
 import { TodayScreen } from '../screens/TodayScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
+import { ProScreen } from '../screens/ProScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { DataDetailScreen } from '../screens/DataDetailScreen';
 import { ActivityDetailScreen } from '../screens/ActivityDetailScreen';
@@ -24,6 +25,7 @@ import { linking } from './linking';
 type RootTabParamList = {
   Today: undefined;
   Profile: undefined;
+  Pro: undefined;
   Settings: undefined;
 };
 
@@ -44,13 +46,14 @@ function iconNameForRoute(routeName: keyof RootTabParamList): TabIconName {
       return 'today';
     case 'Profile':
       return 'profile';
+    case 'Pro':
+      return 'pro';
     case 'Settings':
       return 'settings';
   }
 }
 
 function MainTabs() {
-  const headlineScore = useAppStore((state) => state.settings.headlineScore);
   const environment = useAppStore((state) => state.environment);
   const profile = useAppStore((state) => state.profile);
   const capabilities = useCapabilities();
@@ -59,17 +62,13 @@ function MainTabs() {
     if (!current) return null;
 
     const environmentalScore = calculateEnvironmentalScore(current);
-    if (headlineScore !== 'personalized') {
-      return environmentalScore.category;
-    }
-
     const personalizedScore = calculatePersonalizedScore(
       current,
       profileForCapabilities(capabilities, profile),
     );
 
     return personalizedScore.available ? personalizedScore.category : environmentalScore.category;
-  }, [capabilities, current, headlineScore, profile]);
+  }, [capabilities, current, profile]);
   const todayIconColor = headlineCategory ? riskColor(headlineCategory) : colors.unavailable;
 
   return (
@@ -90,6 +89,7 @@ function MainTabs() {
     >
       <Tab.Screen name="Today" component={TodayScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
+      <Tab.Screen name="Pro" component={ProScreen} />
       <Tab.Screen name="Settings" component={SettingsScreen} />
     </Tab.Navigator>
   );
@@ -110,11 +110,7 @@ export function AppNavigator() {
           component={DataDetailScreen}
           options={{ gestureEnabled: false }}
         />
-        <Stack.Screen
-          name="ActivityDetail"
-          component={ActivityDetailScreen}
-          options={{ gestureEnabled: false }}
-        />
+        <Stack.Screen name="ActivityDetail" component={ActivityDetailScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

@@ -80,8 +80,8 @@ describe('settings storage', () => {
     expect(settings.nearbyVegetationRadiusMeters).toBe(
       DEFAULT_SETTINGS.nearbyVegetationRadiusMeters,
     );
-    expect(settings.outdoorWindowDurationHours).toBe(DEFAULT_SETTINGS.outdoorWindowDurationHours);
-    expect(settings.headlineScore).toBe(DEFAULT_SETTINGS.headlineScore);
+    expect('outdoorWindowDurationHours' in settings).toBe(false);
+    expect('headlineScore' in settings).toBe(false);
     expect(settings.summaryScore).toBe(DEFAULT_SETTINGS.summaryScore);
     expect(settings.summaryLocation).toBe(DEFAULT_SETTINGS.summaryLocation);
     expect(settings.riskTransitionNotificationsEnabled).toBe(false);

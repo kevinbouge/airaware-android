@@ -1,7 +1,6 @@
 import type { RiskCategoryId } from './environment';
-import type { AppSettings } from './profile';
 
-export type HeadlineScoreType = AppSettings['headlineScore'];
+export type HeadlineScoreType = 'environmental' | 'personalized';
 
 export type NotificationPermissionStatus = 'unknown' | 'granted' | 'denied' | 'unavailable';
 

@@ -38,7 +38,7 @@ export function ProfileScreen() {
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <SectionCard
         title="Personal Allergy Profile"
-        subtitle="Factors you want AirAware to emphasize. This is not a diagnosis or symptom prediction."
+        subtitle="Factors you want AirAware to emphasize."
       >
         <ToggleRow
           label="Enable personalized risk"

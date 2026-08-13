@@ -145,12 +145,7 @@ async function persistWidgetSnapshotFor(input: {
   stale: boolean;
 }): Promise<void> {
   const capabilities = capabilitiesForEntitlement(input.entitlement);
-  const derived = deriveEnvironmentState(
-    input.environment,
-    input.profile,
-    input.settings.outdoorWindowDurationHours,
-    capabilities,
-  );
+  const derived = deriveEnvironmentState(input.environment, input.profile, capabilities);
   const snapshot = buildWidgetSnapshot({
     environment: input.environment,
     derived,
@@ -451,12 +446,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         await persistSuccessfulEnvironment(environment);
       }
 
-      const derived = deriveEnvironmentState(
-        environment,
-        get().profile,
-        settings.outdoorWindowDurationHours,
-        capabilities,
-      );
+      const derived = deriveEnvironmentState(environment, get().profile, capabilities);
       const canNotify = isFeatureAvailable(capabilities, 'basic_transition_notifications');
       const permissionStatus =
         canNotify && settings.riskTransitionNotificationsEnabled
@@ -699,12 +689,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }
 
     set({ sharing: true, shareMessage: null });
-    const derived = deriveEnvironmentState(
-      get().environment,
-      get().profile,
-      get().settings.outdoorWindowDurationHours,
-      capabilities,
-    );
+    const derived = deriveEnvironmentState(get().environment, get().profile, capabilities);
     const bestOutdoorWindow = selectDailySummaryOutdoorWindow({
       settings: get().settings,
       personalizedScore: derived.personalizedScore,

@@ -1,7 +1,8 @@
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useMemo } from 'react';
 import { useNavigation } from '@react-navigation/native';
 import { AppButton } from '../components/AppButton';
+import { InsightCard } from '../components/InsightCard';
 import { ScoreCard } from '../components/ScoreCard';
 import { SectionCard } from '../components/SectionCard';
 import { StateView } from '../components/StateView';
@@ -122,10 +123,9 @@ export function TodayScreen() {
 
   if (!hydrated) return <StateView loading message="Loading AirAware..." />;
 
-  const headlineCategory =
-    settings.headlineScore === 'personalized' && personalizedScore.available
-      ? personalizedScore.category
-      : environmentalScore?.category;
+  const headlineCategory = personalizedScore.available
+    ? personalizedScore.category
+    : environmentalScore?.category;
   const locationLabel =
     environment?.placeName ??
     location.placeName ??
@@ -191,32 +191,31 @@ export function TodayScreen() {
       {environment ? (
         <>
           {activityEvaluations.length > 0 ? (
-            <SectionCard title="Activities">
+            <View style={styles.activitySection}>
+              <Text style={styles.sectionTitle}>Activities</Text>
               {activityEvaluations.map((activity) => (
-                <Pressable
+                <InsightCard
                   key={activity.id}
-                  accessibilityRole="button"
+                  title={activity.label}
+                  accent={activityColor(activity.current?.category ?? 'insufficientData')}
+                  primary={
+                    activity.current
+                      ? activityCategoryLabel(activity.current.category)
+                      : 'Unavailable'
+                  }
+                  compact
+                  secondary={
+                    activity.current?.available ? `${activity.current.displayScore}%` : undefined
+                  }
+                  details={[
+                    `Best window: ${formatActivityWindow(activity.bestWindow)}`,
+                    ...(!activity.available ? [activityCategoryLabel('insufficientData')] : []),
+                  ]}
+                  accessibilityLabel={`${activity.label}: ${formatActivityScore(activity)}. Opens details.`}
                   onPress={() => navigation.navigate('ActivityDetail', { activityId: activity.id })}
-                  style={({ pressed }) => [styles.activityCard, pressed && styles.pressed]}
-                >
-                  <Text style={styles.activityTitle}>{activity.label}</Text>
-                  <Text
-                    style={[
-                      styles.activityScore,
-                      { color: activityColor(activity.current?.category ?? 'insufficientData') },
-                    ]}
-                  >
-                    {formatActivityScore(activity)}
-                  </Text>
-                  <Text style={styles.activityWindow}>
-                    Best window: {formatActivityWindow(activity.bestWindow)}
-                  </Text>
-                  {!activity.available ? (
-                    <Text style={styles.notice}>{activityCategoryLabel('insufficientData')}</Text>
-                  ) : null}
-                </Pressable>
+                />
               ))}
-            </SectionCard>
+            </View>
           ) : null}
 
           <View style={styles.actions}>
@@ -254,25 +253,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginTop: spacing.sm,
   },
-  activityCard: {
-    borderRadius: 8,
-    paddingVertical: spacing.sm,
-  },
-  activityScore: {
-    fontSize: 18,
-    fontWeight: '800',
-    marginTop: spacing.xs,
-  },
-  activityTitle: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  activityWindow: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: '600',
-    marginTop: spacing.xs,
+  activitySection: {
+    marginBottom: spacing.sm,
   },
   body: {
     color: colors.text,
@@ -308,6 +290,12 @@ const styles = StyleSheet.create({
   },
   screen: {
     backgroundColor: colors.background,
+  },
+  sectionTitle: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: spacing.sm,
   },
   pressed: {
     opacity: 0.82,

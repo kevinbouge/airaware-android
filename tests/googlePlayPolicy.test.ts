@@ -4,6 +4,7 @@ import {
   GOOGLE_PLAY_PRIVACY_DISCLOSURE,
   googlePlayPrivacyDisclosureText,
 } from '../src/core/googlePlayCompliance';
+import { APP_DISCLAIMER_LINES, appDisclaimerText } from '../src/core/appDisclaimers';
 
 const root = process.cwd();
 
@@ -91,7 +92,7 @@ describe('Google Play policy guardrails', () => {
     expect(billingLikeDependencies.sort()).toEqual(approvedBillingDependencies.sort());
   });
 
-  it('keeps required in-app privacy and health-boundary disclosures centralized', () => {
+  it('keeps required in-app privacy disclosures centralized', () => {
     const disclosure = googlePlayPrivacyDisclosureText();
 
     expect(GOOGLE_PLAY_PRIVACY_DISCLOSURE.length).toBeGreaterThanOrEqual(8);
@@ -104,9 +105,20 @@ describe('Google Play policy guardrails', () => {
     expect(disclosure).toContain('Google Play processes payments');
     expect(disclosure).toContain('Personal Allergy Profile');
     expect(disclosure).toContain('does not sell personal or sensitive user data');
-    expect(disclosure).toContain('does not predict symptoms');
+    expect(disclosure).not.toContain('does not predict symptoms');
     expect(disclosure).toContain('does not request background location');
     expect(disclosure).toContain('clearing app storage or uninstalling');
+  });
+
+  it('keeps app disclaimers centralized separately from privacy copy', () => {
+    const disclaimers = appDisclaimerText();
+
+    expect(APP_DISCLAIMER_LINES.length).toBeGreaterThanOrEqual(4);
+    expect(disclaimers).toContain('reports environmental conditions only');
+    expect(disclaimers).toContain('does not predict symptoms');
+    expect(disclaimers).toContain('Personal Allergy Profile');
+    expect(disclaimers).toContain('Activity profiles provide environmental guidance only');
+    expect(disclaimers).toContain('OpenStreetMap context');
   });
 
   it('does not bundle obvious RevenueCat or Google Play server credentials', () => {

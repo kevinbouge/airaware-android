@@ -1,18 +1,21 @@
-import { ScrollView, StyleSheet, Text, View, type DimensionValue } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useMemo } from 'react';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
-import { AppButton } from '../components/AppButton';
 import { ActivityForecastTimeline } from '../components/ActivityForecastTimeline';
+import { DetailHeader } from '../components/DetailHeader';
 import { DetailStateView } from '../components/DetailStateView';
 import { ReadingRow } from '../components/ReadingRow';
 import { SectionCard } from '../components/SectionCard';
+import { ForecastBarSection } from '../components/ForecastSections';
+import { SummaryMetricGrid } from '../components/ui/SummaryMetricGrid';
 import { forecastDaysForCapabilities } from '../capabilities/forecast';
 import { activityDefinition } from '../core/activityDefinitions';
 import {
   activityCategoryLabel,
   activityVariableValue,
   bestActivityWindowForDate,
+  bestActivityWindowForRange,
   evaluateActivity,
   formatActivityScore,
   formatActivityWindow,
@@ -22,15 +25,16 @@ import { useCapabilities } from '../hooks/useCapabilities';
 import { useAppStore } from '../state/useAppStore';
 import { colors, spacing } from '../theme/theme';
 import { formatScore } from '../utils/format';
+import { displayScore } from '../utils/number';
 import type { EnvironmentalVariableId } from '../capabilities/types';
 import type { HourlyEnvironmentalReading } from '../models/environment';
 import type { ActivitySuitabilityCategory, ActivityWindowResult } from '../models/activities';
 import type { RootStackParamList } from '../navigation/AppNavigator';
+import { goBackOrToday, type DetailBackNavigation } from '../navigation/detailNavigation';
 
 type ActivityDetailRoute = RouteProp<RootStackParamList, 'ActivityDetail'>;
 
-interface ActivityDetailNavigation {
-  goBack: () => void;
+interface ActivityDetailNavigation extends DetailBackNavigation {
   navigate: <RouteName extends keyof RootStackParamList>(
     routeName: RouteName,
     params: RootStackParamList[RouteName],
@@ -67,25 +71,57 @@ function activityColor(category: ActivitySuitabilityCategory): string {
   }
 }
 
-function ActivityForecastRow({ label, window }: { label: string; window: ActivityWindowResult }) {
+function buildActivityForecastRow({
+  date,
+  label,
+  window,
+  best,
+  reserveBestSpace,
+}: {
+  date: string;
+  label: string;
+  window: ActivityWindowResult;
+  best: boolean;
+  reserveBestSpace: boolean;
+}) {
   const available = window.available && typeof window.averageScore === 'number';
   const category = window.category;
   const accent = activityColor(category);
-  const fillWidth = `${Math.max(2, Math.min(100, window.averageScore ?? 0))}%` as DimensionValue;
   const value = available ? formatScore(window.averageScore) : 'Unavailable';
+  const displayValue = available ? `${activityCategoryLabel(category)} · ${value}` : value;
 
-  return (
-    <View style={styles.forecastRow}>
-      <Text style={styles.forecastLabel}>{label}</Text>
-      <View style={styles.forecastTrack}>
-        {available ? (
-          <View style={[styles.forecastFill, { backgroundColor: accent, width: fillWidth }]} />
-        ) : null}
-      </View>
-      <Text style={[styles.forecastValue, { color: accent }]}>
-        {available ? `${activityCategoryLabel(category)} · ${value}` : value}
-      </Text>
-    </View>
+  return {
+    accessibilityLabel: `${label} ${displayValue}`,
+    accent,
+    fillPercent: available ? window.averageScore : null,
+    key: date,
+    label,
+    highlighted: best,
+    markerLabel: best ? 'Best' : '',
+    reserveMarkerSpace: reserveBestSpace,
+    value: displayValue,
+  };
+}
+
+function bestActivityForecastDates(
+  windows: { date: string; window: ActivityWindowResult }[],
+): Set<string> {
+  const availableWindows = windows.filter(
+    (item): item is { date: string; window: ActivityWindowResult & { averageScore: number } } =>
+      item.window.available &&
+      typeof item.window.averageScore === 'number' &&
+      Number.isFinite(item.window.averageScore),
+  );
+  const bestScore = availableWindows
+    .map((item) => displayScore(item.window.averageScore) ?? 0)
+    .sort((left, right) => right - left)[0];
+
+  if (bestScore === undefined) return new Set();
+
+  return new Set(
+    availableWindows
+      .filter((item) => (displayScore(item.window.averageScore) ?? 0) === bestScore)
+      .map((item) => item.date),
   );
 }
 
@@ -98,6 +134,7 @@ export function ActivityDetailScreen() {
   const capabilities = useCapabilities();
   const activityId = route.params?.activityId;
   const definition = activityId ? activityDefinition(activityId) : null;
+  const handleBack = () => goBackOrToday(navigation);
   const activityEnabled = definition ? settings.enabledActivities[definition.id] === true : false;
   const nowTimestamp = environment?.current.timestamp ?? environment?.fetchedAt ?? '';
   const visibleForecastDays = useMemo(
@@ -123,27 +160,64 @@ export function ActivityDetailScreen() {
       environment.hourly.find((hour) => hour.timestamp === evaluation.current?.timestamp) ?? null
     );
   }, [environment, evaluation]);
+  const conditionRows = useMemo(() => {
+    if (!definition || !detailReading) return [];
+
+    return definition.detailVariables.flatMap((variableId) => {
+      const detailDefinition = dataDetailVariable(variableId);
+      const value = rowValue(variableId, detailReading);
+      if (!detailDefinition || !value) return [];
+
+      return [
+        {
+          label: detailDefinition.label,
+          value,
+          variableId,
+        },
+      ];
+    });
+  }, [definition, detailReading]);
+  const forecastRows = useMemo(() => {
+    if (!definition || !evaluation) return [];
+
+    const windows = visibleForecastDays.map((day) => ({
+      date: day.date,
+      label: day.label,
+      window: bestActivityWindowForDate(evaluation.hours, day.date),
+    }));
+    const bestDates = bestActivityForecastDates(windows);
+
+    return windows.map((day) =>
+      buildActivityForecastRow({
+        date: day.date,
+        label: day.label,
+        window: day.window,
+        best: bestDates.has(day.date),
+        reserveBestSpace: bestDates.size > 0,
+      }),
+    );
+  }, [definition, evaluation, visibleForecastDays]);
 
   if (!capabilities.activities.available) {
     return (
       <DetailStateView
+        title={definition?.label ?? 'Activities'}
         message="Activities require AirAware Pro."
-        onBack={() => navigation.goBack()}
+        onBack={handleBack}
       />
     );
   }
 
   if (!definition) {
-    return (
-      <DetailStateView message="Activity data is unavailable." onBack={() => navigation.goBack()} />
-    );
+    return <DetailStateView message="Activity data is unavailable." onBack={handleBack} />;
   }
 
   if (!activityEnabled) {
     return (
       <DetailStateView
+        title={definition.label}
         message="Enable this activity in Settings to view details."
-        onBack={() => navigation.goBack()}
+        onBack={handleBack}
       />
     );
   }
@@ -151,139 +225,110 @@ export function ActivityDetailScreen() {
   if (loading) {
     return (
       <DetailStateView
+        title={definition.label}
         loading
         message="Updating activity data..."
-        onBack={() => navigation.goBack()}
+        onBack={handleBack}
       />
     );
   }
 
   if (!evaluation) {
     return (
-      <DetailStateView message="Activity data is unavailable." onBack={() => navigation.goBack()} />
+      <DetailStateView
+        title={definition.label}
+        message="Activity data is unavailable."
+        onBack={handleBack}
+      />
     );
   }
 
+  const currentCategory = evaluation.current?.category ?? 'insufficientData';
+  const currentAccent = activityColor(currentCategory);
+  const timelineBestWindow = bestActivityWindowForRange(
+    evaluation.hours,
+    evaluation.current?.timestamp ?? nowTimestamp,
+    24,
+  );
+
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <SectionCard title={definition.label} subtitle={definition.description}>
-        <Text style={styles.category}>{formatActivityScore(evaluation)}</Text>
-        <Text style={styles.window}>
-          Best window: {formatActivityWindow(evaluation.bestWindow)}
-        </Text>
-        {!evaluation.available ? (
-          <Text style={styles.notice}>{activityCategoryLabel('insufficientData')}</Text>
-        ) : null}
-      </SectionCard>
-
-      <SectionCard title="Why">
-        {evaluation.reasons.map((reason) => (
-          <Text key={reason} style={styles.reason}>
-            - {reason}
-          </Text>
-        ))}
-      </SectionCard>
-
-      <SectionCard title={`${definition.label} forecast`}>
-        {visibleForecastDays.map((day) => (
-          <ActivityForecastRow
-            key={day.date}
-            label={day.label}
-            window={bestActivityWindowForDate(evaluation.hours, day.date, definition.windowHours)}
+    <View style={styles.screen}>
+      <DetailHeader
+        title={definition.label}
+        subtitle={definition.description}
+        onBack={handleBack}
+      />
+      <ScrollView style={styles.scroller} contentContainerStyle={styles.content}>
+        <SectionCard>
+          <SummaryMetricGrid
+            metrics={[
+              {
+                label: 'Suitability',
+                value: formatActivityScore(evaluation),
+                accent: currentAccent,
+              },
+              {
+                label: 'Best window',
+                value: formatActivityWindow(evaluation.bestWindow),
+              },
+            ]}
           />
-        ))}
-      </SectionCard>
+          {!evaluation.available ? (
+            <Text style={styles.notice}>{activityCategoryLabel('insufficientData')}</Text>
+          ) : null}
+        </SectionCard>
 
-      <SectionCard
-        title={`${definition.label} 24-hour outlook`}
-        subtitle="Next 24 hours. The highlighted range marks the best window."
-      >
-        <ActivityForecastTimeline
-          hours={evaluation.hours}
-          now={evaluation.current?.timestamp ?? nowTimestamp}
-          bestWindow={evaluation.bestWindow}
-          unavailableLabel="Activity outlook is unavailable."
+        <SectionCard title="Why">
+          {evaluation.reasons.map((reason) => (
+            <Text key={reason} style={styles.reason}>
+              - {reason}
+            </Text>
+          ))}
+        </SectionCard>
+
+        <ForecastBarSection
+          title={`${definition.label} forecast`}
+          rows={forecastRows}
+          emptyLabel="Forecast data is unavailable."
         />
-      </SectionCard>
 
-      <SectionCard title="Conditions">
-        {detailReading ? (
-          definition.detailVariables.flatMap((variableId) => {
-            const detailDefinition = dataDetailVariable(variableId);
-            const value = rowValue(variableId, detailReading);
-            if (!detailDefinition || !value) return [];
+        <SectionCard
+          title={`${definition.label} 24-hour outlook`}
+          subtitle="Next 24 hours. The highlighted range marks the best window."
+        >
+          <ActivityForecastTimeline
+            hours={evaluation.hours}
+            now={evaluation.current?.timestamp ?? nowTimestamp}
+            bestWindow={timelineBestWindow}
+            unavailableLabel="Activity outlook is unavailable."
+          />
+        </SectionCard>
 
-            return [
+        <SectionCard title="Conditions">
+          {conditionRows.length > 0 ? (
+            conditionRows.map((row) => (
               <ReadingRow
-                key={variableId}
-                label={detailDefinition.label}
-                value={value}
-                variableId={variableId}
+                key={row.variableId}
+                label={row.label}
+                value={row.value}
+                variableId={row.variableId}
                 onPress={(nextVariableId) =>
                   navigation.navigate('DataDetail', { variableId: nextVariableId })
                 }
-              />,
-            ];
-          })
-        ) : (
-          <Text style={styles.notice}>Current activity measurements are unavailable.</Text>
-        )}
-      </SectionCard>
-
-      {definition.disclaimer ? (
-        <SectionCard>
-          <Text style={styles.notice}>{definition.disclaimer}</Text>
+              />
+            ))
+          ) : (
+            <Text style={styles.notice}>Current activity measurements are unavailable.</Text>
+          )}
         </SectionCard>
-      ) : null}
-
-      <View style={styles.footer}>
-        <AppButton title="Back" fullWidth onPress={() => navigation.goBack()} />
-      </View>
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  category: {
-    color: colors.primary,
-    fontSize: 24,
-    fontWeight: '800',
-  },
   content: {
     padding: spacing.lg,
-  },
-  footer: {
-    marginTop: spacing.sm,
-  },
-  forecastFill: {
-    borderRadius: 999,
-    height: '100%',
-  },
-  forecastLabel: {
-    color: colors.muted,
-    fontSize: 13,
-    minWidth: 86,
-  },
-  forecastRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing.sm,
-    minHeight: 30,
-    paddingHorizontal: spacing.xs,
-    paddingVertical: spacing.xs,
-  },
-  forecastTrack: {
-    backgroundColor: '#E6ECE7',
-    borderRadius: 999,
-    flex: 1,
-    height: 12,
-    overflow: 'hidden',
-  },
-  forecastValue: {
-    fontSize: 13,
-    fontWeight: '700',
-    minWidth: 76,
-    textAlign: 'right',
   },
   notice: {
     color: colors.muted,
@@ -295,10 +340,9 @@ const styles = StyleSheet.create({
   },
   screen: {
     backgroundColor: colors.background,
+    flex: 1,
   },
-  window: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '600',
+  scroller: {
+    backgroundColor: colors.background,
   },
 });

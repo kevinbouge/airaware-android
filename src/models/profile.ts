@@ -24,7 +24,7 @@ export interface PersonalAllergyProfile {
 }
 
 export const DEFAULT_PROFILE: PersonalAllergyProfile = {
-  enabled: false,
+  enabled: true,
   factors: {
     pollen_alder: true,
     pollen_birch: true,
@@ -52,8 +52,6 @@ export interface AppSettings {
   manualLongitude: string;
   refreshIntervalMinutes: 30 | 60 | 120;
   nearbyVegetationRadiusMeters: 1000 | 2000 | 5000;
-  outdoorWindowDurationHours: 1 | 2 | 3;
-  headlineScore: 'environmental' | 'personalized';
   summaryScore: 'environmental' | 'personalized';
   summaryLocation: 'place' | 'hidden';
   riskTransitionNotificationsEnabled: boolean;
@@ -69,9 +67,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   manualLongitude: '',
   refreshIntervalMinutes: 60,
   nearbyVegetationRadiusMeters: 2000,
-  outdoorWindowDurationHours: 2,
-  headlineScore: 'environmental',
-  summaryScore: 'environmental',
+  summaryScore: 'personalized',
   summaryLocation: 'place',
   riskTransitionNotificationsEnabled: false,
   riskTransitionNotificationThreshold: 'highAndVeryHigh',

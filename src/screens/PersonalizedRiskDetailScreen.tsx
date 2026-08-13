@@ -5,12 +5,13 @@ import {
   DailyForecastSection,
   RiskTimelineSection,
 } from '../components/ContextForecast';
-import { AppButton } from '../components/AppButton';
+import { DetailHeader } from '../components/DetailHeader';
 import { DetailStateView } from '../components/DetailStateView';
 import { ReadingRow } from '../components/ReadingRow';
-import { ScoreCard } from '../components/ScoreCard';
 import { SectionCard } from '../components/SectionCard';
+import { SummaryMetricGrid } from '../components/ui/SummaryMetricGrid';
 import { profileForCapabilities } from '../capabilities/variables';
+import { categoryLabel } from '../core/categories';
 import {
   currentDataDetailValue,
   dataDetailVariable,
@@ -19,15 +20,15 @@ import {
 import { useCapabilities } from '../hooks/useCapabilities';
 import { useDerivedEnvironment } from '../hooks/useDerivedEnvironment';
 import { useAppStore } from '../state/useAppStore';
-import { colors, spacing } from '../theme/theme';
+import { colors, riskColor, spacing } from '../theme/theme';
 import { contributorFromScore } from '../utils/contributorLabels';
-import { formatShortTime } from '../utils/format';
+import { formatScore, formatShortTime } from '../utils/format';
 import type { EnvironmentalVariableId } from '../capabilities/types';
 import type { ProfileFactorId } from '../models/profile';
 import type { RootStackParamList } from '../navigation/AppNavigator';
+import { goBackOrToday, type DetailBackNavigation } from '../navigation/detailNavigation';
 
-interface DetailNavigation {
-  goBack: () => void;
+interface DetailNavigation extends DetailBackNavigation {
   navigate: <RouteName extends keyof RootStackParamList>(
     routeName: RouteName,
     params: RootStackParamList[RouteName],
@@ -66,12 +67,14 @@ export function PersonalizedRiskDetailScreen() {
     personalizedBestOutdoorWindow,
   } = useDerivedEnvironment();
   const effectiveProfile = profileForCapabilities(capabilities, profile);
+  const handleBack = () => goBackOrToday(navigation);
 
   if (!environment || !effectiveProfile.enabled || !personalizedScore.available) {
     return (
       <DetailStateView
+        title="Personalized risk"
         message="Personalized risk data is unavailable."
-        onBack={() => navigation.goBack()}
+        onBack={handleBack}
       />
     );
   }
@@ -113,78 +116,90 @@ export function PersonalizedRiskDetailScreen() {
     return personalizedByDate.get(date);
   };
   const contributor = contributorFromScore(personalizedScore);
+  const bestWindowValue =
+    personalizedBestOutdoorWindow?.available &&
+    personalizedBestOutdoorWindow.startTime &&
+    personalizedBestOutdoorWindow.endTime
+      ? `${formatShortTime(personalizedBestOutdoorWindow.startTime)}–${formatShortTime(
+          personalizedBestOutdoorWindow.endTime,
+        )}`
+      : 'Unavailable';
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <ScoreCard
-        title="Personalized risk"
-        score={personalizedScore.score}
-        category={personalizedScore.category}
-        details={[`Main factor: ${contributor.label ?? 'Unavailable'}`]}
-      />
-
-      {personalizedBestOutdoorWindow?.available ? (
-        <SectionCard title="Best window">
-          <Text style={styles.body}>
-            {formatShortTime(personalizedBestOutdoorWindow.startTime)}–
-            {formatShortTime(personalizedBestOutdoorWindow.endTime)}
-          </Text>
+    <View style={styles.screen}>
+      <DetailHeader title="Personalized risk" onBack={handleBack} />
+      <ScrollView style={styles.scroller} contentContainerStyle={styles.content}>
+        <SectionCard>
+          <SummaryMetricGrid
+            metrics={[
+              {
+                label: 'Score',
+                value: `${categoryLabel(personalizedScore.category)} · ${formatScore(
+                  personalizedScore.score,
+                )}`,
+                accent: riskColor(personalizedScore.category),
+              },
+              {
+                label: 'Best window',
+                value: bestWindowValue,
+              },
+            ]}
+          />
+          <Text style={styles.body}>Main factor: {contributor.label ?? 'Unavailable'}</Text>
         </SectionCard>
-      ) : null}
 
-      <DailyForecastSection
-        title="Personalized risk forecast"
-        days={environment.forecastDays}
-        capabilities={capabilities}
-        scoreForDate={dailyScore}
-      />
-      <RiskTimelineSection
-        title="Personalized risk timeline"
-        subtitle="Next 24 hours. The highlighted range marks the best window."
-        current={currentTimelinePoint}
-        hourly={hourlyTimelinePoints}
-        bestWindow={personalizedBestOutdoorWindow}
-        unavailableLabel="Personalized forecast is unavailable."
-      />
+        <DailyForecastSection
+          title="Personalized risk forecast"
+          days={environment.forecastDays}
+          capabilities={capabilities}
+          scoreForDate={dailyScore}
+        />
+        <RiskTimelineSection
+          title="Personalized risk timeline"
+          subtitle="Next 24 hours. The highlighted range marks the best window."
+          current={currentTimelinePoint}
+          hourly={hourlyTimelinePoints}
+          bestWindow={personalizedBestOutdoorWindow}
+          unavailableLabel="Personalized forecast is unavailable."
+        />
 
-      <SectionCard title="Your factors">
-        {selectedRows.length > 0 ? (
-          selectedRows.map((row) => (
-            <ReadingRow
-              key={row.variableId}
-              label={row.label}
-              value={row.value}
-              variableId={row.variableId}
-              onPress={(variableId) => navigation.navigate('DataDetail', { variableId })}
-            />
-          ))
-        ) : (
-          <Text style={styles.muted}>No selected factors are currently available.</Text>
-        )}
-      </SectionCard>
-
-      <View style={styles.footer}>
-        <AppButton title="Back" fullWidth onPress={() => navigation.goBack()} />
-      </View>
-    </ScrollView>
+        <SectionCard title="Your factors">
+          {selectedRows.length > 0 ? (
+            selectedRows.map((row) => (
+              <ReadingRow
+                key={row.variableId}
+                label={row.label}
+                value={row.value}
+                variableId={row.variableId}
+                onPress={(variableId) => navigation.navigate('DataDetail', { variableId })}
+              />
+            ))
+          ) : (
+            <Text style={styles.muted}>No selected factors are currently available.</Text>
+          )}
+        </SectionCard>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   body: {
-    color: colors.text,
-    fontWeight: '700',
+    color: colors.muted,
+    fontSize: 14,
+    fontWeight: '600',
   },
   content: {
     padding: spacing.lg,
-  },
-  footer: {
-    marginTop: spacing.sm,
   },
   muted: {
     color: colors.muted,
   },
   screen: {
+    backgroundColor: colors.background,
+    flex: 1,
+  },
+  scroller: {
     backgroundColor: colors.background,
   },
 });

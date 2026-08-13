@@ -23,6 +23,24 @@ import { providerLocalTime } from '../utils/time';
 export { activityCategoryLabel, activityVariableValue } from './activityDefinitions';
 
 const HOUR_MS = 60 * 60 * 1000;
+const NEAR_BEST_SCORE_TOLERANCE = 5;
+
+function categoryRank(category: ActivityHourResult['category']): number {
+  switch (category) {
+    case 'excellent':
+      return 5;
+    case 'good':
+      return 4;
+    case 'fair':
+      return 3;
+    case 'poor':
+      return 2;
+    case 'unsuitable':
+      return 1;
+    case 'insufficientData':
+      return 0;
+  }
+}
 
 function bounded(value: number): number {
   return Math.max(0, Math.min(100, value));
@@ -183,15 +201,15 @@ function evaluateActivityHour(
   };
 }
 
-function endTimeFor(startTime: string, windowHours: number): string | null {
+function endTimeFor(startTime: string, durationHours: number): string | null {
   const parsed = Date.parse(startTime);
   if (!Number.isFinite(parsed)) return null;
 
   const match = startTime.match(/^(\d{4}-\d{2}-\d{2})T\d{2}:\d{2}(:\d{2})?([+-]\d{2}:\d{2})?$/);
-  if (!match) return new Date(parsed + windowHours * HOUR_MS).toISOString();
+  if (!match) return new Date(parsed + durationHours * HOUR_MS).toISOString();
 
   const offset = match[3] ?? '';
-  const shifted = new Date(parsed + windowHours * HOUR_MS);
+  const shifted = new Date(parsed + durationHours * HOUR_MS);
   const offsetMinutes =
     offset.length > 0
       ? Number(offset.slice(1, 3)) * 60 + Number(offset.slice(4, 6))
@@ -202,25 +220,82 @@ function endTimeFor(startTime: string, windowHours: number): string | null {
   return `${local.toISOString().slice(0, 16)}${offset}`;
 }
 
-function contiguousWindow(hours: ActivityHourResult[], startIndex: number, windowHours: number) {
-  const window = hours.slice(startIndex, startIndex + windowHours);
-  if (window.length !== windowHours || window.some((hour) => !hour.available)) return null;
+function bestActivityCategory(hours: ActivityHourResult[]): ActivityHourResult['category'] | null {
+  return hours
+    .filter((hour) => hour.available && isFiniteNumber(hour.score))
+    .map((hour) => hour.category)
+    .reduce<ActivityHourResult['category'] | null>(
+      (best, category) =>
+        best === null || categoryRank(category) > categoryRank(best) ? category : best,
+      null,
+    );
+}
 
-  const parsed = window.map((hour) => Date.parse(hour.timestamp));
-  if (parsed.some((time) => !Number.isFinite(time))) return null;
+function bestActivityScore(
+  hours: ActivityHourResult[],
+  category: ActivityHourResult['category'],
+): number | null {
+  const scores = hours
+    .filter((hour) => hour.available && hour.category === category && isFiniteNumber(hour.score))
+    .map((hour) => hour.score!)
+    .sort((left, right) => right - left);
 
-  for (let index = 1; index < parsed.length; index += 1) {
-    if (Math.abs(parsed[index]! - parsed[index - 1]! - HOUR_MS) > 10 * 60 * 1000) return null;
+  return scores[0] ?? null;
+}
+
+function isNearBestActivityHour(
+  hour: ActivityHourResult | undefined,
+  category: ActivityHourResult['category'],
+  bestScore: number,
+): hour is ActivityHourResult {
+  return (
+    hour !== undefined &&
+    hour.available &&
+    hour.category === category &&
+    isFiniteNumber(hour.score) &&
+    hour.score >= bestScore - NEAR_BEST_SCORE_TOLERANCE
+  );
+}
+
+function sameCategoryRun(
+  hours: ActivityHourResult[],
+  startIndex: number,
+  category: ActivityHourResult['category'],
+  bestScore: number,
+) {
+  const first = hours[startIndex];
+  if (!isNearBestActivityHour(first, category, bestScore)) return null;
+
+  const run = [first];
+  let previousTime = Date.parse(first.timestamp);
+  if (!Number.isFinite(previousTime)) return null;
+
+  for (let index = startIndex + 1; index < hours.length; index += 1) {
+    const hour = hours[index]!;
+    const time = Date.parse(hour.timestamp);
+    if (
+      !hour.available ||
+      !Number.isFinite(time) ||
+      Math.abs(time - previousTime - HOUR_MS) > 10 * 60 * 1000 ||
+      !isNearBestActivityHour(hour, category, bestScore)
+    ) {
+      break;
+    }
+
+    run.push(hour);
+    previousTime = time;
   }
 
-  const scores = window.map((hour) => hour.score).filter(isFiniteNumber);
-  if (scores.length !== windowHours) return null;
+  const scores = run.map((hour) => hour.score).filter(isFiniteNumber);
+  if (scores.length !== run.length) return null;
 
   return {
-    startTime: window[0]!.timestamp,
-    endTime: endTimeFor(window[0]!.timestamp, windowHours),
+    startTime: run[0]!.timestamp,
+    endTime: endTimeFor(run[0]!.timestamp, run.length),
     averageScore: scores.reduce((sum, score) => sum + score, 0) / scores.length,
     minimumScore: Math.min(...scores),
+    category,
+    durationHours: run.length,
   };
 }
 
@@ -241,10 +316,15 @@ function selectBestWindow(
     endTime: string | null;
     averageScore: number;
     minimumScore: number;
+    category: ActivityHourResult['category'];
+    durationHours: number;
   }[],
 ): ActivityWindowResult {
   const complete = candidates.filter((candidate) => candidate.endTime !== null);
   const best = complete.sort((left, right) => {
+    const categoryDifference = categoryRank(right.category) - categoryRank(left.category);
+    if (categoryDifference !== 0) return categoryDifference;
+    if (right.durationHours !== left.durationHours) return right.durationHours - left.durationHours;
     if (right.averageScore !== left.averageScore) return right.averageScore - left.averageScore;
     if (right.minimumScore !== left.minimumScore) return right.minimumScore - left.minimumScore;
     return Date.parse(left.startTime) - Date.parse(right.startTime);
@@ -258,16 +338,19 @@ function selectBestWindow(
     endTime: best.endTime,
     averageScore: best.averageScore,
     minimumScore: best.minimumScore,
-    category: categoryForActivityScore(best.averageScore),
+    category: best.category,
   };
 }
 
-function bestActivityWindow(
-  hours: ActivityHourResult[],
-  windowHours: number,
-): ActivityWindowResult {
+function bestActivityWindow(hours: ActivityHourResult[]): ActivityWindowResult {
+  const category = bestActivityCategory(hours);
+  if (!category) return unavailableWindow();
+
+  const bestScore = bestActivityScore(hours, category);
+  if (!isFiniteNumber(bestScore)) return unavailableWindow();
+
   const candidates = hours.flatMap((_, index) => {
-    const candidate = contiguousWindow(hours, index, windowHours);
+    const candidate = sameCategoryRun(hours, index, category, bestScore);
     return candidate ? [candidate] : [];
   });
 
@@ -277,15 +360,38 @@ function bestActivityWindow(
 export function bestActivityWindowForDate(
   hours: ActivityHourResult[],
   date: string,
-  windowHours: number,
 ): ActivityWindowResult {
+  const dayHours = hours.filter((hour) => hour.timestamp.slice(0, 10) === date);
+  const category = bestActivityCategory(dayHours);
+  if (!category) return unavailableWindow();
+
+  const bestScore = bestActivityScore(dayHours, category);
+  if (!isFiniteNumber(bestScore)) return unavailableWindow();
+
   const candidates = hours.flatMap((hour, index) => {
     if (hour.timestamp.slice(0, 10) !== date) return [];
-    const candidate = contiguousWindow(hours, index, windowHours);
+    const candidate = sameCategoryRun(hours, index, category, bestScore);
     return candidate ? [candidate] : [];
   });
 
   return selectBestWindow(candidates);
+}
+
+export function bestActivityWindowForRange(
+  hours: ActivityHourResult[],
+  startTime: string,
+  rangeHours: number,
+): ActivityWindowResult {
+  const start = Date.parse(startTime);
+  if (!Number.isFinite(start)) return unavailableWindow();
+
+  const end = start + rangeHours * HOUR_MS;
+  const rangeHoursOnly = hours.filter((hour) => {
+    const time = Date.parse(hour.timestamp);
+    return Number.isFinite(time) && time >= start && time <= end;
+  });
+
+  return bestActivityWindow(rangeHoursOnly);
 }
 
 function reasonsFor(current: ActivityHourResult | null, limit = 4): string[] {
@@ -338,7 +444,7 @@ export function evaluateActivity(
 ): ActivityEvaluationResult {
   const hours = futureHours(input).map((hour) => evaluateActivityHour(definition, hour));
   const current = hours.find((hour) => hour.available) ?? hours[0] ?? null;
-  const bestWindow = bestActivityWindow(hours, definition.windowHours);
+  const bestWindow = bestActivityWindow(hours);
   const reasonHour = explanationHour(hours, current, bestWindow);
 
   return {

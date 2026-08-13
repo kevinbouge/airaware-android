@@ -9,6 +9,7 @@ import {
 } from '../src/core/activityDefinitions';
 import { buildActivityTimelineRows } from '../src/core/activityTimeline';
 import {
+  bestActivityWindowForRange,
   bestActivityWindowForDate,
   evaluateActivities,
   evaluateActivity,
@@ -147,7 +148,7 @@ describe('Activities capability and model', () => {
     expect(result[0]?.reasons.length).toBeGreaterThan(0);
   });
 
-  it('keeps Activity best-window end times in provider-local time', () => {
+  it('keeps Activity best-window end times in provider-local time and expands the best run', () => {
     const result = evaluateActivities({
       coordinates: { latitude: 50, longitude: 14 },
       now: '2026-08-01T19:00:00+02:00',
@@ -159,7 +160,59 @@ describe('Activities capability and model', () => {
       enabledActivities: settings({ photography: true }),
     });
 
-    expect(formatActivityWindow(result[0]!.bestWindow)).toBe('19:00–21:00');
+    expect(formatActivityWindow(result[0]!.bestWindow)).toBe('19:00–22:00');
+  });
+
+  it('selects the longest contiguous run in the best available Activity category', () => {
+    const photography = ACTIVITY_DEFINITIONS.find((definition) => definition.id === 'photography')!;
+    const result = evaluateActivity(photography, {
+      coordinates: { latitude: 50, longitude: 14 },
+      now: '2026-08-01T18:00:00+02:00',
+      hourly: [
+        hour('2026-08-01T18:00:00+02:00'),
+        hour('2026-08-01T19:00:00+02:00'),
+        hour('2026-08-01T20:00:00+02:00'),
+        hour('2026-08-01T21:00:00+02:00'),
+        hour('2026-08-01T22:00:00+02:00', {
+          extended: {
+            ...hour('2026-08-01T22:00:00+02:00').extended!,
+            weather: {
+              ...hour('2026-08-01T22:00:00+02:00').extended!.weather,
+              cloudCover: 100,
+            },
+          },
+        }),
+      ],
+      enabledActivities: settings({ photography: true }),
+    });
+
+    expect(result.bestWindow.startTime).toBe('2026-08-01T18:00:00+02:00');
+    expect(formatActivityWindow(result.bestWindow)).toBe('18:00–22:00');
+  });
+
+  it('does not mark a whole broad Activity category as the best window', () => {
+    const drone = ACTIVITY_DEFINITIONS.find((definition) => definition.id === 'drone')!;
+    const hourly = Array.from({ length: 24 }, (_, index) => {
+      const timestamp = `2026-08-01T${String(index).padStart(2, '0')}:00:00+02:00`;
+      const windSpeed = index === 8 || index === 9 ? 2 : 6;
+
+      return hour(timestamp, {
+        weather: {
+          ...hour(timestamp).weather,
+          windSpeed,
+        },
+      });
+    });
+    const result = evaluateActivity(drone, {
+      coordinates: { latitude: 50, longitude: 14 },
+      now: '2026-08-01T00:00:00+02:00',
+      hourly,
+      enabledActivities: settings({ drone: true }),
+      forecastDates: ['2026-08-01'],
+    });
+
+    expect(result.bestWindow.startTime).toBe('2026-08-01T08:00:00+02:00');
+    expect(formatActivityWindow(result.bestWindow)).toBe('08:00–10:00');
   });
 
   it('uses best-window factors for Activity explanations when a later window is better', () => {
@@ -207,7 +260,7 @@ describe('Activities capability and model', () => {
       enabledActivities: settings({ drone: true }),
     });
 
-    const dailyWindow = bestActivityWindowForDate(result.hours, '2026-08-01', drone.windowHours);
+    const dailyWindow = bestActivityWindowForDate(result.hours, '2026-08-01');
 
     expect(dailyWindow.available).toBe(true);
     expect(dailyWindow.startTime).toBe('2026-08-01T14:00:00+02:00');
@@ -232,9 +285,7 @@ describe('Activities capability and model', () => {
     });
 
     expect(result.hours.map((item) => item.timestamp)).toContain('2026-08-07T12:00:00+02:00');
-    expect(bestActivityWindowForDate(result.hours, '2026-08-07', drone.windowHours).available).toBe(
-      true,
-    );
+    expect(bestActivityWindowForDate(result.hours, '2026-08-07').available).toBe(true);
   });
 
   it('builds a 24-hour Activity timeline and marks best-window rows', () => {
@@ -269,6 +320,38 @@ describe('Activities capability and model', () => {
     expect(rows[0]?.now).toBe(true);
     expect(rows.some((row) => row.markerLabel === 'Best')).toBe(true);
     expect(rows.every((row) => row.score > 0)).toBe(true);
+  });
+
+  it('can mark the best 24-hour Activity timeline window even when the overall best is later', () => {
+    const photography = ACTIVITY_DEFINITIONS.find((definition) => definition.id === 'photography')!;
+    const result = evaluateActivity(photography, {
+      coordinates: { latitude: 50, longitude: 14 },
+      now: '2026-08-01T12:00:00+02:00',
+      hourly: [
+        hour('2026-08-01T12:00:00+02:00'),
+        hour('2026-08-01T13:00:00+02:00'),
+        hour('2026-08-02T18:00:00+02:00'),
+        hour('2026-08-02T19:00:00+02:00'),
+        hour('2026-08-02T20:00:00+02:00'),
+        hour('2026-08-02T21:00:00+02:00'),
+      ],
+      enabledActivities: settings({ photography: true }),
+      forecastDates: ['2026-08-01', '2026-08-02'],
+    });
+    const timelineBestWindow = bestActivityWindowForRange(
+      result.hours,
+      '2026-08-01T12:00:00+02:00',
+      24,
+    );
+    const rows = buildActivityTimelineRows(
+      result.hours,
+      '2026-08-01T12:00:00+02:00',
+      timelineBestWindow,
+    );
+
+    expect(result.bestWindow.startTime).toBe('2026-08-02T18:00:00+02:00');
+    expect(timelineBestWindow.startTime).toBe('2026-08-01T12:00:00+02:00');
+    expect(rows.some((row) => row.markerLabel === 'Best')).toBe(true);
   });
 
   it('marks missing required variables as insufficient data without fabricating zeroes', () => {

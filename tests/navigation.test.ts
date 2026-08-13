@@ -2,7 +2,7 @@ import { linking } from '../src/navigation/linking';
 import fs from 'fs';
 
 describe('navigation', () => {
-  it('keeps only Today, Profile, and Settings as top-level tabs', () => {
+  it('keeps Today, Profile, Pro, and Settings as top-level tabs', () => {
     const screens = linking.config?.screens;
     const mainTabs = screens?.MainTabs;
     if (!screens || typeof mainTabs === 'string' || !mainTabs?.screens) {
@@ -18,9 +18,10 @@ describe('navigation', () => {
     ];
     const tabScreens = mainTabs.screens;
     expect(Object.keys(screens)).toEqual(routes);
-    expect(Object.keys(tabScreens)).toEqual(['Today', 'Profile', 'Settings']);
+    expect(Object.keys(tabScreens)).toEqual(['Today', 'Profile', 'Pro', 'Settings']);
     expect(tabScreens.Today).toBe('today');
     expect(tabScreens.Profile).toBe('profile');
+    expect(tabScreens.Pro).toBe('pro');
     expect(tabScreens.Settings).toBe('settings');
     expect(screens.DataDetail).toBe('data/:variableId');
     expect(screens.ActivityDetail).toBe('activities/:activityId');
@@ -42,11 +43,13 @@ describe('navigation', () => {
 
   it('uses explicit detail-screen back navigation and defaults to 24h', () => {
     const screen = fs.readFileSync('src/screens/DataDetailScreen.tsx', 'utf8');
+    const header = fs.readFileSync('src/components/DetailHeader.tsx', 'utf8');
 
     expect(screen).toContain("useState<DataDetailRangeId>('24h')");
-    expect(screen).toContain('title="Back"');
-    expect(screen).toContain('navigation.goBack()');
+    expect(screen).toContain('<DetailHeader title={variable.label} onBack={handleBack} />');
+    expect(screen).toContain('goBackOrToday(navigation)');
     expect(screen).toContain('function DetailUnavailable');
+    expect(header).toContain('accessibilityLabel="Back"');
   });
 
   it('keeps detail summary above an expanding vertical chart without legend labels', () => {
@@ -89,7 +92,86 @@ describe('navigation', () => {
     for (const screenPath of screens) {
       const screen = fs.readFileSync(screenPath, 'utf8');
       expect(screen).toContain('DetailStateView');
-      expect(screen).toContain('onBack={() => navigation.goBack()}');
+      expect(screen).toContain('goBackOrToday(navigation)');
     }
+  });
+
+  it('uses the shared merged summary layout on contextual detail pages', () => {
+    const screens = [
+      'src/screens/EnvironmentalBurdenDetailScreen.tsx',
+      'src/screens/PersonalizedRiskDetailScreen.tsx',
+      'src/screens/ActivityDetailScreen.tsx',
+    ];
+
+    for (const screenPath of screens) {
+      const screen = fs.readFileSync(screenPath, 'utf8');
+      expect(screen).toContain('SummaryMetricGrid');
+    }
+
+    expect(
+      fs.readFileSync('src/screens/EnvironmentalBurdenDetailScreen.tsx', 'utf8'),
+    ).not.toContain('<ScoreCard');
+    expect(fs.readFileSync('src/screens/PersonalizedRiskDetailScreen.tsx', 'utf8')).not.toContain(
+      '<ScoreCard',
+    );
+  });
+
+  it('keeps activity detail forecast and measurement sections explicit when data is empty', () => {
+    const screen = fs.readFileSync('src/screens/ActivityDetailScreen.tsx', 'utf8');
+
+    expect(screen).toContain('ForecastBarSection');
+    expect(screen).toContain('bestActivityForecastDates');
+    expect(screen).toContain('bestDates.has(day.date)');
+    expect(screen).toContain('conditionRows.length > 0');
+    expect(screen).toContain('Forecast data is unavailable.');
+    expect(screen).toContain('Current activity measurements are unavailable.');
+  });
+
+  it('allows multiple tied best days in contextual daily forecasts', () => {
+    const contextForecast = fs.readFileSync('src/components/ContextForecast.tsx', 'utf8');
+    const activityDetail = fs.readFileSync('src/screens/ActivityDetailScreen.tsx', 'utf8');
+
+    expect(contextForecast).toContain('bestRiskForecastDates');
+    expect(contextForecast).toContain('return new Set(');
+    expect(contextForecast).toContain('displayScore(row.score.score)');
+    expect(contextForecast).toContain('bestDates.has(day.date)');
+    expect(activityDetail).toContain('bestActivityForecastDates');
+    expect(activityDetail).toContain('return new Set(');
+    expect(activityDetail).toContain('displayScore(item.window.averageScore)');
+    expect(activityDetail).toContain('bestDates.has(day.date)');
+  });
+
+  it('centralizes disclaimer copy in Settings instead of feature screens', () => {
+    const settings = fs.readFileSync('src/screens/SettingsScreen.tsx', 'utf8');
+    const profile = fs.readFileSync('src/screens/ProfileScreen.tsx', 'utf8');
+    const activityDetail = fs.readFileSync('src/screens/ActivityDetailScreen.tsx', 'utf8');
+    const activityDefinitions = fs.readFileSync('src/core/activityDefinitions.ts', 'utf8');
+
+    expect(settings).toContain('title="Disclaimers"');
+    expect(settings).toContain('appDisclaimerText()');
+    expect(profile).not.toContain('diagnosis or symptom prediction');
+    expect(activityDetail).not.toContain('definition.disclaimer');
+    expect(activityDefinitions).not.toContain('disclaimer:');
+  });
+
+  it('moves Pro controls out of Settings and into the Pro tab', () => {
+    const navigator = fs.readFileSync('src/navigation/AppNavigator.tsx', 'utf8');
+    const settings = fs.readFileSync('src/screens/SettingsScreen.tsx', 'utf8');
+    const pro = fs.readFileSync('src/screens/ProScreen.tsx', 'utf8');
+
+    expect(navigator).toContain('name="Pro"');
+    expect(settings).not.toContain('title="AirAware Pro"');
+    expect(settings).not.toContain('title="Activities"');
+    expect(pro).toContain('title="AirAware Pro"');
+    expect(pro).toContain('title="Activities"');
+    expect(pro.indexOf('title="AirAware Pro"')).toBeLessThan(pro.indexOf('title="Activities"'));
+  });
+
+  it('makes Today activity cards visibly tappable', () => {
+    const today = fs.readFileSync('src/screens/TodayScreen.tsx', 'utf8');
+
+    expect(today).toContain('InsightCard');
+    expect(today).toContain('Opens details.');
+    expect(today).toContain('activitySection');
   });
 });

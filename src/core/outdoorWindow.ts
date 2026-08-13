@@ -1,5 +1,4 @@
 import { OUTDOOR_WINDOW_MIN_COMPLETENESS } from './constants';
-import { categoryFromScore } from './categories';
 import { calculateEnvironmentalScore } from './scoring';
 import type {
   EnvironmentalScoreResult,
@@ -18,8 +17,6 @@ interface HourlyPersonalizedRisk {
   partial: boolean;
 }
 
-type OutdoorWindowDurationHours = 1 | 2 | 3;
-
 export interface PersonalizedForecast {
   hours: HourlyPersonalizedRisk[];
   peak: HourlyPersonalizedRisk | null;
@@ -31,11 +28,21 @@ interface HourlyEnvironmentalRisk {
   result: EnvironmentalScoreResult;
 }
 
+interface OutdoorWindowCandidate {
+  startIndex: number;
+  durationHours: number;
+  average: number;
+  maximum: number;
+  completeness: number;
+}
+
 export interface EnvironmentalForecast {
   hours: HourlyEnvironmentalRisk[];
   peak: HourlyEnvironmentalRisk | null;
   bestWindow: OutdoorWindow;
 }
+
+const NEAR_BEST_SCORE_TOLERANCE = 5;
 
 function toCurrentReading(hour: HourlyEnvironmentalReading): CurrentEnvironmentalReadings {
   return {
@@ -68,18 +75,33 @@ function hasEnoughCompleteness(result: PersonalizedScoreResult): boolean {
   return result.availableGroupCount / result.selectedGroupCount >= OUTDOOR_WINDOW_MIN_COMPLETENESS;
 }
 
-function unavailableWindow(durationHours: number, reason: OutdoorWindow['reason']): OutdoorWindow {
+function unavailableWindow(reason: OutdoorWindow['reason']): OutdoorWindow {
   return {
     available: false,
     startTime: null,
     endTime: null,
-    durationHours,
+    durationHours: 0,
     averageScore: null,
     maximumScore: null,
     category: 'unavailable',
     completeness: 0,
     reason,
   };
+}
+
+function riskCategoryRank(category: OutdoorWindow['category']): number {
+  switch (category) {
+    case 'low':
+      return 0;
+    case 'moderate':
+      return 1;
+    case 'high':
+      return 2;
+    case 'veryHigh':
+      return 3;
+    case 'unavailable':
+      return 4;
+  }
 }
 
 function next24Hours<T extends { timestamp: string }>(hourly: T[], now: Date): T[] {
@@ -145,14 +167,13 @@ function addOneHourPreservingTimestampStyle(timestamp: string | undefined): stri
 export function calculatePersonalizedForecast(
   hourly: HourlyEnvironmentalReading[],
   profile: PersonalAllergyProfile,
-  durationHours: OutdoorWindowDurationHours,
   now = new Date(),
 ): PersonalizedForecast {
   if (!profile.enabled) {
     return {
       hours: [],
       peak: null,
-      bestWindow: unavailableWindow(durationHours, 'personalization_disabled'),
+      bestWindow: unavailableWindow('personalization_disabled'),
     };
   }
 
@@ -174,14 +195,13 @@ export function calculatePersonalizedForecast(
       : availableHours.reduce((best, hour) =>
           (hour.result.score ?? 0) > (best.result.score ?? 0) ? hour : best,
         );
-  const bestWindow = selectBestOutdoorWindow(hours, durationHours);
+  const bestWindow = selectBestOutdoorWindow(hours);
 
   return { hours, peak, bestWindow };
 }
 
 export function calculateEnvironmentalOutdoorWindow(
   hourly: HourlyEnvironmentalReading[],
-  durationHours: OutdoorWindowDurationHours,
   now = new Date(),
 ): OutdoorWindow {
   const hours = next24Hours(hourly, now).map((hour) => ({
@@ -189,12 +209,11 @@ export function calculateEnvironmentalOutdoorWindow(
     result: calculateEnvironmentalScore(toCurrentReading(hour)),
   }));
 
-  return selectBestEnvironmentalOutdoorWindow(hours, durationHours);
+  return selectBestEnvironmentalOutdoorWindow(hours);
 }
 
 export function calculateEnvironmentalForecast(
   hourly: HourlyEnvironmentalReading[],
-  durationHours: OutdoorWindowDurationHours,
   now = new Date(),
 ): EnvironmentalForecast {
   const hours = next24Hours(hourly, now).map((hour) => ({
@@ -214,133 +233,175 @@ export function calculateEnvironmentalForecast(
   return {
     hours,
     peak,
-    bestWindow: selectBestEnvironmentalOutdoorWindow(hours, durationHours),
+    bestWindow: selectBestEnvironmentalOutdoorWindow(hours),
   };
 }
 
-function selectBestOutdoorWindow(
+function personalizedCompleteness(hour: HourlyPersonalizedRisk): number {
+  if (hour.result.selectedGroupCount <= 0) return 0;
+  return hour.result.availableGroupCount / hour.result.selectedGroupCount;
+}
+
+function bestOutdoorWindowCategory(
   hours: HourlyPersonalizedRisk[],
-  durationHours: OutdoorWindowDurationHours,
-): OutdoorWindow {
-  let best: {
-    startIndex: number;
-    average: number;
-    maximum: number;
-    completeness: number;
-  } | null = null;
+): OutdoorWindow['category'] | null {
+  const available = hours
+    .filter(
+      (hour) =>
+        hasEnoughCompleteness(hour.result) &&
+        isFiniteNumber(hour.result.score) &&
+        hour.result.category !== 'unavailable',
+    )
+    .map((hour) => hour.result.category);
 
-  for (let index = 0; index <= hours.length - durationHours; index += 1) {
-    const window = hours.slice(index, index + durationHours);
-    const contiguous = window.every((hour, offset) => {
-      if (offset === 0) return true;
-      return isContiguous(window[offset - 1]?.timestamp ?? '', hour.timestamp);
-    });
-    const eligible =
-      contiguous &&
-      window.every(
-        (hour) => hasEnoughCompleteness(hour.result) && isFiniteNumber(hour.result.score),
-      );
+  return available.reduce<OutdoorWindow['category'] | null>(
+    (best, category) =>
+      best === null || riskCategoryRank(category) < riskCategoryRank(best) ? category : best,
+    null,
+  );
+}
 
-    if (!eligible) continue;
+function bestOutdoorWindowScore(
+  hours: HourlyPersonalizedRisk[],
+  category: OutdoorWindow['category'],
+): number | null {
+  const scores = hours
+    .filter(
+      (hour) =>
+        hour.result.category === category &&
+        hasEnoughCompleteness(hour.result) &&
+        isFiniteNumber(hour.result.score),
+    )
+    .map((hour) => hour.result.score!)
+    .sort((left, right) => left - right);
 
-    const scores = window.map((hour) => hour.result.score ?? 0);
-    const average = scores.reduce((sum, score) => sum + score, 0) / scores.length;
-    const maximum = Math.max(...scores);
-    const completeness =
-      window.reduce(
-        (sum, hour) => sum + hour.result.availableGroupCount / hour.result.selectedGroupCount,
-        0,
-      ) / window.length;
-    const candidate = { startIndex: index, average, maximum, completeness };
+  return scores[0] ?? null;
+}
 
+function isNearBestOutdoorWindowHour(
+  hour: HourlyPersonalizedRisk | undefined,
+  category: OutdoorWindow['category'],
+  bestScore: number,
+): hour is HourlyPersonalizedRisk {
+  return (
+    hour !== undefined &&
+    hour.result.category === category &&
+    hasEnoughCompleteness(hour.result) &&
+    isFiniteNumber(hour.result.score) &&
+    hour.result.score <= bestScore + NEAR_BEST_SCORE_TOLERANCE
+  );
+}
+
+function betterOutdoorWindowCandidate(
+  candidate: OutdoorWindowCandidate,
+  best: OutdoorWindowCandidate | null,
+): boolean {
+  if (!best) return true;
+  if (candidate.durationHours !== best.durationHours) {
+    return candidate.durationHours > best.durationHours;
+  }
+  if (candidate.average !== best.average) return candidate.average < best.average;
+  if (candidate.maximum !== best.maximum) return candidate.maximum < best.maximum;
+  return candidate.completeness > best.completeness;
+}
+
+function nearBestOutdoorWindowRun(
+  hours: HourlyPersonalizedRisk[],
+  startIndex: number,
+  category: OutdoorWindow['category'],
+  bestScore: number,
+): HourlyPersonalizedRisk[] {
+  const start = hours[startIndex];
+  if (!isNearBestOutdoorWindowHour(start, category, bestScore)) return [];
+
+  const window = [start];
+  for (let nextIndex = startIndex + 1; nextIndex < hours.length; nextIndex += 1) {
+    const previous = window[window.length - 1];
+    const next = hours[nextIndex];
     if (
-      !best ||
-      candidate.average < best.average ||
-      (candidate.average === best.average && candidate.maximum < best.maximum) ||
-      (candidate.average === best.average &&
-        candidate.maximum === best.maximum &&
-        candidate.completeness > best.completeness)
+      !previous ||
+      !next ||
+      !isContiguous(previous.timestamp, next.timestamp) ||
+      !isNearBestOutdoorWindowHour(next, category, bestScore)
     ) {
+      break;
+    }
+
+    window.push(next);
+  }
+
+  return window;
+}
+
+function outdoorWindowCandidate(
+  hours: HourlyPersonalizedRisk[],
+  startIndex: number,
+  category: OutdoorWindow['category'],
+  bestScore: number,
+): OutdoorWindowCandidate | null {
+  const window = nearBestOutdoorWindowRun(hours, startIndex, category, bestScore);
+  if (window.length === 0) return null;
+
+  const scores = window.map((hour) => hour.result.score ?? 0);
+  return {
+    startIndex,
+    durationHours: window.length,
+    average: scores.reduce((sum, score) => sum + score, 0) / scores.length,
+    maximum: Math.max(...scores),
+    completeness:
+      window.reduce((sum, hour) => sum + personalizedCompleteness(hour), 0) / window.length,
+  };
+}
+
+function selectBestOutdoorWindow(hours: HourlyPersonalizedRisk[]): OutdoorWindow {
+  const category = bestOutdoorWindowCategory(hours);
+  if (!category) {
+    return unavailableWindow('insufficient_forecast_data');
+  }
+
+  const bestScore = bestOutdoorWindowScore(hours, category);
+  if (!isFiniteNumber(bestScore)) {
+    return unavailableWindow('insufficient_forecast_data');
+  }
+
+  let best: OutdoorWindowCandidate | null = null;
+
+  for (let index = 0; index < hours.length; index += 1) {
+    const candidate = outdoorWindowCandidate(hours, index, category, bestScore);
+    if (candidate && betterOutdoorWindowCandidate(candidate, best)) {
       best = candidate;
     }
   }
 
   if (!best) {
-    return unavailableWindow(durationHours, 'insufficient_forecast_data');
+    return unavailableWindow('insufficient_forecast_data');
   }
 
   const start = hours[best.startIndex];
-  const end = hours[best.startIndex + durationHours - 1];
+  const end = hours[best.startIndex + best.durationHours - 1];
 
   return {
     available: true,
     startTime: start?.timestamp ?? null,
     endTime: addOneHourPreservingTimestampStyle(end?.timestamp),
-    durationHours,
+    durationHours: best.durationHours,
     averageScore: best.average,
     maximumScore: best.maximum,
-    category: categoryFromScore(best.average),
+    category,
     completeness: best.completeness,
   };
 }
 
-function selectBestEnvironmentalOutdoorWindow(
-  hours: HourlyEnvironmentalRisk[],
-  durationHours: OutdoorWindowDurationHours,
-): OutdoorWindow {
-  let best: {
-    startIndex: number;
-    average: number;
-    maximum: number;
-    completeness: number;
-  } | null = null;
-
-  for (let index = 0; index <= hours.length - durationHours; index += 1) {
-    const window = hours.slice(index, index + durationHours);
-    const contiguous = window.every((hour, offset) => {
-      if (offset === 0) return true;
-      return isContiguous(window[offset - 1]?.timestamp ?? '', hour.timestamp);
-    });
-    const eligible =
-      contiguous &&
-      window.every((hour) => hour.result.available && isFiniteNumber(hour.result.score));
-
-    if (!eligible) continue;
-
-    const scores = window.map((hour) => hour.result.score ?? 0);
-    const average = scores.reduce((sum, score) => sum + score, 0) / scores.length;
-    const maximum = Math.max(...scores);
-    const completeness =
-      window.reduce((sum, hour) => sum + hour.result.completeness, 0) / window.length;
-    const candidate = { startIndex: index, average, maximum, completeness };
-
-    if (
-      !best ||
-      candidate.average < best.average ||
-      (candidate.average === best.average && candidate.maximum < best.maximum) ||
-      (candidate.average === best.average &&
-        candidate.maximum === best.maximum &&
-        candidate.completeness > best.completeness)
-    ) {
-      best = candidate;
-    }
-  }
-
-  if (!best) {
-    return unavailableWindow(durationHours, 'insufficient_forecast_data');
-  }
-
-  const start = hours[best.startIndex];
-  const end = hours[best.startIndex + durationHours - 1];
-
-  return {
-    available: true,
-    startTime: start?.timestamp ?? null,
-    endTime: addOneHourPreservingTimestampStyle(end?.timestamp),
-    durationHours,
-    averageScore: best.average,
-    maximumScore: best.maximum,
-    category: categoryFromScore(best.average),
-    completeness: best.completeness,
-  };
+function selectBestEnvironmentalOutdoorWindow(hours: HourlyEnvironmentalRisk[]): OutdoorWindow {
+  return selectBestOutdoorWindow(
+    hours.map((hour) => ({
+      timestamp: hour.timestamp,
+      result: {
+        ...hour.result,
+        selectedGroupCount: 1,
+        availableGroupCount: hour.result.available ? 1 : 0,
+      },
+      partial: false,
+    })),
+  );
 }

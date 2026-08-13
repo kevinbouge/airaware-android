@@ -12,7 +12,6 @@ export const GOOGLE_PLAY_PRIVACY_DISCLOSURE = [
   'RevenueCat may process anonymous app identifiers, purchase records, product identifiers, entitlement state, and device/app metadata needed for billing.',
   'AirAware does not send RevenueCat coordinates, environmental readings, Personal Allergy Profile selections, nearby vegetation data, shared summaries, or notification settings.',
   'AirAware does not sell personal or sensitive user data.',
-  'AirAware does not predict symptoms, diagnose allergies, provide medical advice, or guarantee safe conditions.',
   'AirAware does not request background location.',
   'Because AirAware has no account or server-side user profile, clearing app storage or uninstalling the app removes locally stored settings, cache, and profile selections.',
 ] as const;

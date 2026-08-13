@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { AppButton } from '../components/AppButton';
-import { StateView } from '../components/StateView';
+import { DetailHeader } from '../components/DetailHeader';
+import { DetailStateView } from '../components/DetailStateView';
 import { VerticalTimelineChart } from '../components/VerticalTimelineChart';
 import {
   DATA_DETAIL_RANGES,
@@ -13,6 +14,7 @@ import {
 } from '../core/dataVariableMetadata';
 import type { DataDetailRangeId, DataDetailTimeline } from '../models/dataDetail';
 import type { EnvironmentalVariableId } from '../capabilities/types';
+import { goBackOrToday, type DetailBackNavigation } from '../navigation/detailNavigation';
 import { loadDataDetailTimeline } from '../services/dataDetailService';
 import { useAppStore } from '../state/useAppStore';
 import { colors, spacing } from '../theme/theme';
@@ -20,6 +22,8 @@ import { colors, spacing } from '../theme/theme';
 interface DataDetailRouteParams {
   variableId: EnvironmentalVariableId;
 }
+
+type DataDetailNavigation = DetailBackNavigation;
 
 function isDataDetailRouteParams(value: unknown): value is DataDetailRouteParams {
   return (
@@ -31,12 +35,7 @@ function isDataDetailRouteParams(value: unknown): value is DataDetailRouteParams
 
 function DetailUnavailable({ onBack }: { onBack: () => void }) {
   return (
-    <View style={styles.screen}>
-      <StateView message="Timeline data is unavailable." />
-      <View style={styles.footer}>
-        <AppButton title="Back" fullWidth onPress={onBack} />
-      </View>
-    </View>
+    <DetailStateView title="Timeline" message="Timeline data is unavailable." onBack={onBack} />
   );
 }
 
@@ -47,7 +46,7 @@ function summaryStatLabel(stat: 'minimum' | 'maximum' | 'average'): string {
 }
 
 export function DataDetailScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<DataDetailNavigation>();
   const route = useRoute();
   const environment = useAppStore((state) => state.environment);
   const [rangeId, setRangeId] = useState<DataDetailRangeId>('24h');
@@ -61,6 +60,7 @@ export function DataDetailScreen() {
   const now = environment?.current.timestamp ?? environment?.fetchedAt ?? fallbackNow;
   const currentValue =
     environment?.current && variable ? currentDataDetailValue(environment.current, variable) : null;
+  const handleBack = () => goBackOrToday(navigation);
 
   useEffect(() => {
     let cancelled = false;
@@ -116,14 +116,14 @@ export function DataDetailScreen() {
       : [];
 
   if (!params || !variable || !environment?.coordinates) {
-    return <DetailUnavailable onBack={() => navigation.goBack()} />;
+    return <DetailUnavailable onBack={handleBack} />;
   }
 
   return (
     <View style={styles.screen}>
+      <DetailHeader title={variable.label} onBack={handleBack} />
       <View style={styles.content}>
         <View style={styles.header}>
-          <Text style={styles.title}>{variable.label}</Text>
           <Text style={styles.currentValue}>
             Current: {formatDataDetailValue(variable, currentValue)}
           </Text>
@@ -159,7 +159,6 @@ export function DataDetailScreen() {
             </View>
           ))}
         </View>
-        <AppButton title="Back" fullWidth onPress={() => navigation.goBack()} />
       </View>
     </View>
   );
@@ -233,10 +232,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
     textAlign: 'center',
-  },
-  title: {
-    color: colors.text,
-    fontSize: 26,
-    fontWeight: '800',
   },
 });

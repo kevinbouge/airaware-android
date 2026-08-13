@@ -113,7 +113,7 @@ describe('widget snapshots', () => {
 
   it('builds a privacy-safe Free compact widget snapshot', () => {
     const env = environment();
-    const derived = deriveEnvironmentState(env, DEFAULT_PROFILE, 2, FREE_CAPABILITIES);
+    const derived = deriveEnvironmentState(env, DEFAULT_PROFILE, FREE_CAPABILITIES);
     const snapshot = buildWidgetSnapshot({
       environment: env,
       derived,
@@ -139,7 +139,7 @@ describe('widget snapshots', () => {
     const env = environment();
     const snapshot = buildWidgetSnapshot({
       environment: env,
-      derived: deriveEnvironmentState(env, DEFAULT_PROFILE, 2, FREE_CAPABILITIES),
+      derived: deriveEnvironmentState(env, DEFAULT_PROFILE, FREE_CAPABILITIES),
       settings: DEFAULT_SETTINGS,
       capabilities: FREE_CAPABILITIES,
       entitlement: FREE_ENTITLEMENT,
@@ -163,7 +163,7 @@ describe('widget snapshots', () => {
     const env = environment();
     const snapshot = buildWidgetSnapshot({
       environment: env,
-      derived: deriveEnvironmentState(env, DEFAULT_PROFILE, 2, PRO_LIFETIME_CAPABILITIES),
+      derived: deriveEnvironmentState(env, DEFAULT_PROFILE, PRO_LIFETIME_CAPABILITIES),
       settings: DEFAULT_SETTINGS,
       capabilities: PRO_LIFETIME_CAPABILITIES,
       entitlement: PRO_LIFETIME_ENTITLEMENT,
@@ -181,10 +181,11 @@ describe('widget snapshots', () => {
 
   it('keeps widget score selection aligned with headline fallback behavior', () => {
     const env = environment();
+    const disabledProfile = { ...DEFAULT_PROFILE, enabled: false };
     const snapshot = buildWidgetSnapshot({
       environment: env,
-      derived: deriveEnvironmentState(env, DEFAULT_PROFILE, 2, PRO_LIFETIME_CAPABILITIES),
-      settings: { ...DEFAULT_SETTINGS, headlineScore: 'personalized' },
+      derived: deriveEnvironmentState(env, disabledProfile, PRO_LIFETIME_CAPABILITIES),
+      settings: DEFAULT_SETTINGS,
       capabilities: PRO_LIFETIME_CAPABILITIES,
       entitlement: PRO_LIFETIME_ENTITLEMENT,
       stale: false,
@@ -197,7 +198,7 @@ describe('widget snapshots', () => {
   it('handles first-run and missing data states without placeholders', () => {
     const snapshot = buildWidgetSnapshot({
       environment: null,
-      derived: deriveEnvironmentState(null, DEFAULT_PROFILE, 2, FREE_CAPABILITIES),
+      derived: deriveEnvironmentState(null, DEFAULT_PROFILE, FREE_CAPABILITIES),
       settings: DEFAULT_SETTINGS,
       capabilities: FREE_CAPABILITIES,
       entitlement: FREE_ENTITLEMENT,
