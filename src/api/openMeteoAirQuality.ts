@@ -1,6 +1,6 @@
 import { FORECAST_DAY_LIMITS } from '../capabilities/config';
 import { activityOpenMeteoVariables } from '../core/activityDefinitions';
-import type { ActivityId } from '../models/activities';
+import type { ActivityDomainId } from '../models/activities';
 import type {
   AtmosphericIrritants,
   Coordinates,
@@ -225,7 +225,7 @@ function hasAnyNumeric(values: object): boolean {
   return Object.values(values).some((item) => typeof item === 'number' && Number.isFinite(item));
 }
 
-function airQualityVariablesFor(activityIds: readonly ActivityId[] = []): string[] {
+function airQualityVariablesFor(activityIds: readonly ActivityDomainId[] = []): string[] {
   const activityVariables = activityOpenMeteoVariables(activityIds).airQuality;
   return Array.from(
     new Set([
@@ -238,7 +238,7 @@ function airQualityVariablesFor(activityIds: readonly ActivityId[] = []): string
 
 export function buildAirQualityUrl(
   coordinates: Coordinates,
-  options: { enabledActivities?: readonly ActivityId[] } = {},
+  options: { enabledActivities?: readonly ActivityDomainId[] } = {},
 ): string {
   const variables = airQualityVariablesFor(options.enabledActivities ?? []);
   const params = new URLSearchParams({
@@ -321,7 +321,7 @@ export function normalizeAirQuality(payload: OpenMeteoPayload): NormalizedAirQua
 
 export async function fetchAirQuality(
   coordinates: Coordinates,
-  options: { enabledActivities?: readonly ActivityId[] } = {},
+  options: { enabledActivities?: readonly ActivityDomainId[] } = {},
 ): Promise<NormalizedAirQuality> {
   const payload = await fetchJson<OpenMeteoPayload>(buildAirQualityUrl(coordinates, options));
   return normalizeAirQuality(payload);

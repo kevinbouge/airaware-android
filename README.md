@@ -82,8 +82,8 @@ nvm use 22.13.1
   freshness tracked independently
 - Contextual environmental measurement drill-downs from Today detail screens
 - Nearby vegetation and land-use context from OpenStreetMap, available to Free and Pro users
-- Pro-only Activities for photography, astronomy, farming, drone flying, outdoor sports, and
-  outdoor work
+- Pro-only Activity domains for agriculture, drone operations, photography, astronomy, and outdoor
+  work
 - Local plain-text daily summary sharing
 - Android home-screen widgets:
   - Free compact widget with current score and main factor
@@ -100,9 +100,11 @@ nvm use 22.13.1
 - **Today**: headline scores, location, update status, main factor, best outdoor window, refresh,
   share summary, and enabled Activity summary cards
 - **Context detail screens**: Environmental burden, Personalized risk, and Activity details with
-  Daily forecast and 24-hour forecast graphs plus tappable environmental measurements
+  Daily forecast graphs, current-to-next-24-hour forecast graphs, and tappable environmental
+  measurements
 - **Environmental variable details**: shared 24-hour, week, month, and year timeline for individual
-  variables
+  variables. The 24-hour variable timeline is the history-aware view: past values appear above Now
+  and forecast values appear below Now.
 - **Profile**: local Personal Allergy Profile toggles, including Mold potential and UV index
 - **Pro**: AirAware Pro purchase/restore status, development capability preview, and Activity
   toggles
@@ -300,23 +302,27 @@ Extended Forecast is available with AirAware Pro:
 - Up to 7 total forecast days
 
 Forecast availability depends on upstream model coverage. Some measurements may be unavailable for
-later days, and missing values are omitted rather than treated as zero. Detail pages present two
-forecast views: **Daily forecast** for the active forecast horizon and **24-hour forecast** for the
-short-term timeline. The Best outdoor window remains a short-term feature. When a best window starts
-tomorrow, AirAware labels it with `(tomorrow)`; windows that start today and end after midnight are
-not labeled as tomorrow.
+later days, and missing values are omitted rather than treated as zero. Context detail pages present
+two forecast views: **Daily forecast** for the active forecast horizon and **24-hour forecast** from
+the current reading forward. The per-variable environmental detail page is the history-aware view:
+its 24-hour timeline shows approximately 12 hours of Open-Meteo history, Now, and available
+forecast. The Best outdoor window remains a short-term feature. When a best window starts tomorrow,
+AirAware labels it with `(tomorrow)`; windows that start today and end after midnight are not
+labeled as tomorrow.
 
 Professional Activities:
 
 - Free: Activity catalog visible, but Activity profiles cannot be enabled
-- Pro lifetime: Photography, Astronomy, Farming, Drone Flying, Outdoor Sports, and Outdoor Work
-  profiles can be enabled individually
+- Pro lifetime: Agriculture, Drone Operations, Photography, Astronomy, and Outdoor Work domains can
+  be enabled individually
 
-Activities are disabled by default. Enabled Activities use relevant Open-Meteo forecast variables to
-identify activity-specific environmental windows and concise reasons. Activity selections stay local
-and are not sent to RevenueCat or environmental providers. Additional measurements used by
-Activities are surfaced in context inside Activity details rather than as a generic advanced data
-catalog.
+Activities are disabled by default. Enabled domains expose narrower professional profiles such as
+spraying, irrigation, drone survey, landscape photography, stargazing, and work-at-height context.
+They use relevant Open-Meteo forecast variables to identify environmental windows and concise
+reasons. Activity 24-hour graphs start at the current reading and look forward, matching the
+Environmental burden and Personalized risk detail pages. Activity selections stay local and are not
+sent to RevenueCat or environmental providers. Additional measurements used by Activities are
+surfaced in context inside Activity details rather than as a generic advanced data catalog.
 
 Android home-screen widgets:
 
@@ -537,7 +543,8 @@ Capabilities describe stable application concepts:
 - Notification capabilities, currently Free basic transition notifications and a reserved Pro
   advanced environmental notification capability
 - Widget capabilities, currently Free compact Android widget and Pro advanced Android widget
-- Reserved boundaries for history
+- Environmental variable detail history, fetched on demand from Open-Meteo rather than built from
+  locally recorded readings
 
 Feature metadata lives beside the capability configuration and describes only functionality already
 implemented in the app. Screens and services use capability selectors such as forecast limits,

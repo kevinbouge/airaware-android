@@ -12,15 +12,14 @@ import { useDerivedEnvironment } from '../hooks/useDerivedEnvironment';
 import {
   activityCategoryLabel,
   bestActivityWindowForRange,
-  evaluateActivities,
-  formatActivityScore,
+  evaluateActivityDomains,
   formatActivityWindow,
 } from '../core/activityEvaluator';
 import { useAppStore } from '../state/useAppStore';
 import { colors, riskColor, spacing } from '../theme/theme';
 import { formatCoordinates, formatTimeRangeWithTomorrow, formatTimestamp } from '../utils/format';
 import { contributorFromScore } from '../utils/contributorLabels';
-import type { ActivitySuitabilityCategory } from '../models/activities';
+import type { ActivitySemanticType, ActivitySuitabilityCategory } from '../models/activities';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 
 interface TodayNavigation {
@@ -54,7 +53,27 @@ function formatUpdateStatus(
   return `Cached ${cachedParts.join(', ')}`;
 }
 
-function activityColor(category: ActivitySuitabilityCategory): string {
+function activityColor(
+  category: ActivitySuitabilityCategory,
+  semanticType: ActivitySemanticType = 'suitability',
+): string {
+  if (semanticType === 'risk') {
+    switch (category) {
+      case 'excellent':
+        return colors.veryHigh;
+      case 'good':
+        return colors.high;
+      case 'fair':
+        return colors.moderate;
+      case 'poor':
+        return colors.primary;
+      case 'unsuitable':
+        return colors.low;
+      case 'insufficientData':
+        return colors.unavailable;
+    }
+  }
+
   switch (category) {
     case 'excellent':
       return colors.low;
@@ -105,10 +124,10 @@ export function TodayScreen() {
     environmentalBestOutdoorWindow,
     personalizedBestOutdoorWindow,
   } = useDerivedEnvironment();
-  const activityEvaluations = useMemo(
+  const activityDomainEvaluations = useMemo(
     () =>
       environment && capabilities.activities.available
-        ? evaluateActivities({
+        ? evaluateActivityDomains({
             coordinates: environment.coordinates,
             now: environment.current.timestamp ?? environment.fetchedAt,
             hourly: environment.hourly,
@@ -195,37 +214,60 @@ export function TodayScreen() {
 
       {environment ? (
         <>
-          {activityEvaluations.length > 0 ? (
+          {activityDomainEvaluations.length > 0 ? (
             <View style={styles.activitySection}>
               <Text style={styles.sectionTitle}>Activities</Text>
-              {activityEvaluations.map((activity) => {
-                const displayWindow = bestActivityWindowForRange(
-                  activity.hours,
-                  activity.current?.timestamp ?? referenceTime ?? '',
-                  24,
-                );
+              {activityDomainEvaluations.map((domain) => {
+                const previewProfiles = domain.profiles.slice(0, 2);
+                const best = domain.bestOpportunity;
+                const displayWindow =
+                  best !== null
+                    ? bestActivityWindowForRange(
+                        best.hours,
+                        best.current?.timestamp ?? referenceTime ?? '',
+                        24,
+                        best.minimumUsefulWindowDuration,
+                      )
+                    : null;
+                const primaryProfile = previewProfiles[0];
 
                 return (
                   <InsightCard
-                    key={activity.id}
-                    title={activity.label}
-                    accent={activityColor(activity.current?.category ?? 'insufficientData')}
+                    key={domain.id}
+                    title={domain.label}
+                    accent={activityColor(
+                      primaryProfile?.current?.category ?? 'insufficientData',
+                      primaryProfile?.semanticType,
+                    )}
                     primary={
-                      activity.current
-                        ? activityCategoryLabel(activity.current.category)
+                      primaryProfile?.current
+                        ? activityCategoryLabel(
+                            primaryProfile.current.category,
+                            primaryProfile.semanticType,
+                          )
                         : 'Unavailable'
                     }
                     compact
-                    secondary={
-                      activity.current?.available ? `${activity.current.displayScore}%` : undefined
-                    }
+                    secondary={primaryProfile?.label}
                     details={[
-                      `Best window: ${formatActivityWindow(displayWindow, referenceTime)}`,
-                      ...(!activity.available ? [activityCategoryLabel('insufficientData')] : []),
+                      ...previewProfiles.map((profile) =>
+                        profile.current
+                          ? `${profile.label}: ${activityCategoryLabel(
+                              profile.current.category,
+                              profile.semanticType,
+                            )}`
+                          : `${profile.label}: Unavailable`,
+                      ),
+                      best && displayWindow
+                        ? `Best opportunity: ${best.label} · ${formatActivityWindow(
+                            displayWindow,
+                            referenceTime,
+                          )}`
+                        : 'Best opportunity: Unavailable',
                     ]}
-                    accessibilityLabel={`${activity.label}: ${formatActivityScore(activity)}. Opens details.`}
+                    accessibilityLabel={`${domain.label}. Opens professional profiles.`}
                     onPress={() =>
-                      navigation.navigate('ActivityDetail', { activityId: activity.id })
+                      navigation.navigate('ActivityDomainDetail', { domainId: domain.id })
                     }
                   />
                 );

@@ -52,6 +52,29 @@ describe('settings storage', () => {
     expect(settings.locationOnboardingComplete).toBe(false);
   });
 
+  it('migrates old activity selections to professional domains', async () => {
+    await AsyncStorage.setItem(
+      'airaware.settings.v1',
+      JSON.stringify({
+        enabledActivities: {
+          farming: true,
+          drone: true,
+          photography: true,
+          outdoor_sports: true,
+        },
+      }),
+    );
+
+    const settings = await loadSettings();
+
+    expect(settings.enabledActivities.agriculture).toBe(true);
+    expect(settings.enabledActivities.drone_operations).toBe(true);
+    expect(settings.enabledActivities.photography).toBe(true);
+    expect(settings.enabledActivities.astronomy).toBe(false);
+    expect(settings.enabledActivities.outdoor_work).toBe(false);
+    expect(settings.enabledActivities).not.toHaveProperty('outdoor_sports');
+  });
+
   it('rejects invalid persisted settings values', async () => {
     await AsyncStorage.setItem(
       'airaware.settings.v1',

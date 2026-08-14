@@ -3,6 +3,7 @@ import { featureDefinitions, isFeatureAvailable } from '../src/capabilities/feat
 import { isEnvironmentalVariableAvailable } from '../src/capabilities/variables';
 import {
   ACTIVITY_DEFINITIONS,
+  ACTIVITY_DOMAINS,
   ACTIVITY_IDS,
   DEFAULT_ACTIVITY_SETTINGS,
   activityOpenMeteoVariables,
@@ -13,11 +14,13 @@ import {
   bestActivityWindowForDate,
   evaluateActivities,
   evaluateActivity,
+  evaluateActivityDomains,
   formatActivityWindow,
 } from '../src/core/activityEvaluator';
 import { calculateMoldPotential } from '../src/core/moldPotential';
 import { dataDetailVariable } from '../src/core/dataVariableMetadata';
 import type { ActivitySettings } from '../src/models/activities';
+import type { ActivityProfileDefinition } from '../src/core/activityDefinitions';
 import type { HourlyEnvironmentalReading } from '../src/models/environment';
 
 function hour(
@@ -98,6 +101,39 @@ function settings(enabled: Partial<ActivitySettings>): ActivitySettings {
   return { ...DEFAULT_ACTIVITY_SETTINGS, ...enabled };
 }
 
+function testProfile(
+  overrides: Partial<ActivityProfileDefinition> = {},
+): ActivityProfileDefinition {
+  return {
+    id: 'drone_general_flight',
+    domainId: 'drone_operations',
+    label: 'Test profile',
+    description: 'Test profile',
+    semanticType: 'suitability',
+    requiredVariables: ['windSpeed'],
+    optionalVariables: [],
+    detailVariables: ['windSpeed'],
+    weatherVariables: ['wind_speed_10m'],
+    airQualityVariables: [],
+    minimumUsefulWindowDuration: 2,
+    rules: [
+      {
+        id: 'wind',
+        label: 'Wind',
+        variableId: 'windSpeed',
+        required: true,
+        weight: 1,
+        kind: 'lowAtMost',
+        goodAt: 0,
+        poorAt: 100,
+        positiveText: 'Low wind',
+        negativeText: 'Wind increases',
+      },
+    ],
+    ...overrides,
+  };
+}
+
 describe('Activities capability and model', () => {
   it('replaces generic Advanced Environmental Data with Pro Activities', () => {
     const freeFeatures = featureDefinitions(FREE_CAPABILITIES);
@@ -117,15 +153,44 @@ describe('Activities capability and model', () => {
 
   it('defines all initial activities disabled by default', () => {
     expect(ACTIVITY_IDS).toEqual([
+      'agriculture',
+      'drone_operations',
       'photography',
       'astronomy',
-      'farming',
-      'drone',
-      'outdoor_sports',
       'outdoor_work',
     ]);
     expect(Object.values(DEFAULT_ACTIVITY_SETTINGS).every((value) => value === false)).toBe(true);
     expect(ACTIVITY_DEFINITIONS.every((definition) => definition.rules.length > 0)).toBe(true);
+    expect(ACTIVITY_DEFINITIONS.map((definition) => definition.id)).not.toContain('outdoor_sports');
+  });
+
+  it('defines professional domains with specialized profiles', () => {
+    expect(ACTIVITY_DOMAINS.map((domain) => domain.id)).toEqual([
+      'agriculture',
+      'drone_operations',
+      'photography',
+      'astronomy',
+      'outdoor_work',
+    ]);
+    expect(
+      ACTIVITY_DEFINITIONS.filter((definition) => definition.domainId === 'agriculture').map(
+        (definition) => definition.id,
+      ),
+    ).toEqual([
+      'agriculture_spraying',
+      'agriculture_irrigation',
+      'agriculture_field_work',
+      'agriculture_harvesting',
+      'agriculture_frost_risk',
+    ]);
+    expect(
+      ACTIVITY_DEFINITIONS.filter((definition) => definition.domainId === 'drone_operations').map(
+        (definition) => definition.id,
+      ),
+    ).toEqual(['drone_general_flight', 'drone_aerial_photography', 'drone_survey_mapping']);
+    expect(
+      ACTIVITY_DEFINITIONS.every((definition) => definition.minimumUsefulWindowDuration > 0),
+    ).toBe(true);
   });
 
   it('evaluates only enabled activities and finds a best contiguous window', () => {
@@ -142,10 +207,57 @@ describe('Activities capability and model', () => {
       enabledActivities: settings({ photography: true }),
     });
 
-    expect(result).toHaveLength(1);
-    expect(result[0]?.id).toBe('photography');
+    expect(result).toHaveLength(3);
+    expect(result[0]?.id).toBe('photography_landscape');
     expect(result[0]?.bestWindow.available).toBe(true);
     expect(result[0]?.reasons.length).toBeGreaterThan(0);
+  });
+
+  it('does not present risk profiles as a domain best opportunity', () => {
+    const domains = evaluateActivityDomains({
+      coordinates: { latitude: 50, longitude: 14 },
+      now: '2026-08-01T12:00:00+02:00',
+      hourly: [
+        hour('2026-08-01T12:00:00+02:00', {
+          extended: {
+            ...hour('2026-08-01T12:00:00+02:00').extended!,
+            weather: {
+              ...hour('2026-08-01T12:00:00+02:00').extended!.weather,
+              cloudCover: 0,
+              dewPoint: -1,
+              wetBulbTemperature: -1,
+            },
+          },
+          weather: {
+            ...hour('2026-08-01T12:00:00+02:00').weather,
+            temperature: -2,
+            windSpeed: 1,
+          },
+        }),
+        hour('2026-08-01T13:00:00+02:00', {
+          extended: {
+            ...hour('2026-08-01T13:00:00+02:00').extended!,
+            weather: {
+              ...hour('2026-08-01T13:00:00+02:00').extended!.weather,
+              cloudCover: 0,
+              dewPoint: -1,
+              wetBulbTemperature: -1,
+            },
+          },
+          weather: {
+            ...hour('2026-08-01T13:00:00+02:00').weather,
+            temperature: -2,
+            windSpeed: 1,
+          },
+        }),
+      ],
+      enabledActivities: settings({ agriculture: true }),
+    });
+
+    const agriculture = domains.find((domain) => domain.id === 'agriculture');
+
+    expect(agriculture?.profiles.some((profile) => profile.semanticType === 'risk')).toBe(true);
+    expect(agriculture?.bestOpportunity?.semanticType).toBe('suitability');
   });
 
   it('keeps Activity best-window end times in provider-local time and expands the best run', () => {
@@ -164,7 +276,9 @@ describe('Activities capability and model', () => {
   });
 
   it('selects the longest contiguous run in the best available Activity category', () => {
-    const photography = ACTIVITY_DEFINITIONS.find((definition) => definition.id === 'photography')!;
+    const photography = ACTIVITY_DEFINITIONS.find(
+      (definition) => definition.id === 'photography_landscape',
+    )!;
     const result = evaluateActivity(photography, {
       coordinates: { latitude: 50, longitude: 14 },
       now: '2026-08-01T18:00:00+02:00',
@@ -191,7 +305,9 @@ describe('Activities capability and model', () => {
   });
 
   it('does not mark a whole broad Activity category as the best window', () => {
-    const drone = ACTIVITY_DEFINITIONS.find((definition) => definition.id === 'drone')!;
+    const drone = ACTIVITY_DEFINITIONS.find(
+      (definition) => definition.id === 'drone_general_flight',
+    )!;
     const hourly = Array.from({ length: 24 }, (_, index) => {
       const timestamp = `2026-08-01T${String(index).padStart(2, '0')}:00:00+02:00`;
       const windSpeed = index === 8 || index === 9 ? 2 : 6;
@@ -207,7 +323,7 @@ describe('Activities capability and model', () => {
       coordinates: { latitude: 50, longitude: 14 },
       now: '2026-08-01T00:00:00+02:00',
       hourly,
-      enabledActivities: settings({ drone: true }),
+      enabledActivities: settings({ drone_operations: true }),
       forecastDates: ['2026-08-01'],
     });
 
@@ -231,7 +347,7 @@ describe('Activities capability and model', () => {
         hour('2026-08-01T13:00:00+02:00'),
         hour('2026-08-01T14:00:00+02:00'),
       ],
-      enabledActivities: settings({ drone: true }),
+      enabledActivities: settings({ drone_operations: true }),
     });
 
     expect(result[0]?.bestWindow.startTime).toBe('2026-08-01T13:00:00+02:00');
@@ -240,7 +356,9 @@ describe('Activities capability and model', () => {
   });
 
   it('uses the best contiguous activity window for daily forecasts instead of one isolated hour', () => {
-    const drone = ACTIVITY_DEFINITIONS.find((definition) => definition.id === 'drone')!;
+    const drone = ACTIVITY_DEFINITIONS.find(
+      (definition) => definition.id === 'drone_general_flight',
+    )!;
     const result = evaluateActivity(drone, {
       coordinates: { latitude: 50, longitude: 14 },
       now: '2026-08-01T12:00:00+02:00',
@@ -257,7 +375,7 @@ describe('Activities capability and model', () => {
         hour('2026-08-01T14:00:00+02:00'),
         hour('2026-08-01T15:00:00+02:00'),
       ],
-      enabledActivities: settings({ drone: true }),
+      enabledActivities: settings({ drone_operations: true }),
     });
 
     const dailyWindow = bestActivityWindowForDate(result.hours, '2026-08-01');
@@ -267,8 +385,86 @@ describe('Activities capability and model', () => {
     expect(formatActivityWindow(dailyWindow)).toBe('14:00–16:00');
   });
 
+  it('falls back to a lower scoring continuous activity window when an isolated peak is too short', () => {
+    const result = evaluateActivity(testProfile(), {
+      coordinates: { latitude: 50, longitude: 14 },
+      now: '2026-08-01T12:00:00+02:00',
+      hourly: [
+        hour('2026-08-01T12:00:00+02:00', {
+          weather: { ...hour('2026-08-01T12:00:00+02:00').weather, windSpeed: 0 },
+        }),
+        hour('2026-08-01T13:00:00+02:00', {
+          weather: { ...hour('2026-08-01T13:00:00+02:00').weather, windSpeed: 30 },
+        }),
+        hour('2026-08-01T14:00:00+02:00', {
+          weather: { ...hour('2026-08-01T14:00:00+02:00').weather, windSpeed: 30 },
+        }),
+      ],
+      enabledActivities: settings({ drone_operations: true }),
+    });
+
+    expect(result.bestWindow.available).toBe(true);
+    expect(result.bestWindow.startTime).toBe('2026-08-01T13:00:00+02:00');
+    expect(formatActivityWindow(result.bestWindow)).toBe('13:00–15:00');
+  });
+
+  it('orders risk explanations by the strongest risk drivers first', () => {
+    const result = evaluateActivity(
+      testProfile({
+        semanticType: 'risk',
+        requiredVariables: ['temperature', 'windSpeed'],
+        detailVariables: ['temperature', 'windSpeed'],
+        weatherVariables: ['temperature_2m', 'wind_speed_10m'],
+        rules: [
+          {
+            id: 'temperature',
+            label: 'Temperature',
+            variableId: 'temperature',
+            required: true,
+            weight: 1,
+            kind: 'lowAtMost',
+            goodAt: 0,
+            poorAt: 10,
+            positiveText: 'Cold drives risk',
+            negativeText: 'Temperature risk is lower',
+          },
+          {
+            id: 'wind',
+            label: 'Wind',
+            variableId: 'windSpeed',
+            required: true,
+            weight: 1,
+            kind: 'lowAtMost',
+            goodAt: 0,
+            poorAt: 10,
+            positiveText: 'Still air drives risk',
+            negativeText: 'Wind reduces risk',
+          },
+        ],
+      }),
+      {
+        coordinates: { latitude: 50, longitude: 14 },
+        now: '2026-08-01T12:00:00+02:00',
+        hourly: [
+          hour('2026-08-01T12:00:00+02:00', {
+            weather: {
+              ...hour('2026-08-01T12:00:00+02:00').weather,
+              temperature: 0,
+              windSpeed: 10,
+            },
+          }),
+        ],
+        enabledActivities: settings({ drone_operations: true }),
+      },
+    );
+
+    expect(result.reasons[0]).toBe('Cold drives risk');
+  });
+
   it('can evaluate Activity forecast days beyond the default short-term horizon when requested', () => {
-    const drone = ACTIVITY_DEFINITIONS.find((definition) => definition.id === 'drone')!;
+    const drone = ACTIVITY_DEFINITIONS.find(
+      (definition) => definition.id === 'drone_general_flight',
+    )!;
     const result = evaluateActivity(drone, {
       coordinates: { latitude: 50, longitude: 14 },
       now: '2026-08-01T12:00:00+02:00',
@@ -280,7 +476,7 @@ describe('Activities capability and model', () => {
         hour('2026-08-07T12:00:00+02:00'),
         hour('2026-08-07T13:00:00+02:00'),
       ],
-      enabledActivities: settings({ drone: true }),
+      enabledActivities: settings({ drone_operations: true }),
       forecastDates: ['2026-08-01', '2026-08-04', '2026-08-07'],
     });
 
@@ -289,7 +485,9 @@ describe('Activities capability and model', () => {
   });
 
   it('builds a 24-hour Activity timeline and marks best-window rows', () => {
-    const drone = ACTIVITY_DEFINITIONS.find((definition) => definition.id === 'drone')!;
+    const drone = ACTIVITY_DEFINITIONS.find(
+      (definition) => definition.id === 'drone_general_flight',
+    )!;
     const result = evaluateActivity(drone, {
       coordinates: { latitude: 50, longitude: 14 },
       now: '2026-08-01T12:00:00+02:00',
@@ -305,7 +503,7 @@ describe('Activities capability and model', () => {
         hour('2026-08-02T12:00:00+02:00'),
         hour('2026-08-02T13:00:00+02:00'),
       ],
-      enabledActivities: settings({ drone: true }),
+      enabledActivities: settings({ drone_operations: true }),
       forecastDates: ['2026-08-01', '2026-08-02'],
     });
 
@@ -319,11 +517,34 @@ describe('Activities capability and model', () => {
     expect(rows.map((row) => row.timestamp)).not.toContain('2026-08-02T13:00:00+02:00');
     expect(rows[0]?.now).toBe(true);
     expect(rows.some((row) => row.markerLabel === 'Best')).toBe(true);
-    expect(rows.every((row) => row.score > 0)).toBe(true);
+    expect(rows.every((row) => Number.isFinite(row.score))).toBe(true);
+  });
+
+  it('starts Activity 24-hour timeline rows at now and excludes past hours', () => {
+    const profile = testProfile();
+    const result = evaluateActivity(profile, {
+      coordinates: { latitude: 50, longitude: 14 },
+      now: '2026-08-01T12:00:00+02:00',
+      hourly: [
+        hour('2026-08-01T11:00:00+02:00'),
+        hour('2026-08-01T12:00:00+02:00'),
+        hour('2026-08-01T13:00:00+02:00'),
+      ],
+      enabledActivities: settings({ drone_operations: true }),
+    });
+    const rows = buildActivityTimelineRows(result.hours, '2026-08-01T12:00:00+02:00', null);
+
+    expect(rows.map((row) => row.timestamp)).toEqual([
+      '2026-08-01T12:00:00+02:00',
+      '2026-08-01T13:00:00+02:00',
+    ]);
+    expect(rows[0]?.now).toBe(true);
   });
 
   it('can mark the best 24-hour Activity timeline window even when the overall best is later', () => {
-    const photography = ACTIVITY_DEFINITIONS.find((definition) => definition.id === 'photography')!;
+    const photography = ACTIVITY_DEFINITIONS.find(
+      (definition) => definition.id === 'photography_landscape',
+    )!;
     const result = evaluateActivity(photography, {
       coordinates: { latitude: 50, longitude: 14 },
       now: '2026-08-01T12:00:00+02:00',
@@ -390,7 +611,9 @@ describe('Activities capability and model', () => {
   });
 
   it('marks missing required variables as insufficient data without fabricating zeroes', () => {
-    const photography = ACTIVITY_DEFINITIONS.find((definition) => definition.id === 'photography')!;
+    const photography = ACTIVITY_DEFINITIONS.find(
+      (definition) => definition.id === 'photography_landscape',
+    )!;
     const result = evaluateActivity(photography, {
       coordinates: { latitude: 50, longitude: 14 },
       now: '2026-08-01T12:00:00+02:00',
@@ -415,13 +638,13 @@ describe('Activities capability and model', () => {
   });
 
   it('deduplicates Open-Meteo variables required by enabled activities', () => {
-    const variables = activityOpenMeteoVariables(['photography', 'drone', 'outdoor_sports']);
+    const variables = activityOpenMeteoVariables(['agriculture', 'drone_operations']);
 
     expect(variables.weather.filter((variable) => variable === 'wind_gusts_10m')).toHaveLength(1);
     expect(variables.weather).toContain('visibility');
-    expect(variables.weather).toContain('apparent_temperature');
-    expect(variables.airQuality).toContain('pm2_5');
-    expect(variables.airQuality).toContain('ozone');
+    expect(variables.weather).toContain('soil_moisture_0_1cm');
+    expect(variables.weather).toContain('et0_fao_evapotranspiration');
+    expect(variables.airQuality).toEqual([]);
   });
 
   it('gives every Activity detail variable a shared data-detail definition', () => {

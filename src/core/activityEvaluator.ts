@@ -1,18 +1,19 @@
 import {
-  ACTIVITY_DEFINITIONS,
   activityCategoryLabel,
   activityVariableValue,
   categoryForActivityScore,
-  enabledActivityIds,
-  type ActivityDefinition,
+  enabledActivityProfiles,
+  activityProfilesForDomain,
+  type ActivityProfileDefinition,
   type ActivityRuleDefinition,
 } from './activityDefinitions';
 import type {
+  ActivityDataCompleteness,
+  ActivityDomainId,
   ActivityEvaluationInput,
   ActivityEvaluationResult,
   ActivityFactorResult,
   ActivityHourResult,
-  ActivityId,
   ActivityWindowResult,
 } from '../models/activities';
 import type { EnvironmentalVariableId } from '../capabilities/types';
@@ -111,6 +112,12 @@ function factorExplanation(rule: ActivityRuleDefinition, score: number): string 
   return score >= 70 ? rule.positiveText : rule.negativeText;
 }
 
+function violatesHardConstraint(rule: ActivityRuleDefinition, value: number): boolean {
+  if (rule.hardMaximum !== undefined && value > rule.hardMaximum) return true;
+  if (rule.hardMinimum !== undefined && value < rule.hardMinimum) return true;
+  return false;
+}
+
 function evaluateRule(
   rule: ActivityRuleDefinition,
   hour: HourlyEnvironmentalReading,
@@ -124,6 +131,7 @@ function evaluateRule(
       available: true,
       required: rule.required === true,
       explanation: factorExplanation(rule, score),
+      hardConstraintViolated: false,
     };
   }
 
@@ -136,10 +144,12 @@ function evaluateRule(
       available: false,
       required: rule.required === true,
       explanation: null,
+      hardConstraintViolated: false,
     };
   }
 
   const score = scoreRuleValue(rule, value);
+  const hardConstraintViolated = violatesHardConstraint(rule, value);
   return {
     id: rule.id,
     label: rule.label,
@@ -147,11 +157,12 @@ function evaluateRule(
     available: true,
     required: rule.required === true,
     explanation: factorExplanation(rule, score),
+    hardConstraintViolated,
   };
 }
 
 function missingRequiredVariables(
-  definition: ActivityDefinition,
+  definition: ActivityProfileDefinition,
   hour: HourlyEnvironmentalReading,
 ): EnvironmentalVariableId[] {
   return definition.requiredVariables.filter((variableId) => {
@@ -160,12 +171,42 @@ function missingRequiredVariables(
   });
 }
 
+function completenessFor(
+  factors: readonly ActivityFactorResult[],
+  missingRequiredCount: number,
+): ActivityDataCompleteness {
+  const expectedFactors = factors.length;
+  const availableFactors = factors.filter((factor) => factor.available).length;
+  const requiredFactorsExpected = factors.filter((factor) => factor.required).length;
+  const requiredFactorsAvailable = Math.max(0, requiredFactorsExpected - missingRequiredCount);
+  const coverageRatio = expectedFactors > 0 ? availableFactors / expectedFactors : 1;
+  let status: ActivityDataCompleteness['status'] = 'complete';
+  if (missingRequiredCount > 0) {
+    status = 'insufficient';
+  } else if (availableFactors < expectedFactors) {
+    status = 'reduced';
+  }
+
+  return {
+    availableFactors,
+    expectedFactors,
+    requiredFactorsAvailable,
+    requiredFactorsExpected,
+    coverageRatio,
+    status,
+  };
+}
+
 function evaluateActivityHour(
-  definition: ActivityDefinition,
+  definition: ActivityProfileDefinition,
   hour: HourlyEnvironmentalReading,
 ): ActivityHourResult {
   const missing = missingRequiredVariables(definition, hour);
   const factors = definition.rules.map((rule) => evaluateRule(rule, hour));
+  const dataCompleteness = completenessFor(factors, missing.length);
+  const hardConstraintViolations = factors
+    .filter((factor) => factor.hardConstraintViolated)
+    .map((factor) => factor.explanation ?? factor.label);
 
   if (missing.length > 0) {
     return {
@@ -176,9 +217,12 @@ function evaluateActivityHour(
       category: 'insufficientData',
       factors,
       missingRequiredVariables: missing,
+      hardConstraintViolations,
+      dataCompleteness,
     };
   }
 
+  const hardConstraintViolated = hardConstraintViolations.length > 0;
   const weighted = factors.flatMap((factor) => {
     if (!factor.available || !isFiniteNumber(factor.score)) return [];
     const rule = definition.rules.find((candidate) => candidate.id === factor.id);
@@ -189,15 +233,22 @@ function evaluateActivityHour(
     totalWeight > 0
       ? weighted.reduce((sum, item) => sum + item.score * item.weight, 0) / totalWeight
       : null;
+  const finalScore =
+    hardConstraintViolated && definition.semanticType === 'suitability' && isFiniteNumber(score)
+      ? 0
+      : score;
+  const category = hardConstraintViolated ? 'unsuitable' : categoryForActivityScore(score);
 
   return {
     timestamp: hour.timestamp,
-    available: isFiniteNumber(score),
-    score,
-    displayScore: isFiniteNumber(score) ? Math.round(score) : null,
-    category: categoryForActivityScore(score),
+    available: isFiniteNumber(finalScore),
+    score: finalScore,
+    displayScore: isFiniteNumber(finalScore) ? Math.round(finalScore) : null,
+    category,
     factors,
     missingRequiredVariables: [],
+    hardConstraintViolations,
+    dataCompleteness,
   };
 }
 
@@ -220,29 +271,6 @@ function endTimeFor(startTime: string, durationHours: number): string | null {
   return `${local.toISOString().slice(0, 16)}${offset}`;
 }
 
-function bestActivityCategory(hours: ActivityHourResult[]): ActivityHourResult['category'] | null {
-  return hours
-    .filter((hour) => hour.available && isFiniteNumber(hour.score))
-    .map((hour) => hour.category)
-    .reduce<ActivityHourResult['category'] | null>(
-      (best, category) =>
-        best === null || categoryRank(category) > categoryRank(best) ? category : best,
-      null,
-    );
-}
-
-function bestActivityScore(
-  hours: ActivityHourResult[],
-  category: ActivityHourResult['category'],
-): number | null {
-  const scores = hours
-    .filter((hour) => hour.available && hour.category === category && isFiniteNumber(hour.score))
-    .map((hour) => hour.score!)
-    .sort((left, right) => right - left);
-
-  return scores[0] ?? null;
-}
-
 function isNearBestActivityHour(
   hour: ActivityHourResult | undefined,
   category: ActivityHourResult['category'],
@@ -261,10 +289,11 @@ function sameCategoryRun(
   hours: ActivityHourResult[],
   startIndex: number,
   category: ActivityHourResult['category'],
-  bestScore: number,
+  scoreThreshold: number,
+  minimumDurationHours: number,
 ) {
   const first = hours[startIndex];
-  if (!isNearBestActivityHour(first, category, bestScore)) return null;
+  if (!isNearBestActivityHour(first, category, scoreThreshold)) return null;
 
   const run = [first];
   let previousTime = Date.parse(first.timestamp);
@@ -277,7 +306,7 @@ function sameCategoryRun(
       !hour.available ||
       !Number.isFinite(time) ||
       Math.abs(time - previousTime - HOUR_MS) > 10 * 60 * 1000 ||
-      !isNearBestActivityHour(hour, category, bestScore)
+      !isNearBestActivityHour(hour, category, scoreThreshold)
     ) {
       break;
     }
@@ -288,6 +317,7 @@ function sameCategoryRun(
 
   const scores = run.map((hour) => hour.score).filter(isFiniteNumber);
   if (scores.length !== run.length) return null;
+  if (run.length < minimumDurationHours) return null;
 
   return {
     startTime: run[0]!.timestamp,
@@ -297,6 +327,42 @@ function sameCategoryRun(
     category,
     durationHours: run.length,
   };
+}
+
+function availableCategoriesByRank(hours: ActivityHourResult[]): ActivityHourResult['category'][] {
+  return Array.from(
+    new Set(
+      hours
+        .filter((hour) => hour.available && isFiniteNumber(hour.score))
+        .map((hour) => hour.category)
+        .sort((left, right) => categoryRank(right) - categoryRank(left)),
+    ),
+  );
+}
+
+function candidateWindowsForCategory(
+  hours: ActivityHourResult[],
+  category: ActivityHourResult['category'],
+  minimumDurationHours: number,
+) {
+  const bestScore = hours
+    .filter((hour) => hour.available && hour.category === category && isFiniteNumber(hour.score))
+    .map((hour) => hour.score!)
+    .sort((left, right) => right - left)[0];
+  if (!isFiniteNumber(bestScore)) return [];
+
+  const seen = new Set<string>();
+
+  return hours.flatMap((_, index) => {
+    const candidate = sameCategoryRun(hours, index, category, bestScore, minimumDurationHours);
+    if (!candidate) return [];
+
+    const key = `${candidate.startTime}:${candidate.endTime}:${candidate.category}`;
+    if (seen.has(key)) return [];
+    seen.add(key);
+
+    return [candidate];
+  });
 }
 
 function unavailableWindow(): ActivityWindowResult {
@@ -342,45 +408,44 @@ function selectBestWindow(
   };
 }
 
-function bestActivityWindow(hours: ActivityHourResult[]): ActivityWindowResult {
-  const category = bestActivityCategory(hours);
-  if (!category) return unavailableWindow();
+function bestActivityWindow(
+  hours: ActivityHourResult[],
+  minimumDurationHours = 1,
+): ActivityWindowResult {
+  for (const category of availableCategoriesByRank(hours)) {
+    const candidates = candidateWindowsForCategory(hours, category, minimumDurationHours);
+    if (candidates.length > 0) {
+      return selectBestWindow(candidates);
+    }
+  }
 
-  const bestScore = bestActivityScore(hours, category);
-  if (!isFiniteNumber(bestScore)) return unavailableWindow();
-
-  const candidates = hours.flatMap((_, index) => {
-    const candidate = sameCategoryRun(hours, index, category, bestScore);
-    return candidate ? [candidate] : [];
-  });
-
-  return selectBestWindow(candidates);
+  return unavailableWindow();
 }
 
 export function bestActivityWindowForDate(
   hours: ActivityHourResult[],
   date: string,
+  minimumDurationHours = 1,
 ): ActivityWindowResult {
   const dayHours = hours.filter((hour) => hour.timestamp.slice(0, 10) === date);
-  const category = bestActivityCategory(dayHours);
-  if (!category) return unavailableWindow();
 
-  const bestScore = bestActivityScore(dayHours, category);
-  if (!isFiniteNumber(bestScore)) return unavailableWindow();
+  for (const category of availableCategoriesByRank(dayHours)) {
+    const candidates = candidateWindowsForCategory(hours, category, minimumDurationHours).filter(
+      (candidate) => candidate.startTime.slice(0, 10) === date,
+    );
+    if (candidates.length > 0) {
+      return selectBestWindow(candidates);
+    }
+  }
 
-  const candidates = hours.flatMap((hour, index) => {
-    if (hour.timestamp.slice(0, 10) !== date) return [];
-    const candidate = sameCategoryRun(hours, index, category, bestScore);
-    return candidate ? [candidate] : [];
-  });
-
-  return selectBestWindow(candidates);
+  return unavailableWindow();
 }
 
 export function bestActivityWindowForRange(
   hours: ActivityHourResult[],
   startTime: string,
   rangeHours: number,
+  minimumDurationHours = 1,
 ): ActivityWindowResult {
   const start = Date.parse(startTime);
   if (!Number.isFinite(start)) return unavailableWindow();
@@ -391,15 +456,23 @@ export function bestActivityWindowForRange(
     return Number.isFinite(time) && time >= start && time <= end;
   });
 
-  return bestActivityWindow(rangeHoursOnly);
+  return bestActivityWindow(rangeHoursOnly, minimumDurationHours);
 }
 
-function reasonsFor(current: ActivityHourResult | null, limit = 4): string[] {
+function reasonsFor(
+  current: ActivityHourResult | null,
+  semanticType: ActivityProfileDefinition['semanticType'],
+  limit = 4,
+): string[] {
   if (!current?.available) return ['Insufficient data'];
 
   return current.factors
     .filter((factor) => factor.available && factor.explanation)
-    .sort((left, right) => (left.score ?? 0) - (right.score ?? 0))
+    .sort((left, right) =>
+      semanticType === 'risk'
+        ? (right.score ?? 0) - (left.score ?? 0)
+        : (left.score ?? 0) - (right.score ?? 0),
+    )
     .slice(0, limit)
     .map((factor) => factor.explanation!)
     .filter((reason, index, reasons) => reasons.indexOf(reason) === index);
@@ -439,34 +512,89 @@ function futureHours(input: ActivityEvaluationInput): HourlyEnvironmentalReading
 }
 
 export function evaluateActivity(
-  definition: ActivityDefinition,
+  definition: ActivityProfileDefinition,
   input: ActivityEvaluationInput,
 ): ActivityEvaluationResult {
   const hours = futureHours(input).map((hour) => evaluateActivityHour(definition, hour));
   const current = hours.find((hour) => hour.available) ?? hours[0] ?? null;
-  const bestWindow = bestActivityWindow(hours);
+  const bestWindow = bestActivityWindow(hours, definition.minimumUsefulWindowDuration);
   const reasonHour = explanationHour(hours, current, bestWindow);
 
   return {
     id: definition.id,
+    domainId: definition.domainId,
     label: definition.label,
     description: definition.description,
-    enabled: input.enabledActivities[definition.id],
+    semanticType: definition.semanticType,
+    minimumUsefulWindowDuration: definition.minimumUsefulWindowDuration,
+    enabled: input.enabledActivities[definition.domainId],
     available: current?.available === true || bestWindow.available,
     current,
     hours,
     bestWindow,
-    reasons: reasonsFor(reasonHour),
+    reasons: reasonsFor(reasonHour, definition.semanticType),
+    dataCompleteness: current?.dataCompleteness ?? {
+      availableFactors: 0,
+      expectedFactors: definition.rules.length,
+      requiredFactorsAvailable: 0,
+      requiredFactorsExpected: definition.rules.filter((rule) => rule.required === true).length,
+      coverageRatio: 0,
+      status: 'insufficient',
+    },
     detailVariables: [...definition.detailVariables],
   };
 }
 
 export function evaluateActivities(input: ActivityEvaluationInput): ActivityEvaluationResult[] {
-  const enabled = new Set<ActivityId>(enabledActivityIds(input.enabledActivities));
-
-  return ACTIVITY_DEFINITIONS.filter((definition) => enabled.has(definition.id)).map((definition) =>
+  return enabledActivityProfiles(input.enabledActivities).map((definition) =>
     evaluateActivity(definition, input),
   );
+}
+
+export interface ActivityDomainEvaluationResult {
+  id: ActivityDomainId;
+  label: string;
+  description: string;
+  profiles: ActivityEvaluationResult[];
+  bestOpportunity: ActivityEvaluationResult | null;
+}
+
+export function evaluateActivityDomains(
+  input: ActivityEvaluationInput,
+): ActivityDomainEvaluationResult[] {
+  const enabledDomains = new Set(
+    Object.entries(input.enabledActivities)
+      .filter(([, enabled]) => enabled)
+      .map(([domainId]) => domainId as ActivityDomainId),
+  );
+
+  return Array.from(enabledDomains).flatMap((domainId) => {
+    const profiles = activityProfilesForDomain(domainId).map((definition) =>
+      evaluateActivity(definition, input),
+    );
+    if (profiles.length === 0) return [];
+
+    const bestOpportunity =
+      profiles
+        .filter((profile) => profile.semanticType === 'suitability' && profile.bestWindow.available)
+        .sort((left, right) => {
+          const categoryDifference =
+            categoryRank(right.bestWindow.category) - categoryRank(left.bestWindow.category);
+          if (categoryDifference !== 0) return categoryDifference;
+          return (right.bestWindow.averageScore ?? 0) - (left.bestWindow.averageScore ?? 0);
+        })[0] ?? null;
+
+    const first = activityProfilesForDomain(domainId)[0];
+    return [
+      {
+        id: domainId,
+        label: first ? domainLabel(domainId) : domainId,
+        description: domainDescription(domainId),
+        profiles,
+        bestOpportunity,
+      },
+    ];
+  });
 }
 
 export function formatActivityWindow(
@@ -479,8 +607,38 @@ export function formatActivityWindow(
 
 export function formatActivityScore(result: ActivityEvaluationResult): string {
   if (!result.current?.available || !isFiniteNumber(result.current.displayScore)) {
-    return activityCategoryLabel('insufficientData');
+    return activityCategoryLabel('insufficientData', result.semanticType);
   }
 
-  return `${activityCategoryLabel(result.current.category)} · ${result.current.displayScore}%`;
+  return `${activityCategoryLabel(result.current.category, result.semanticType)} · ${result.current.displayScore}%`;
+}
+
+function domainLabel(domainId: ActivityDomainId): string {
+  switch (domainId) {
+    case 'agriculture':
+      return 'Agriculture';
+    case 'drone_operations':
+      return 'Drone Operations';
+    case 'photography':
+      return 'Photography';
+    case 'astronomy':
+      return 'Astronomy';
+    case 'outdoor_work':
+      return 'Outdoor Work';
+  }
+}
+
+function domainDescription(domainId: ActivityDomainId): string {
+  switch (domainId) {
+    case 'agriculture':
+      return 'Environmental tools for field operations and frost-risk context.';
+    case 'drone_operations':
+      return 'Environmental decision support for drone operation profiles.';
+    case 'photography':
+      return 'Outdoor photography weather and light profiles.';
+    case 'astronomy':
+      return 'Night-sky viewing and imaging condition profiles.';
+    case 'outdoor_work':
+      return 'Outdoor work environmental profiles.';
+  }
 }

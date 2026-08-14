@@ -5,7 +5,7 @@ import type {
 } from '../models/environment';
 import type { EntitlementKind } from './entitlements';
 import type { ProfileFactorId } from '../models/profile';
-import type { ActivityId } from '../models/activities';
+import type { ActivityDomainId } from '../models/activities';
 
 type CapabilityCategory =
   | 'forecast'
@@ -94,7 +94,7 @@ interface EnvironmentalVariableCapability {
 
 interface ActivitiesCapability {
   available: boolean;
-  availableActivities: readonly ActivityId[];
+  availableActivities: readonly ActivityDomainId[];
 }
 
 interface NotificationCapability {

@@ -1,8 +1,10 @@
 import { buildActivityTimelineRows } from '../core/activityTimeline';
 import { activityCategoryLabel } from '../core/activityEvaluator';
 import { ForecastTimeline } from './ForecastSections';
+import type { ForecastTimelineItem } from './ForecastSections';
 import type {
   ActivityHourResult,
+  ActivitySemanticType,
   ActivitySuitabilityCategory,
   ActivityWindowResult,
 } from '../models/activities';
@@ -14,9 +16,31 @@ interface ActivityForecastTimelineProps {
   now: string;
   bestWindow: ActivityWindowResult | null;
   unavailableLabel: string;
+  semanticType?: ActivitySemanticType | undefined;
+  forecastHours?: number | undefined;
 }
 
-function activityColor(category: ActivitySuitabilityCategory): string {
+function activityColor(
+  category: ActivitySuitabilityCategory,
+  semanticType: ActivitySemanticType,
+): string {
+  if (semanticType === 'risk') {
+    switch (category) {
+      case 'excellent':
+        return colors.veryHigh;
+      case 'good':
+        return colors.high;
+      case 'fair':
+        return colors.moderate;
+      case 'poor':
+        return colors.primary;
+      case 'unsuitable':
+        return colors.low;
+      case 'insufficientData':
+        return colors.unavailable;
+    }
+  }
+
   switch (category) {
     case 'excellent':
       return colors.low;
@@ -38,20 +62,24 @@ export function ActivityForecastTimeline({
   now,
   bestWindow,
   unavailableLabel,
+  semanticType = 'suitability',
+  forecastHours = 24,
 }: ActivityForecastTimelineProps) {
-  const rows = buildActivityTimelineRows(hours, now, bestWindow);
-  const timelineRows = rows.map((row) => {
-    const accent = activityColor(row.category);
-    const value = `${activityCategoryLabel(row.category)} · ${formatScore(row.score)}`;
+  const rows = buildActivityTimelineRows(hours, now, bestWindow, forecastHours);
+  const timelineRows: ForecastTimelineItem[] = rows.map((row) => {
+    const accent = activityColor(row.category, semanticType);
+    const value = `${activityCategoryLabel(row.category, semanticType)} · ${formatScore(row.score)}`;
 
     return {
       accessibilityLabel: `${row.now ? 'Now' : formatShortTime(row.timestamp)} ${value}`,
       accent,
       fillPercent: row.displayScore,
       highlighted: row.inBestWindow,
+      highlightTone: semanticType === 'risk' ? 'worst' : 'best',
       key: row.timestamp,
       label: row.now ? 'Now' : formatShortTime(row.timestamp),
-      markerLabel: row.markerLabel,
+      markerLabel:
+        semanticType === 'risk' && row.markerLabel === 'Best' ? 'Worst' : row.markerLabel,
       reserveMarkerSpace: true,
       value,
       valueMinWidth: 96,

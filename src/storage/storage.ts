@@ -110,12 +110,33 @@ function validRiskTransitionThreshold(
 
 function knownActivities(value: unknown): ActivitySettings {
   const activities = booleanRecord(value);
+  const migratedActivities: Record<string, boolean> = { ...activities };
+  if (activities.agriculture !== true && activities.farming === true) {
+    migratedActivities.agriculture = true;
+  }
+  if (
+    activities.drone_operations !== true &&
+    (activities.drone === true || activities.drone_flying === true)
+  ) {
+    migratedActivities.drone_operations = true;
+  }
+
   return Object.fromEntries(
     ACTIVITY_IDS.map((activityId) => [
       activityId,
-      activities[activityId] ?? DEFAULT_ACTIVITY_SETTINGS[activityId],
+      migratedActivities[activityId] ?? DEFAULT_ACTIVITY_SETTINGS[activityId],
     ]),
   ) as ActivitySettings;
+}
+
+function knownActivityDomains(value: unknown): (typeof ACTIVITY_IDS)[number][] {
+  if (!Array.isArray(value)) return [];
+
+  const allowed = new Set<string>(ACTIVITY_IDS);
+  return value.filter(
+    (activityId): activityId is (typeof ACTIVITY_IDS)[number] =>
+      typeof activityId === 'string' && allowed.has(activityId),
+  );
 }
 
 function stringOrDefault(value: unknown, fallback: string): string {
@@ -412,6 +433,7 @@ function normalizedCachedEnvironment(data: CachedEnvironment['data']): CachedEnv
       ...data.metadata,
       airQualitySource: data.metadata.airQualitySource ?? 'fresh',
       weatherSource: data.metadata.weatherSource ?? 'fresh',
+      requestedActivityDomains: knownActivityDomains(data.metadata.requestedActivityDomains),
     },
   };
 }

@@ -57,12 +57,12 @@ export function buildActivityTimelineRows(
   hours: readonly ActivityHourResult[],
   nowTimestamp: string,
   bestWindow: ActivityWindowResult | null,
-  limitHours = 24,
+  forecastHours = 24,
 ): ActivityTimelineRow[] {
   const nowTime = Date.parse(nowTimestamp);
   if (!Number.isFinite(nowTime)) return [];
 
-  const endTime = nowTime + limitHours * HOUR_MS;
+  const endTime = nowTime + Math.max(0, forecastHours) * HOUR_MS;
 
   return hours
     .filter((hour) => {

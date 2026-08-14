@@ -1,3 +1,5 @@
+import type { ActivityDomainId } from './activities';
+
 export type RiskCategoryId = 'low' | 'moderate' | 'high' | 'veryHigh' | 'unavailable';
 
 export interface Coordinates {
@@ -208,6 +210,7 @@ export interface NormalizedEnvironment {
     weatherFetchedAt: string | null;
     airQualitySource: 'fresh' | 'cached' | 'unavailable';
     weatherSource: 'fresh' | 'cached' | 'unavailable';
+    requestedActivityDomains?: ActivityDomainId[] | undefined;
     partial: boolean;
   };
 }

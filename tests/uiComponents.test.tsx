@@ -214,16 +214,32 @@ describe('shared UI components', () => {
       hourly: [],
       unavailableLabel: 'Unavailable',
     }) as React.ReactElement<{
-      rows?: { value: string; valueMinWidth?: number }[];
+      rows?: { markerLabel?: string; value: string; valueMinWidth?: number }[];
     }>;
     const activityTimeline = ActivityForecastTimeline({
-      bestWindow: null,
+      bestWindow: {
+        available: true,
+        averageScore: 91,
+        category: 'excellent',
+        endTime: '2026-08-13T13:00:00Z',
+        minimumScore: 91,
+        startTime: '2026-08-13T12:00:00Z',
+      },
       hours: [
         {
           available: true,
           category: 'excellent',
           displayScore: 91,
           factors: [],
+          hardConstraintViolations: [],
+          dataCompleteness: {
+            availableFactors: 0,
+            expectedFactors: 0,
+            requiredFactorsAvailable: 0,
+            requiredFactorsExpected: 0,
+            coverageRatio: 1,
+            status: 'complete',
+          },
           missingRequiredVariables: [],
           score: 91,
           timestamp: '2026-08-13T12:00:00Z',
@@ -232,13 +248,56 @@ describe('shared UI components', () => {
       now: '2026-08-13T12:00:00Z',
       unavailableLabel: 'Unavailable',
     }) as React.ReactElement<{
-      rows?: { value: string; valueMinWidth?: number }[];
+      rows?: { markerLabel?: string; value: string; valueMinWidth?: number }[];
     }>;
 
     expect(riskTimeline.props.rows?.[0]?.value).toBe('Very High · 84%');
     expect(riskTimeline.props.rows?.[0]?.valueMinWidth).toBe(96);
     expect(activityTimeline.props.rows?.[0]?.value).toBe('Excellent · 91%');
+    expect(activityTimeline.props.rows?.[0]?.markerLabel).toBe('Best');
     expect(activityTimeline.props.rows?.[0]?.valueMinWidth).toBe(96);
+  });
+
+  it('labels risk-profile highlighted activity windows as worst', () => {
+    const timeline = ActivityForecastTimeline({
+      bestWindow: {
+        available: true,
+        averageScore: 91,
+        category: 'excellent',
+        endTime: '2026-08-13T13:00:00Z',
+        minimumScore: 91,
+        startTime: '2026-08-13T12:00:00Z',
+      },
+      hours: [
+        {
+          available: true,
+          category: 'excellent',
+          displayScore: 91,
+          factors: [],
+          hardConstraintViolations: [],
+          dataCompleteness: {
+            availableFactors: 0,
+            expectedFactors: 0,
+            requiredFactorsAvailable: 0,
+            requiredFactorsExpected: 0,
+            coverageRatio: 1,
+            status: 'complete',
+          },
+          missingRequiredVariables: [],
+          score: 91,
+          timestamp: '2026-08-13T12:00:00Z',
+        },
+      ],
+      now: '2026-08-13T12:00:00Z',
+      semanticType: 'risk',
+      unavailableLabel: 'Unavailable',
+    }) as React.ReactElement<{
+      rows?: { highlightTone?: string; markerLabel?: string; value: string }[];
+    }>;
+
+    expect(timeline.props.rows?.[0]?.value).toBe('Very High · 91%');
+    expect(timeline.props.rows?.[0]?.markerLabel).toBe('Worst');
+    expect(timeline.props.rows?.[0]?.highlightTone).toBe('worst');
   });
 
   it('uses the same bar section and timeline primitives for forecast graphs', () => {

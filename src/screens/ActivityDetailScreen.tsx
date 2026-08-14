@@ -8,9 +8,10 @@ import { DetailStateView } from '../components/DetailStateView';
 import { ReadingRow } from '../components/ReadingRow';
 import { SectionCard } from '../components/SectionCard';
 import { ForecastBarSection } from '../components/ForecastSections';
+import type { ForecastBarItem } from '../components/ForecastSections';
 import { SummaryMetricGrid } from '../components/ui/SummaryMetricGrid';
 import { forecastDaysForCapabilities } from '../capabilities/forecast';
-import { activityDefinition } from '../core/activityDefinitions';
+import { activityDomain, activityProfile } from '../core/activityDefinitions';
 import {
   activityCategoryLabel,
   activityVariableValue,
@@ -28,7 +29,11 @@ import { formatScore } from '../utils/format';
 import { displayScore } from '../utils/number';
 import type { EnvironmentalVariableId } from '../capabilities/types';
 import type { HourlyEnvironmentalReading } from '../models/environment';
-import type { ActivitySuitabilityCategory, ActivityWindowResult } from '../models/activities';
+import type {
+  ActivitySemanticType,
+  ActivitySuitabilityCategory,
+  ActivityWindowResult,
+} from '../models/activities';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrToday, type DetailBackNavigation } from '../navigation/detailNavigation';
 
@@ -54,7 +59,27 @@ function rowValue(
   return formatDataDetailValue(definition, value);
 }
 
-function activityColor(category: ActivitySuitabilityCategory): string {
+function activityColor(
+  category: ActivitySuitabilityCategory,
+  semanticType: ActivitySemanticType,
+): string {
+  if (semanticType === 'risk') {
+    switch (category) {
+      case 'excellent':
+        return colors.veryHigh;
+      case 'good':
+        return colors.high;
+      case 'fair':
+        return colors.moderate;
+      case 'poor':
+        return colors.primary;
+      case 'unsuitable':
+        return colors.low;
+      case 'insufficientData':
+        return colors.unavailable;
+    }
+  }
+
   switch (category) {
     case 'excellent':
       return colors.low;
@@ -77,18 +102,26 @@ function buildActivityForecastRow({
   window,
   best,
   reserveBestSpace,
+  semanticType,
 }: {
   date: string;
   label: string;
   window: ActivityWindowResult;
   best: boolean;
   reserveBestSpace: boolean;
-}) {
+  semanticType: ActivitySemanticType;
+}): ForecastBarItem {
   const available = window.available && typeof window.averageScore === 'number';
   const category = window.category;
-  const accent = activityColor(category);
+  const accent = activityColor(category, semanticType);
   const value = available ? formatScore(window.averageScore) : 'Unavailable';
-  const displayValue = available ? `${activityCategoryLabel(category)} · ${value}` : value;
+  const displayValue = available
+    ? `${activityCategoryLabel(category, semanticType)} · ${value}`
+    : value;
+  let markerLabel = '';
+  if (best) {
+    markerLabel = semanticType === 'risk' ? 'Worst' : 'Best';
+  }
 
   return {
     accessibilityLabel: `${label} ${displayValue}`,
@@ -97,7 +130,8 @@ function buildActivityForecastRow({
     key: date,
     label,
     highlighted: best,
-    markerLabel: best ? 'Best' : '',
+    highlightTone: semanticType === 'risk' ? 'worst' : 'best',
+    markerLabel,
     reserveMarkerSpace: reserveBestSpace,
     value: displayValue,
   };
@@ -132,10 +166,13 @@ export function ActivityDetailScreen() {
   const environment = useAppStore((state) => state.environment);
   const settings = useAppStore((state) => state.settings);
   const capabilities = useCapabilities();
-  const activityId = route.params?.activityId;
-  const definition = activityId ? activityDefinition(activityId) : null;
+  const profileId = route.params?.profileId;
+  const definition = profileId ? activityProfile(profileId) : null;
+  const domain = definition ? activityDomain(definition.domainId) : null;
   const handleBack = () => goBackOrToday(navigation);
-  const activityEnabled = definition ? settings.enabledActivities[definition.id] === true : false;
+  const activityEnabled = definition
+    ? settings.enabledActivities[definition.domainId] === true
+    : false;
   const nowTimestamp = environment?.current.timestamp ?? environment?.fetchedAt ?? '';
   const visibleForecastDays = useMemo(
     () => forecastDaysForCapabilities(environment?.forecastDays ?? [], capabilities),
@@ -183,7 +220,11 @@ export function ActivityDetailScreen() {
     const windows = visibleForecastDays.map((day) => ({
       date: day.date,
       label: day.label,
-      window: bestActivityWindowForDate(evaluation.hours, day.date),
+      window: bestActivityWindowForDate(
+        evaluation.hours,
+        day.date,
+        definition.minimumUsefulWindowDuration,
+      ),
     }));
     const bestDates = bestActivityForecastDates(windows);
 
@@ -194,6 +235,7 @@ export function ActivityDetailScreen() {
         window: day.window,
         best: bestDates.has(day.date),
         reserveBestSpace: bestDates.size > 0,
+        semanticType: definition.semanticType,
       }),
     );
   }, [definition, evaluation, visibleForecastDays]);
@@ -244,18 +286,26 @@ export function ActivityDetailScreen() {
   }
 
   const currentCategory = evaluation.current?.category ?? 'insufficientData';
-  const currentAccent = activityColor(currentCategory);
+  const currentAccent = activityColor(currentCategory, definition.semanticType);
   const timelineBestWindow = bestActivityWindowForRange(
     evaluation.hours,
     evaluation.current?.timestamp ?? nowTimestamp,
     24,
+    definition.minimumUsefulWindowDuration,
   );
+  let dataCoverageLabel = 'Current data coverage';
+  if (evaluation.dataCompleteness.status === 'reduced') {
+    dataCoverageLabel = 'Current reduced data';
+  } else if (evaluation.dataCompleteness.status === 'insufficient') {
+    dataCoverageLabel = 'Current insufficient data';
+  }
+  const dataCoverageValue = `${evaluation.dataCompleteness.availableFactors} / ${evaluation.dataCompleteness.expectedFactors} factors`;
 
   return (
     <View style={styles.screen}>
       <DetailHeader
         title={definition.label}
-        subtitle={definition.description}
+        subtitle={domain ? `${domain.label} · ${definition.description}` : definition.description}
         onBack={handleBack}
       />
       <ScrollView style={styles.scroller} contentContainerStyle={styles.content}>
@@ -263,19 +313,26 @@ export function ActivityDetailScreen() {
           <SummaryMetricGrid
             metrics={[
               {
-                label: 'Suitability',
+                label: definition.semanticType === 'risk' ? 'Risk' : 'Suitability',
                 value: formatActivityScore(evaluation),
                 accent: currentAccent,
               },
               {
-                label: 'Best window',
+                label: definition.semanticType === 'risk' ? 'Peak risk window' : 'Best window',
                 value: formatActivityWindow(timelineBestWindow, nowTimestamp),
+                compact: true,
+              },
+              {
+                label: dataCoverageLabel,
+                value: dataCoverageValue,
                 compact: true,
               },
             ]}
           />
           {!evaluation.available ? (
-            <Text style={styles.notice}>{activityCategoryLabel('insufficientData')}</Text>
+            <Text style={styles.notice}>
+              {activityCategoryLabel('insufficientData', definition.semanticType)}
+            </Text>
           ) : null}
         </SectionCard>
 
@@ -299,6 +356,7 @@ export function ActivityDetailScreen() {
             now={evaluation.current?.timestamp ?? nowTimestamp}
             bestWindow={timelineBestWindow}
             unavailableLabel="Activity outlook is unavailable."
+            semanticType={definition.semanticType}
           />
         </SectionCard>
 

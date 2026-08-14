@@ -8,6 +8,7 @@ interface ForecastBarRowProps {
   fillPercent: number | null;
   accessibilityLabel: string;
   highlighted?: boolean;
+  highlightTone?: 'best' | 'worst';
   markerLabel?: string;
   reserveMarkerSpace?: boolean;
   valueMinWidth?: number;
@@ -20,18 +21,22 @@ export function ForecastBarRow({
   fillPercent,
   accessibilityLabel,
   highlighted = false,
+  highlightTone = 'best',
   markerLabel = '',
   reserveMarkerSpace = false,
   valueMinWidth = 44,
 }: ForecastBarRowProps) {
   const hasFill = typeof fillPercent === 'number' && Number.isFinite(fillPercent);
   const fillWidth = `${Math.max(2, Math.min(100, fillPercent ?? 0))}%` as DimensionValue;
+  const highlightStyle =
+    highlightTone === 'worst' ? styles.worstHighlightedRow : styles.bestHighlightedRow;
+  const markerColor = highlightTone === 'worst' ? colors.veryHigh : colors.primary;
 
   return (
     <View
       accessible
       accessibilityLabel={accessibilityLabel}
-      style={[styles.row, highlighted ? styles.highlightedRow : null]}
+      style={[styles.row, highlighted ? highlightStyle : null]}
     >
       <Text numberOfLines={2} style={styles.label}>
         {label}
@@ -44,7 +49,9 @@ export function ForecastBarRow({
       <Text numberOfLines={2} style={[styles.value, { color: accent, minWidth: valueMinWidth }]}>
         {value}
       </Text>
-      {markerLabel || reserveMarkerSpace ? <Text style={styles.marker}>{markerLabel}</Text> : null}
+      {markerLabel || reserveMarkerSpace ? (
+        <Text style={[styles.marker, { color: markerColor }]}>{markerLabel}</Text>
+      ) : null}
     </View>
   );
 }
@@ -54,7 +61,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     height: '100%',
   },
-  highlightedRow: {
+  bestHighlightedRow: {
     backgroundColor: colors.bestHighlight,
   },
   label: {
@@ -64,7 +71,6 @@ const styles = StyleSheet.create({
     minWidth: 72,
   },
   marker: {
-    color: colors.high,
     fontSize: 12,
     fontWeight: '700',
     minWidth: 32,
@@ -91,5 +97,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     textAlign: 'right',
+  },
+  worstHighlightedRow: {
+    backgroundColor: colors.worstHighlight,
   },
 });

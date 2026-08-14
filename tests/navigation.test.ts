@@ -14,6 +14,7 @@ describe('navigation', () => {
       'EnvironmentalBurdenDetail',
       'PersonalizedRiskDetail',
       'DataDetail',
+      'ActivityDomainDetail',
       'ActivityDetail',
     ];
     const tabScreens = mainTabs.screens;
@@ -24,7 +25,8 @@ describe('navigation', () => {
     expect(tabScreens.Pro).toBe('pro');
     expect(tabScreens.Settings).toBe('settings');
     expect(screens.DataDetail).toBe('data/:variableId');
-    expect(screens.ActivityDetail).toBe('activities/:activityId');
+    expect(screens.ActivityDomainDetail).toBe('activities/:domainId');
+    expect(screens.ActivityDetail).toBe('activities/:domainId/:profileId');
   });
 
   it('keeps the variable detail route in a stack with gesture dismissal disabled', () => {
@@ -50,6 +52,9 @@ describe('navigation', () => {
     expect(screen).toContain('goBackOrToday(navigation)');
     expect(screen).toContain('function DetailUnavailable');
     expect(header).toContain('accessibilityLabel="Back"');
+    expect(header).toContain('<BackChevron />');
+    expect(header).not.toContain('backIcon');
+    expect(header).not.toContain('marginTop: -5');
   });
 
   it('keeps detail summary above an expanding vertical chart without legend labels', () => {
@@ -75,7 +80,7 @@ describe('navigation', () => {
 
     expect(today).toContain("navigation.navigate('EnvironmentalBurdenDetail', undefined)");
     expect(today).toContain("navigation.navigate('PersonalizedRiskDetail', undefined)");
-    expect(today).toContain("navigation.navigate('ActivityDetail', { activityId: activity.id })");
+    expect(today).toContain("navigation.navigate('ActivityDomainDetail', { domainId: domain.id })");
     expect(today).toContain('personalizedScore.available ?');
     expect(today).toContain('environmentalScore?.available ?');
     expect(today).toContain('capabilities.activities.available');
@@ -86,6 +91,7 @@ describe('navigation', () => {
     const screens = [
       'src/screens/EnvironmentalBurdenDetailScreen.tsx',
       'src/screens/PersonalizedRiskDetailScreen.tsx',
+      'src/screens/ActivityDomainDetailScreen.tsx',
       'src/screens/ActivityDetailScreen.tsx',
     ];
 
@@ -125,6 +131,8 @@ describe('navigation', () => {
     expect(screen).toContain('conditionRows.length > 0');
     expect(screen).toContain('Forecast data is unavailable.');
     expect(screen).toContain('Current activity measurements are unavailable.');
+    expect(screen).toContain('Current data coverage');
+    expect(screen).not.toContain("let dataCoverageLabel = 'Data coverage'");
   });
 
   it('allows multiple tied best days in contextual daily forecasts', () => {
@@ -171,7 +179,16 @@ describe('navigation', () => {
     const today = fs.readFileSync('src/screens/TodayScreen.tsx', 'utf8');
 
     expect(today).toContain('InsightCard');
-    expect(today).toContain('Opens details.');
+    expect(today).toContain('Opens professional profiles.');
     expect(today).toContain('activitySection');
+  });
+
+  it('keeps domain detail profile cards un-nested', () => {
+    const screen = fs.readFileSync('src/screens/ActivityDomainDetailScreen.tsx', 'utf8');
+
+    expect(screen).toContain('styles.sectionTitle');
+    expect(screen).toContain('<InsightCard');
+    expect(screen).not.toContain('SectionCard');
+    expect(screen).not.toContain('<SectionCard title="Professional profiles">');
   });
 });

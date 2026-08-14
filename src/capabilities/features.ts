@@ -66,9 +66,9 @@ export function featureDefinitions(capabilities: AppCapabilities): FeatureDefini
       requiredEntitlement: 'pro_lifetime',
       freeBehavior: 'Activity catalog visible but locked',
       proBehavior:
-        'Activity profiles for photography, astronomy, farming, drone flying, outdoor sports, and outdoor work',
+        'Professional profiles for agriculture operations, drone operations, photography, astronomy, and outdoor work',
       description:
-        'Professional activity-specific environmental intelligence using relevant forecast variables.',
+        'Professional environmental decision-support profiles using relevant forecast variables.',
     },
     {
       id: 'nearby_vegetation',

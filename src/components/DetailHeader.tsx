@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 import { colors, spacing } from '../theme/theme';
 
 interface DetailHeaderProps {
@@ -17,7 +18,7 @@ export function DetailHeader({ title, subtitle, onBack }: DetailHeaderProps) {
         onPress={onBack}
         style={({ pressed }) => [styles.backButton, pressed ? styles.pressed : null]}
       >
-        <Text style={styles.backIcon}>‹</Text>
+        <BackChevron />
         <Text style={styles.backLabel}>Back</Text>
       </Pressable>
       <View style={styles.titleBlock}>
@@ -34,6 +35,20 @@ export function DetailHeader({ title, subtitle, onBack }: DetailHeaderProps) {
   );
 }
 
+function BackChevron() {
+  return (
+    <Svg fill="none" height={20} viewBox="0 0 24 24" width={20}>
+      <Path
+        d="M15 18 9 12l6-6"
+        stroke={colors.primary}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2.4}
+      />
+    </Svg>
+  );
+}
+
 const styles = StyleSheet.create({
   backButton: {
     alignItems: 'center',
@@ -41,13 +56,6 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     minHeight: 44,
     paddingRight: spacing.md,
-  },
-  backIcon: {
-    color: colors.primary,
-    fontSize: 32,
-    fontWeight: '700',
-    lineHeight: 34,
-    marginTop: -5,
   },
   backLabel: {
     color: colors.primary,

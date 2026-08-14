@@ -7,6 +7,7 @@ export const colors = {
   muted: '#617166',
   border: '#D9E0DA',
   bestHighlight: '#F2E8CF',
+  worstHighlight: '#FBE8E7',
   forecastTrack: '#E6ECE7',
   pressedSurface: '#EEF3EF',
   primary: '#2F6F4F',

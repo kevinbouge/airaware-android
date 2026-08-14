@@ -11,6 +11,7 @@ export interface ForecastBarItem {
   fillPercent: number | null;
   accessibilityLabel: string;
   highlighted?: boolean;
+  highlightTone?: 'best' | 'worst';
   markerLabel?: string;
   reserveMarkerSpace?: boolean;
   valueMinWidth?: number;
@@ -39,6 +40,7 @@ export function ForecastBarSection({
             label={row.label}
             value={row.value}
             {...(row.highlighted !== undefined ? { highlighted: row.highlighted } : {})}
+            {...(row.highlightTone !== undefined ? { highlightTone: row.highlightTone } : {})}
             {...(row.markerLabel !== undefined ? { markerLabel: row.markerLabel } : {})}
             {...(row.reserveMarkerSpace !== undefined
               ? { reserveMarkerSpace: row.reserveMarkerSpace }
@@ -75,6 +77,7 @@ export function ForecastTimeline({
           label={row.label}
           value={row.value}
           {...(row.highlighted !== undefined ? { highlighted: row.highlighted } : {})}
+          {...(row.highlightTone !== undefined ? { highlightTone: row.highlightTone } : {})}
           {...(row.markerLabel !== undefined ? { markerLabel: row.markerLabel } : {})}
           {...(row.reserveMarkerSpace !== undefined
             ? { reserveMarkerSpace: row.reserveMarkerSpace }

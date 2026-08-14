@@ -2,6 +2,7 @@ import type { NormalizedAirQuality } from '../api/openMeteoAirQuality';
 import type { NormalizedWeather } from '../api/openMeteoWeather';
 import { calculateMoldPotential } from '../core/moldPotential';
 import { calculateEnvironmentalScore } from '../core/scoring';
+import type { ActivityDomainId } from '../models/activities';
 import type {
   Coordinates,
   CurrentEnvironmentalReadings,
@@ -63,6 +64,12 @@ const EMPTY_EXTENDED: ExtendedEnvironmentalReadings = {
   airQuality: EMPTY_EXTENDED_AIR_QUALITY,
   weather: EMPTY_EXTENDED_WEATHER,
 };
+
+function normalizedActivityDomains(
+  activityDomains: readonly ActivityDomainId[] | undefined,
+): ActivityDomainId[] {
+  return Array.from(new Set(activityDomains ?? [])).sort();
+}
 
 function addDays(date: string, days: number): string | null {
   const match = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -240,8 +247,6 @@ function buildForecastDays(
     if (!date) continue;
     const hourTime = Date.parse(hour.timestamp);
     if (
-      currentDate &&
-      date === currentDate &&
       currentTime !== null &&
       Number.isFinite(currentTime) &&
       Number.isFinite(hourTime) &&
@@ -272,9 +277,13 @@ export function assembleEnvironment(input: {
   airQuality: NormalizedAirQuality | null;
   weather: NormalizedWeather | null;
   fallback?: NormalizedEnvironment | null;
+  requestedActivityDomains?: readonly ActivityDomainId[] | undefined;
 }): NormalizedEnvironment {
   const current = mergeCurrent(input.airQuality, input.weather, input.fallback ?? null);
   const hourly = mergeHourly(input.airQuality, input.weather, input.fallback ?? null);
+  const requestedActivityDomains = normalizedActivityDomains(
+    input.requestedActivityDomains ?? input.fallback?.metadata.requestedActivityDomains,
+  );
 
   return {
     provider: 'open-meteo',
@@ -295,6 +304,7 @@ export function assembleEnvironment(input: {
         input.fallback?.metadata.airQualityFetchedAt,
       ),
       weatherSource: sourceForProvider(input.weather, input.fallback?.metadata.weatherFetchedAt),
+      requestedActivityDomains,
       partial: input.airQuality?.partial === true || input.weather?.partial === true,
     },
   };

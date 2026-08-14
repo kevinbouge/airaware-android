@@ -1,11 +1,11 @@
 import { fetchAirQuality, type NormalizedAirQuality } from '../api/openMeteoAirQuality';
 import { fetchWeather, type NormalizedWeather } from '../api/openMeteoWeather';
 import type { AppCapabilities, ProviderId } from '../capabilities/types';
-import type { ActivityId } from '../models/activities';
+import type { ActivityDomainId } from '../models/activities';
 import type { Coordinates } from '../models/environment';
 
 interface EnvironmentalProviderRequestOptions {
-  enabledActivities?: readonly ActivityId[];
+  enabledActivities?: readonly ActivityDomainId[];
 }
 
 export interface EnvironmentalProviderClient {

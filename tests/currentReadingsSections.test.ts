@@ -71,10 +71,81 @@ describe('Current readings sections', () => {
     const grass = dataDetailVariable('pollen_grass');
     const mold = dataDetailVariable('moldPotential');
     const uv = dataDetailVariable('uvIndex');
+    const temperature = dataDetailVariable('temperature');
+    const humidity = dataDetailVariable('relativeHumidity');
+    const precipitation = dataDetailVariable('precipitation');
+    const wind = dataDetailVariable('windSpeed');
+    const gusts = dataDetailVariable('windGusts');
 
     expect(grass && currentDataDetailValue(current, grass)).toBe(42);
     expect(mold && currentDataDetailValue(current, mold)).toBe(current.moldPotential.score);
     expect(uv && currentDataDetailValue(current, uv)).toBe(7);
+    expect(temperature && currentDataDetailValue(current, temperature)).toBe(20);
+    expect(humidity && currentDataDetailValue(current, humidity)).toBe(70);
+    expect(precipitation && currentDataDetailValue(current, precipitation)).toBe(0);
+    expect(wind && currentDataDetailValue(current, wind)).toBe(5);
+    expect(gusts && currentDataDetailValue(current, gusts)).toBe(28);
+  });
+
+  it('resolves current professional weather detail values from extended readings', () => {
+    const current = currentReading({
+      extended: {
+        airQuality: {
+          carbonDioxide: null,
+          ammonia: null,
+          methane: null,
+          nitrogenMonoxide: null,
+          formaldehyde: null,
+          nonMethaneVolatileOrganicCompounds: null,
+        },
+        weather: {
+          apparentTemperature: 21.4,
+          precipitationProbability: 35,
+          pressureMsl: 1018,
+          surfacePressure: 982,
+          visibility: 15000,
+          cloudCover: 44,
+          cloudCoverLow: 12,
+          cloudCoverMid: 20,
+          cloudCoverHigh: 38,
+          dewPoint: 13.5,
+          wetBulbTemperature: 17.2,
+          windGusts: 9,
+          shortwaveRadiation: 520,
+          directNormalIrradiance: 410,
+          diffuseRadiation: 120,
+          sunshineDuration: 2400,
+          cape: 80,
+          soilMoisture0To1cm: 0.28,
+          soilTemperature0cm: 18.3,
+          et0FaoEvapotranspiration: 0.18,
+          vapourPressureDeficit: 0.92,
+        },
+      },
+    });
+
+    expect(currentDataDetailValue(current, dataDetailVariable('apparentTemperature')!)).toBeCloseTo(
+      21.4,
+    );
+    expect(currentDataDetailValue(current, dataDetailVariable('precipitationProbability')!)).toBe(
+      35,
+    );
+    expect(currentDataDetailValue(current, dataDetailVariable('extendedVisibility')!)).toBe(15000);
+    expect(currentDataDetailValue(current, dataDetailVariable('cloudCover')!)).toBe(44);
+    expect(currentDataDetailValue(current, dataDetailVariable('soilMoisture0To1cm')!)).toBeCloseTo(
+      0.28,
+    );
+    expect(
+      currentDataDetailValue(current, dataDetailVariable('vapourPressureDeficit')!),
+    ).toBeCloseTo(0.92);
+  });
+
+  it('falls back to standard current weather for duplicate extended detail variables', () => {
+    const current = currentReading();
+
+    expect(currentDataDetailValue(current, dataDetailVariable('extendedVisibility')!)).toBe(14000);
+    expect(currentDataDetailValue(current, dataDetailVariable('extendedDewPoint')!)).toBe(14);
+    expect(currentDataDetailValue(current, dataDetailVariable('extendedWindGusts')!)).toBe(28);
   });
 
   it('maps scored detail values to existing risk categories without scoring advanced data', () => {

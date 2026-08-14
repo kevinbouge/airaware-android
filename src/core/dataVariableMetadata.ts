@@ -327,6 +327,21 @@ export function currentDataDetailValue(
     return current.atmosphericIrritants[definition.id as keyof AtmosphericIrritants];
   }
 
+  const weatherContextIdByVariable: Partial<
+    Record<EnvironmentalVariableId, keyof typeof current.weather>
+  > = {
+    temperature: 'temperature',
+    relativeHumidity: 'relativeHumidity',
+    dewPoint: 'dewPoint',
+    precipitation: 'precipitation',
+    windSpeed: 'windSpeed',
+    windGusts: 'windGusts',
+  };
+  const weatherContextId = weatherContextIdByVariable[definition.id];
+  if (weatherContextId) {
+    return current.weather[weatherContextId] ?? null;
+  }
+
   const extendedAirQualityId = definition.id as keyof ExtendedAirQualityReadings;
   if (extendedAirQualityId in (current.extended?.airQuality ?? {})) {
     return current.extended?.airQuality[extendedAirQualityId] ?? null;
@@ -335,6 +350,8 @@ export function currentDataDetailValue(
   const weatherIdByVariable: Partial<
     Record<EnvironmentalVariableId, keyof ExtendedWeatherReadings>
   > = {
+    apparentTemperature: 'apparentTemperature',
+    precipitationProbability: 'precipitationProbability',
     pressureMsl: 'pressureMsl',
     surfacePressure: 'surfacePressure',
     extendedVisibility: 'visibility',
@@ -350,8 +367,19 @@ export function currentDataDetailValue(
     diffuseRadiation: 'diffuseRadiation',
     sunshineDuration: 'sunshineDuration',
     cape: 'cape',
+    soilMoisture0To1cm: 'soilMoisture0To1cm',
+    soilTemperature0cm: 'soilTemperature0cm',
+    et0FaoEvapotranspiration: 'et0FaoEvapotranspiration',
+    vapourPressureDeficit: 'vapourPressureDeficit',
   };
   const weatherId = weatherIdByVariable[definition.id];
 
-  return weatherId ? (current.extended?.weather[weatherId] ?? null) : null;
+  if (!weatherId) return null;
+  const extendedWeatherValue = current.extended?.weather[weatherId] ?? null;
+  if (extendedWeatherValue !== null) return extendedWeatherValue;
+  if (definition.id === 'extendedVisibility') return current.weather.visibility;
+  if (definition.id === 'extendedDewPoint') return current.weather.dewPoint;
+  if (definition.id === 'extendedWindGusts') return current.weather.windGusts;
+
+  return null;
 }

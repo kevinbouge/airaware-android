@@ -43,7 +43,7 @@ import { assembleEnvironment } from '../services/environmentAssembler';
 import { activeEnvironmentalProvider } from '../services/environmentProviders';
 import { fetchVegetationContext } from '../api/openStreetMapVegetation';
 import { createBillingGateway } from '../services/billingGateway';
-import { cacheForCoordinates } from '../services/cacheCompatibility';
+import { cacheForActivityDomains, cacheForCoordinates } from '../services/cacheCompatibility';
 import {
   vegetationCacheEnvelope,
   vegetationCacheExpired,
@@ -404,6 +404,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     set({ loading: true, error: null, shareMessage: null });
     const settings = get().settings;
     const cached = get().environment;
+    const requestedActivityDomains = enabledProviderActivities(settings, get().entitlement);
     let resolvedLocation: LocationInfo | null = null;
 
     try {
@@ -418,7 +419,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       const capabilities = capabilitiesForEntitlement(get().entitlement);
       const provider = activeEnvironmentalProvider(capabilities);
       const providerOptions = {
-        enabledActivities: enabledProviderActivities(settings, get().entitlement),
+        enabledActivities: requestedActivityDomains,
       };
 
       const [airResult, weatherResult] = await Promise.allSettled([
@@ -440,6 +441,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
         airQuality,
         weather,
         fallback: cachedForLocation,
+        requestedActivityDomains: hasCompleteFreshProviderData
+          ? requestedActivityDomains
+          : undefined,
       });
 
       if (hasCompleteFreshProviderData) {
@@ -520,7 +524,13 @@ export const useAppStore = create<AppStore>((set, get) => ({
           ? parseManualCoordinates(settings)
           : (resolvedLocation?.coordinates ?? null);
       const environment = fallbackCoordinates
-        ? (cacheForCoordinates(cache?.data ?? null, fallbackCoordinates) ??
+        ? (cacheForActivityDomains(
+            cache?.data ?? null,
+            fallbackCoordinates,
+            requestedActivityDomains,
+          ) ??
+          cacheForActivityDomains(cached, fallbackCoordinates, requestedActivityDomains) ??
+          cacheForCoordinates(cache?.data ?? null, fallbackCoordinates) ??
           cacheForCoordinates(cached, fallbackCoordinates))
         : null;
 

@@ -16,7 +16,8 @@ export const linking: LinkingOptions<RootStackParamList> = {
       EnvironmentalBurdenDetail: 'environmental-burden',
       PersonalizedRiskDetail: 'personalized-risk',
       DataDetail: 'data/:variableId',
-      ActivityDetail: 'activities/:activityId',
+      ActivityDomainDetail: 'activities/:domainId',
+      ActivityDetail: 'activities/:domainId/:profileId',
     },
   },
 };

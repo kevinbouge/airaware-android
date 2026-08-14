@@ -1,5 +1,5 @@
 import { calculateMoldPotential } from '../src/core/moldPotential';
-import { cacheForCoordinates } from '../src/services/cacheCompatibility';
+import { cacheForActivityDomains, cacheForCoordinates } from '../src/services/cacheCompatibility';
 import type { NormalizedEnvironment } from '../src/models/environment';
 
 function environmentAt(latitude: number, longitude: number): NormalizedEnvironment {
@@ -72,5 +72,24 @@ describe('cache compatibility', () => {
     const cache = environmentAt(50.0755, 14.4378);
 
     expect(cacheForCoordinates(cache, { latitude: 48.8566, longitude: 2.3522 })).toBeNull();
+  });
+
+  it('keeps core cache fallback independent from professional activity coverage', () => {
+    const cache = environmentAt(50.0755, 14.4378);
+    cache.metadata.requestedActivityDomains = ['photography'];
+
+    expect(cacheForCoordinates(cache, { latitude: 50.076, longitude: 14.438 })).toBe(cache);
+  });
+
+  it('requires cached activity domains only for professional-complete fallback requests', () => {
+    const cache = environmentAt(50.0755, 14.4378);
+    cache.metadata.requestedActivityDomains = ['photography'];
+
+    expect(
+      cacheForActivityDomains(cache, { latitude: 50.076, longitude: 14.438 }, ['photography']),
+    ).toBe(cache);
+    expect(
+      cacheForActivityDomains(cache, { latitude: 50.076, longitude: 14.438 }, ['agriculture']),
+    ).toBeNull();
   });
 });

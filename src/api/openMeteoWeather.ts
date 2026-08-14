@@ -1,6 +1,6 @@
 import { FORECAST_DAY_LIMITS } from '../capabilities/config';
 import { activityOpenMeteoVariables } from '../core/activityDefinitions';
-import type { ActivityId } from '../models/activities';
+import type { ActivityDomainId } from '../models/activities';
 import type { Coordinates, ExtendedWeatherReadings, WeatherContext } from '../models/environment';
 import { fetchJson } from './http';
 import { coordinateNumber, isFiniteNumber, nullableNumber } from '../utils/number';
@@ -182,7 +182,7 @@ function hasAnyNumeric(values: object): boolean {
   return Object.values(values).some((item) => typeof item === 'number' && Number.isFinite(item));
 }
 
-function weatherVariablesFor(activityIds: readonly ActivityId[] = []): string[] {
+function weatherVariablesFor(activityIds: readonly ActivityDomainId[] = []): string[] {
   const activityVariables = activityOpenMeteoVariables(activityIds).weather;
   return Array.from(
     new Set([
@@ -208,7 +208,7 @@ function currentWeatherVariablesFor(hourlyVariables: readonly string[]): string[
 
 export function buildWeatherUrl(
   coordinates: Coordinates,
-  options: { enabledActivities?: readonly ActivityId[] } = {},
+  options: { enabledActivities?: readonly ActivityDomainId[] } = {},
 ): string {
   const variables = weatherVariablesFor(options.enabledActivities ?? []);
   const params = new URLSearchParams({
@@ -292,7 +292,7 @@ export function normalizeWeather(payload: OpenMeteoWeatherPayload): NormalizedWe
 
 export async function fetchWeather(
   coordinates: Coordinates,
-  options: { enabledActivities?: readonly ActivityId[] } = {},
+  options: { enabledActivities?: readonly ActivityDomainId[] } = {},
 ): Promise<NormalizedWeather> {
   const payload = await fetchJson<OpenMeteoWeatherPayload>(buildWeatherUrl(coordinates, options));
   return normalizeWeather(payload);

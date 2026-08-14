@@ -8,12 +8,13 @@ import { ProfileScreen } from '../screens/ProfileScreen';
 import { ProScreen } from '../screens/ProScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { DataDetailScreen } from '../screens/DataDetailScreen';
+import { ActivityDomainDetailScreen } from '../screens/ActivityDomainDetailScreen';
 import { ActivityDetailScreen } from '../screens/ActivityDetailScreen';
 import { EnvironmentalBurdenDetailScreen } from '../screens/EnvironmentalBurdenDetailScreen';
 import { PersonalizedRiskDetailScreen } from '../screens/PersonalizedRiskDetailScreen';
 import { TabIcon, type TabIconName } from '../components/icons/TabIcon';
 import type { EnvironmentalVariableId } from '../capabilities/types';
-import type { ActivityId } from '../models/activities';
+import type { ActivityDomainId, ActivityProfileId } from '../models/activities';
 import { profileForCapabilities } from '../capabilities/variables';
 import { calculatePersonalizedScore } from '../core/profileScoring';
 import { calculateEnvironmentalScore } from '../core/scoring';
@@ -34,7 +35,8 @@ export type RootStackParamList = {
   EnvironmentalBurdenDetail: undefined;
   PersonalizedRiskDetail: undefined;
   DataDetail: { variableId: EnvironmentalVariableId };
-  ActivityDetail: { activityId: ActivityId };
+  ActivityDomainDetail: { domainId: ActivityDomainId };
+  ActivityDetail: { profileId: ActivityProfileId; domainId?: ActivityDomainId };
 };
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
@@ -110,6 +112,7 @@ export function AppNavigator() {
           component={DataDetailScreen}
           options={{ gestureEnabled: false }}
         />
+        <Stack.Screen name="ActivityDomainDetail" component={ActivityDomainDetailScreen} />
         <Stack.Screen name="ActivityDetail" component={ActivityDetailScreen} />
       </Stack.Navigator>
     </NavigationContainer>

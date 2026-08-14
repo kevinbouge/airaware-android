@@ -10,6 +10,7 @@ describe('Open-Meteo providers', () => {
     expect(url).toContain('hourly=');
     expect(url).toContain('timezone=auto');
     expect(url).toContain(`forecast_days=${FORECAST_DAY_LIMITS.providerRequest}`);
+    expect(url).not.toContain('past_hours=');
     expect(url).toContain('us_aqi_pm2_5');
     expect(url).toContain('ragweed_pollen');
     expect(url).not.toContain('carbon_dioxide');
@@ -19,7 +20,7 @@ describe('Open-Meteo providers', () => {
   it('requests professional air-quality variables only when enabled activities need them', () => {
     const url = buildAirQualityUrl(
       { latitude: 40.7, longitude: -74 },
-      { enabledActivities: ['outdoor_sports'] },
+      { enabledActivities: ['drone_operations'] },
     );
 
     expect(url).toContain('pm2_5');
@@ -73,6 +74,7 @@ describe('Open-Meteo providers', () => {
     expect(url).toContain('timezone=auto');
     expect(url).toContain('wind_speed_unit=ms');
     expect(url).toContain(`forecast_days=${FORECAST_DAY_LIMITS.providerRequest}`);
+    expect(url).not.toContain('past_hours=');
 
     const response = normalizeWeather({
       latitude: 50,
@@ -101,7 +103,7 @@ describe('Open-Meteo providers', () => {
   it('requests professional weather variables only when enabled activities need them', () => {
     const url = buildWeatherUrl(
       { latitude: 50, longitude: 14 },
-      { enabledActivities: ['photography', 'farming'] },
+      { enabledActivities: ['photography', 'agriculture'] },
     );
 
     expect(url).toContain('cloud_cover');

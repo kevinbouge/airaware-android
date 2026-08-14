@@ -3,7 +3,7 @@ import { featureDefinitions } from '../capabilities/features';
 import { AppButton } from '../components/AppButton';
 import { OptionButton } from '../components/OptionButton';
 import { SectionCard } from '../components/SectionCard';
-import { ACTIVITY_DEFINITIONS } from '../core/activityDefinitions';
+import { ACTIVITY_DOMAINS } from '../core/activityDefinitions';
 import { useCapabilities } from '../hooks/useCapabilities';
 import { useAppStore } from '../state/useAppStore';
 import { colors, spacing } from '../theme/theme';
@@ -138,12 +138,12 @@ export function ProScreen() {
 
       <SectionCard
         title="Activities"
-        subtitle="Professional environmental profiles for activity-specific windows."
+        subtitle="Professional environmental tools for agriculture, drone operations, photography, astronomy, and outdoor work."
       >
         {!capabilities.activities.available ? (
           <Text style={styles.notice}>Activities are available with AirAware Pro.</Text>
         ) : null}
-        {ACTIVITY_DEFINITIONS.map((activity) => {
+        {ACTIVITY_DOMAINS.map((activity) => {
           const enabled = settings.enabledActivities[activity.id] === true;
           const disabled = !capabilities.activities.available || loading;
           const toggleActivity = () => {

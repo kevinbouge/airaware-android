@@ -214,6 +214,7 @@ describe('environment assembler', () => {
   });
 
   it('does not score past hours as part of today forecast', () => {
+    const yesterdayHigh = airQualityHour('2026-07-31T23:00:00+02:00', 500);
     const pastHigh = airQualityHour('2026-08-01T06:00:00+02:00', 400);
     const futureLow = airQualityHour('2026-08-01T13:00:00+02:00', 5);
     const tomorrowHigh = airQualityHour('2026-08-02T12:00:00+02:00', 300);
@@ -222,7 +223,7 @@ describe('environment assembler', () => {
       placeName: 'Prague',
       airQuality: {
         ...airQuality('2026-08-01T12:00:00Z'),
-        hourly: [pastHigh, futureLow, tomorrowHigh],
+        hourly: [yesterdayHigh, pastHigh, futureLow, tomorrowHigh],
         partial: false,
       },
       weather: null,
@@ -235,6 +236,7 @@ describe('environment assembler', () => {
     );
 
     expect(environment.forecastDays[0]?.date).toBe('2026-08-01');
+    expect(environment.forecastDays.map((day) => day.date)).not.toContain('2026-07-31');
     expect(environment.forecastDays[0]?.score?.score).toBe(
       calculateEnvironmentalScore(assembledFutureLow!).score,
     );
