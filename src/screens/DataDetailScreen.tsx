@@ -12,6 +12,7 @@ import {
   dataDetailVariable,
   formatDataDetailValue,
 } from '../core/dataVariableMetadata';
+import { visibleCurrentDataDetailValue } from '../core/dataDetailCurrentValue';
 import type { DataDetailRangeId, DataDetailTimeline } from '../models/dataDetail';
 import type { EnvironmentalVariableId } from '../capabilities/types';
 import { goBackOrToday, type DetailBackNavigation } from '../navigation/detailNavigation';
@@ -58,8 +59,12 @@ export function DataDetailScreen() {
   const variable = params ? dataDetailVariable(params.variableId) : null;
   const range = dataDetailRange(rangeId);
   const now = environment?.current.timestamp ?? environment?.fetchedAt ?? fallbackNow;
-  const currentValue =
+  const environmentCurrentValue =
     environment?.current && variable ? currentDataDetailValue(environment.current, variable) : null;
+  const currentValue = visibleCurrentDataDetailValue({
+    environmentCurrentValue,
+    timeline,
+  });
   const handleBack = () => goBackOrToday(navigation);
 
   useEffect(() => {

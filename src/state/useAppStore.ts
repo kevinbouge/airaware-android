@@ -1,4 +1,5 @@
 import { Share } from 'react-native';
+import { differenceInMilliseconds } from 'date-fns';
 import { create } from 'zustand';
 import { capabilitiesForEntitlement } from '../capabilities/config';
 import {
@@ -10,7 +11,9 @@ import {
 } from '../capabilities/entitlements';
 import { isFeatureAvailable } from '../capabilities/features';
 import { isEnvironmentalVariableAvailable } from '../capabilities/variables';
-import { CACHE_SCHEMA_VERSION, CACHE_STALE_AFTER_MS } from '../core/constants';
+import { CACHE_SCHEMA_VERSION, ENVIRONMENT_PROVIDER_FRESHNESS_MS } from '../core/constants';
+import { airQualityVariableCoverageFor } from '../api/openMeteoAirQuality';
+import { weatherVariableCoverageFor } from '../api/openMeteoWeather';
 import {
   buildDailySummary,
   formatDailySummary,
@@ -41,7 +44,12 @@ import { deriveEnvironmentState } from './derivedEnvironment';
 import { parseManualCoordinates, resolveLocation } from '../services/locationService';
 import { assembleEnvironment } from '../services/environmentAssembler';
 import { activeEnvironmentalProvider } from '../services/environmentProviders';
-import { fetchVegetationContext } from '../api/openStreetMapVegetation';
+import { environmentRefreshPolicy } from '../services/environmentRefreshPolicy';
+import {
+  fetchAirQualityQuery,
+  fetchVegetationQuery,
+  fetchWeatherQuery,
+} from '../services/environmentQueries';
 import { createBillingGateway } from '../services/billingGateway';
 import { cacheForActivityDomains, cacheForCoordinates } from '../services/cacheCompatibility';
 import {
@@ -99,7 +107,7 @@ interface AppStore {
   vegetationError: string | null;
   riskNotificationTransitionState: RiskNotificationTransitionState | null;
   hydrate: () => Promise<void>;
-  refresh: () => Promise<void>;
+  refresh: (options?: { force?: boolean }) => Promise<void>;
   updateSettings: (settings: Partial<AppSettings>) => Promise<void>;
   toggleCollapsedSection: (sectionId: string) => Promise<void>;
   updateProfile: (profile: Partial<PersonalAllergyProfile>) => Promise<void>;
@@ -123,7 +131,11 @@ const emptyLocation: LocationInfo = {
 
 function staleFrom(savedAt: string | null): boolean {
   if (!savedAt) return false;
-  return Date.now() - Date.parse(savedAt) > CACHE_STALE_AFTER_MS;
+  const savedAtTime = Date.parse(savedAt);
+  if (!Number.isFinite(savedAtTime)) return true;
+  return (
+    differenceInMilliseconds(new Date(), new Date(savedAtTime)) > ENVIRONMENT_PROVIDER_FRESHNESS_MS
+  );
 }
 
 async function persistSuccessfulEnvironment(environment: NormalizedEnvironment) {
@@ -161,18 +173,13 @@ async function persistWidgetSnapshotFor(input: {
 
 async function loadCachedVegetationFor(input: {
   coordinates: NormalizedEnvironment['coordinates'] | null;
-  radiusMeters: AppSettings['nearbyVegetationRadiusMeters'];
 }): Promise<{
   vegetation: NormalizedVegetationContext | null;
   stale: boolean;
 }> {
   if (!input.coordinates) return { vegetation: null, stale: false };
 
-  const cache = vegetationCacheForRequest(
-    await loadVegetationCache(),
-    input.coordinates,
-    input.radiusMeters,
-  );
+  const cache = vegetationCacheForRequest(await loadVegetationCache(), input.coordinates);
 
   return {
     vegetation: cache?.data ?? null,
@@ -186,6 +193,7 @@ let settingsUpdateQueue = Promise.resolve();
 let pendingSettings: AppSettings | null = null;
 let settingsSaveTimeout: ReturnType<typeof setTimeout> | null = null;
 let pendingRefresh = false;
+let pendingRefreshForce = false;
 const billingGateway = createBillingGateway();
 let unsubscribeBillingGateway: (() => void) | null = null;
 
@@ -275,6 +283,60 @@ function enabledProviderActivities(settings: AppSettings, entitlement: Entitleme
   );
 }
 
+function refreshPreflightCoordinates(input: {
+  settings: AppSettings;
+  cached: NormalizedEnvironment | null;
+  currentLocation: LocationInfo;
+}): NormalizedEnvironment['coordinates'] | null {
+  if (input.settings.locationMode === 'manual') {
+    return parseManualCoordinates(input.settings);
+  }
+
+  return input.cached?.coordinates ?? input.currentLocation.coordinates;
+}
+
+function freshCachePreflight(input: {
+  settings: AppSettings;
+  cached: NormalizedEnvironment | null;
+  currentLocation: LocationInfo;
+  capabilities: ReturnType<typeof capabilitiesForEntitlement>;
+  requestedActivityDomains: ReturnType<typeof enabledProviderActivities>;
+  force?: boolean | undefined;
+}): { environment: NormalizedEnvironment; location: LocationInfo } | null {
+  const coordinates =
+    input.force === true
+      ? null
+      : refreshPreflightCoordinates({
+          settings: input.settings,
+          cached: input.cached,
+          currentLocation: input.currentLocation,
+        });
+  if (!coordinates) return null;
+
+  const cachedForLocation = cacheForCoordinates(input.cached, coordinates);
+  const policy = environmentRefreshPolicy({
+    environment: cachedForLocation,
+    coordinates,
+    capabilities: input.capabilities,
+    requiredActivityDomains: input.requestedActivityDomains,
+    force: false,
+  });
+  if (policy.needsRefresh || !policy.usableCache) return null;
+
+  return {
+    environment: policy.usableCache,
+    location:
+      input.settings.locationMode === 'manual'
+        ? {
+            coordinates,
+            placeName: policy.usableCache.placeName,
+            mode: 'manual',
+            permissionStatus: 'unknown',
+          }
+        : input.currentLocation,
+  };
+}
+
 function entitlementChanged(previous: EntitlementState, next: EntitlementState): boolean {
   return previous.kind !== next.kind;
 }
@@ -324,7 +386,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const environment = cache?.data ?? null;
     const cachedVegetation = await loadCachedVegetationFor({
       coordinates: environment?.coordinates ?? null,
-      radiusMeters: settings.nearbyVegetationRadiusMeters,
     });
 
     if (settings !== storedSettings) {
@@ -388,26 +449,61 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }
   },
 
-  refresh: async () => {
+  refresh: async (options = {}) => {
     if (get().loading) {
       pendingRefresh = true;
+      pendingRefreshForce = pendingRefreshForce || options.force === true;
       return;
     }
 
     const runPendingRefresh = () => {
       if (!pendingRefresh) return;
 
+      const force = pendingRefreshForce;
       pendingRefresh = false;
-      void get().refresh();
+      pendingRefreshForce = false;
+      void get().refresh({ force });
     };
 
-    set({ loading: true, error: null, shareMessage: null });
     const settings = get().settings;
     const cached = get().environment;
     const requestedActivityDomains = enabledProviderActivities(settings, get().entitlement);
+    const requestedAirQualityVariables = airQualityVariableCoverageFor(requestedActivityDomains);
+    const requestedWeatherVariables = weatherVariableCoverageFor(requestedActivityDomains);
+    const capabilities = capabilitiesForEntitlement(get().entitlement);
     let resolvedLocation: LocationInfo | null = null;
 
     try {
+      const freshCache = freshCachePreflight({
+        settings,
+        cached,
+        currentLocation: get().location,
+        capabilities,
+        requestedActivityDomains,
+        force: options.force,
+      });
+      if (freshCache) {
+        await persistWidgetSnapshotFor({
+          environment: freshCache.environment,
+          profile: get().profile,
+          settings,
+          entitlement: get().entitlement,
+          stale: false,
+        });
+        set({
+          loading: false,
+          error: null,
+          shareMessage: null,
+          stale: false,
+          location: freshCache.location,
+          environment: freshCache.environment,
+        });
+        void get().refreshVegetation(false);
+        runPendingRefresh();
+        return;
+      }
+
+      set({ loading: true, error: null, shareMessage: null });
       const location = await resolveLocation(settings);
       resolvedLocation = location;
 
@@ -416,19 +512,63 @@ export const useAppStore = create<AppStore>((set, get) => ({
       }
 
       const cachedForLocation = cacheForCoordinates(cached, location.coordinates);
-      const capabilities = capabilitiesForEntitlement(get().entitlement);
+      const refreshPolicy = environmentRefreshPolicy({
+        environment: cachedForLocation,
+        coordinates: location.coordinates,
+        capabilities,
+        requiredActivityDomains: requestedActivityDomains,
+        force: options.force,
+      });
+
+      if (!refreshPolicy.needsRefresh && refreshPolicy.usableCache) {
+        await persistWidgetSnapshotFor({
+          environment: refreshPolicy.usableCache,
+          profile: get().profile,
+          settings,
+          entitlement: get().entitlement,
+          stale: false,
+        });
+        set({
+          loading: false,
+          error: null,
+          shareMessage: null,
+          stale: false,
+          location,
+          environment: refreshPolicy.usableCache,
+        });
+        void get().refreshVegetation(false);
+        runPendingRefresh();
+        return;
+      }
+
       const provider = activeEnvironmentalProvider(capabilities);
       const providerOptions = {
         enabledActivities: requestedActivityDomains,
       };
 
       const [airResult, weatherResult] = await Promise.allSettled([
-        provider.fetchAirQuality(location.coordinates, providerOptions),
-        provider.fetchWeather(location.coordinates, providerOptions),
+        refreshPolicy.fetchAirQuality
+          ? fetchAirQualityQuery({
+              provider,
+              coordinates: location.coordinates,
+              enabledActivities: providerOptions.enabledActivities,
+              force: options.force === true,
+            })
+          : Promise.resolve(null),
+        refreshPolicy.fetchWeather
+          ? fetchWeatherQuery({
+              provider,
+              coordinates: location.coordinates,
+              enabledActivities: providerOptions.enabledActivities,
+              force: options.force === true,
+            })
+          : Promise.resolve(null),
       ]);
       const airQuality = airResult.status === 'fulfilled' ? airResult.value : null;
       const weather = weatherResult.status === 'fulfilled' ? weatherResult.value : null;
-      const hasCompleteFreshProviderData = airQuality !== null && weather !== null;
+      const hasCompleteFreshProviderData =
+        (airQuality !== null || !refreshPolicy.fetchAirQuality) &&
+        (weather !== null || !refreshPolicy.fetchWeather);
       const hasFreshProviderData = airQuality !== null || weather !== null;
 
       if (!airQuality && !weather && !cachedForLocation) {
@@ -444,6 +584,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
         requestedActivityDomains: hasCompleteFreshProviderData
           ? requestedActivityDomains
           : undefined,
+        requestedAirQualityVariables:
+          airQuality !== null || !refreshPolicy.fetchAirQuality
+            ? requestedAirQualityVariables
+            : undefined,
+        requestedWeatherVariables:
+          weather !== null || !refreshPolicy.fetchWeather ? requestedWeatherVariables : undefined,
       });
 
       if (hasCompleteFreshProviderData) {
@@ -496,7 +642,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
       if (nextNotificationState) {
         await saveRiskNotificationTransitionState(nextNotificationState);
       }
-      const nextStale = airQuality === null || weather === null;
+      const nextStale =
+        (refreshPolicy.fetchAirQuality && airQuality === null) ||
+        (refreshPolicy.fetchWeather && weather === null);
       await persistWidgetSnapshotFor({
         environment,
         profile: get().profile,
@@ -603,9 +751,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
           entitlement: get().entitlement,
           stale: get().stale,
         });
-        if (settingsPatch.nearbyVegetationRadiusMeters !== undefined) {
-          void get().refreshVegetation(true);
-        }
         if (settingsPatch.enabledActivities !== undefined) {
           void get().refresh();
         }
@@ -869,14 +1014,13 @@ export const useAppStore = create<AppStore>((set, get) => ({
   refreshVegetation: async (force = false) => {
     const environment = get().environment;
     const coordinates = environment?.coordinates ?? get().location.coordinates;
-    const radiusMeters = get().settings.nearbyVegetationRadiusMeters;
 
     if (!coordinates) {
       set({ vegetation: null, vegetationStale: false, vegetationError: null });
       return;
     }
 
-    const cache = vegetationCacheForRequest(await loadVegetationCache(), coordinates, radiusMeters);
+    const cache = vegetationCacheForRequest(await loadVegetationCache(), coordinates);
     const cacheExpired = cache ? vegetationCacheExpired(cache) : false;
 
     if (cache && !cacheExpired && !force) {
@@ -898,7 +1042,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
     set({ vegetationLoading: true });
     try {
-      const vegetation = await fetchVegetationContext(coordinates, radiusMeters);
+      const vegetation = await fetchVegetationQuery({ coordinates, force });
       await saveVegetationCache(vegetationCacheEnvelope(vegetation));
       set({
         vegetation,

@@ -139,7 +139,7 @@ export function TodayScreen() {
 
   const startLocationRefresh = async () => {
     await updateSettings({ locationOnboardingComplete: true });
-    await refresh();
+    await refresh({ force: true });
   };
 
   if (!hydrated) return <StateView loading message="Loading AirAware..." />;
@@ -177,7 +177,9 @@ export function TodayScreen() {
     <ScrollView
       style={styles.screen}
       contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} />}
+      refreshControl={
+        <RefreshControl refreshing={loading} onRefresh={() => refresh({ force: true })} />
+      }
     >
       <View style={styles.header}>
         <View style={styles.brandRow}>
@@ -281,7 +283,7 @@ export function TodayScreen() {
               title={loading ? 'Refreshing...' : 'Refresh'}
               rightLabel={updateStatus}
               fullWidth
-              onPress={refresh}
+              onPress={() => refresh({ force: true })}
               disabled={loading}
             />
             <AppButton title="Share" onPress={shareDailySummary} />

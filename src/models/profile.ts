@@ -50,8 +50,6 @@ export interface AppSettings {
   locationMode: 'automatic' | 'manual';
   manualLatitude: string;
   manualLongitude: string;
-  refreshIntervalMinutes: 30 | 60 | 120;
-  nearbyVegetationRadiusMeters: 1000 | 2000 | 5000;
   summaryScore: 'environmental' | 'personalized';
   summaryLocation: 'place' | 'hidden';
   riskTransitionNotificationsEnabled: boolean;
@@ -65,8 +63,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   locationMode: 'automatic',
   manualLatitude: '',
   manualLongitude: '',
-  refreshIntervalMinutes: 60,
-  nearbyVegetationRadiusMeters: 2000,
   summaryScore: 'personalized',
   summaryLocation: 'place',
   riskTransitionNotificationsEnabled: false,

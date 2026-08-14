@@ -1,4 +1,6 @@
 import { calculateMoldPotential } from '../src/core/moldPotential';
+import { airQualityVariableCoverageFor } from '../src/api/openMeteoAirQuality';
+import { weatherVariableCoverageFor } from '../src/api/openMeteoWeather';
 import { cacheForActivityDomains, cacheForCoordinates } from '../src/services/cacheCompatibility';
 import type { NormalizedEnvironment } from '../src/models/environment';
 
@@ -56,6 +58,8 @@ function environmentAt(latitude: number, longitude: number): NormalizedEnvironme
       weatherFetchedAt: '2026-08-01T12:00:00Z',
       airQualitySource: 'fresh',
       weatherSource: 'fresh',
+      requestedAirQualityVariables: airQualityVariableCoverageFor([]),
+      requestedWeatherVariables: weatherVariableCoverageFor([]),
       partial: false,
     },
   };
@@ -84,10 +88,23 @@ describe('cache compatibility', () => {
   it('requires cached activity domains only for professional-complete fallback requests', () => {
     const cache = environmentAt(50.0755, 14.4378);
     cache.metadata.requestedActivityDomains = ['photography'];
+    cache.metadata.requestedAirQualityVariables = airQualityVariableCoverageFor(['photography']);
+    cache.metadata.requestedWeatherVariables = weatherVariableCoverageFor(['photography']);
 
     expect(
       cacheForActivityDomains(cache, { latitude: 50.076, longitude: 14.438 }, ['photography']),
     ).toBe(cache);
+    expect(
+      cacheForActivityDomains(cache, { latitude: 50.076, longitude: 14.438 }, ['agriculture']),
+    ).toBeNull();
+  });
+
+  it('does not accept domain labels without matching provider variable coverage', () => {
+    const cache = environmentAt(50.0755, 14.4378);
+    cache.metadata.requestedActivityDomains = ['agriculture'];
+    cache.metadata.requestedAirQualityVariables = [];
+    cache.metadata.requestedWeatherVariables = [];
+
     expect(
       cacheForActivityDomains(cache, { latitude: 50.076, longitude: 14.438 }, ['agriculture']),
     ).toBeNull();

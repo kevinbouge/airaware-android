@@ -1,6 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { VEGETATION_CACHE_SCHEMA_VERSION } from '../src/core/constants';
-import type { NormalizedVegetationContext } from '../src/models/vegetation';
+import {
+  NEARBY_VEGETATION_RADIUS_METERS,
+  VEGETATION_CACHE_SCHEMA_VERSION,
+} from '../src/core/constants';
+import type {
+  CachedVegetationContext,
+  NormalizedVegetationContext,
+} from '../src/models/vegetation';
 import { loadVegetationCache, saveVegetationCache } from '../src/storage/storage';
 import {
   vegetationCacheEnvelope,
@@ -11,11 +17,11 @@ import {
 
 const coordinates = { latitude: 50.0755, longitude: 14.4378 };
 
-function vegetation(radiusMeters: 1000 | 2000 | 5000 = 2000): NormalizedVegetationContext {
+function vegetation(): NormalizedVegetationContext {
   return {
     provider: 'openstreetmap',
     coordinates,
-    radiusMeters,
+    radiusMeters: NEARBY_VEGETATION_RADIUS_METERS,
     fetchedAt: '2026-08-01T12:00:00Z',
     categories: {
       woodland: { present: false, featureCount: 0, nearestMeters: null },
@@ -41,9 +47,9 @@ describe('vegetation cache', () => {
     await AsyncStorage.clear();
   });
 
-  it('generates cache keys from rounded coordinates, radius, and schema version', () => {
-    expect(vegetationCacheKey(coordinates, 2000)).toBe(
-      `${VEGETATION_CACHE_SCHEMA_VERSION}:50.08:14.44:2000`,
+  it('generates cache keys from precise coordinates, standard radius, and schema version', () => {
+    expect(vegetationCacheKey(coordinates)).toBe(
+      `${VEGETATION_CACHE_SCHEMA_VERSION}:50.07550:14.43780:2000`,
     );
   });
 
@@ -52,17 +58,33 @@ describe('vegetation cache', () => {
 
     await saveVegetationCache(envelope);
 
-    await expect(loadVegetationCache()).resolves.toEqual(envelope);
+    await expect(loadVegetationCache()).resolves.toEqual([envelope]);
   });
 
-  it('matches by coarse location and radius', () => {
+  it('matches by precise location and standard radius', () => {
     const envelope = vegetationCacheEnvelope(vegetation());
 
-    expect(vegetationCacheForRequest(envelope, coordinates, 2000)).toBe(envelope);
-    expect(vegetationCacheForRequest(envelope, coordinates, 5000)).toBeNull();
+    expect(vegetationCacheForRequest([envelope], coordinates)).toBe(envelope);
     expect(
-      vegetationCacheForRequest(envelope, { latitude: 50.2, longitude: 14.44 }, 2000),
+      vegetationCacheForRequest([envelope], { latitude: 50.07555, longitude: 14.43785 }),
     ).toBeNull();
+    expect(vegetationCacheForRequest([envelope], { latitude: 50.2, longitude: 14.44 })).toBeNull();
+  });
+
+  it('rejects old variable-radius cache entries', () => {
+    const oldRadiusEnvelope = {
+      ...vegetationCacheEnvelope(vegetation()),
+      metadata: {
+        ...vegetationCacheEnvelope(vegetation()).metadata,
+        cacheKey: `${VEGETATION_CACHE_SCHEMA_VERSION}:50.07550:14.43780:5000`,
+      },
+      data: {
+        ...vegetation(),
+        radiusMeters: 5000,
+      },
+    } as unknown as CachedVegetationContext;
+
+    expect(vegetationCacheForRequest([oldRadiusEnvelope], coordinates)).toBeNull();
   });
 
   it('detects expired vegetation cache entries', () => {
@@ -87,6 +109,68 @@ describe('vegetation cache', () => {
       }),
     );
 
-    await expect(loadVegetationCache()).resolves.toBeNull();
+    await expect(loadVegetationCache()).resolves.toEqual([]);
+  });
+
+  it('rejects persisted vegetation data fetched with an obsolete radius', async () => {
+    await AsyncStorage.setItem(
+      'airaware.vegetation-cache.v1',
+      JSON.stringify({
+        version: VEGETATION_CACHE_SCHEMA_VERSION,
+        entries: [
+          {
+            metadata: {
+              version: VEGETATION_CACHE_SCHEMA_VERSION,
+              savedAt: '2026-08-01T00:00:00Z',
+              cacheKey: `${VEGETATION_CACHE_SCHEMA_VERSION}:50.07550:14.43780:5000`,
+            },
+            data: {
+              ...vegetation(),
+              radiusMeters: 5000,
+            },
+          },
+        ],
+      }),
+    );
+
+    await expect(loadVegetationCache()).resolves.toEqual([]);
+  });
+
+  it('rejects persisted vegetation entries whose cache key does not match their data', async () => {
+    await AsyncStorage.setItem(
+      'airaware.vegetation-cache.v1',
+      JSON.stringify({
+        version: VEGETATION_CACHE_SCHEMA_VERSION,
+        entries: [
+          {
+            metadata: {
+              version: VEGETATION_CACHE_SCHEMA_VERSION,
+              savedAt: '2026-08-01T00:00:00Z',
+              cacheKey: `${VEGETATION_CACHE_SCHEMA_VERSION}:48.86:2.35:2000`,
+            },
+            data: vegetation(),
+          },
+        ],
+      }),
+    );
+
+    await expect(loadVegetationCache()).resolves.toEqual([]);
+  });
+
+  it('keeps separate vegetation cache entries by location', async () => {
+    const prague = vegetationCacheEnvelope(vegetation());
+    const parisVegetation: NormalizedVegetationContext = {
+      ...vegetation(),
+      coordinates: { latitude: 48.8566, longitude: 2.3522 },
+    };
+    const paris = vegetationCacheEnvelope(parisVegetation);
+
+    await saveVegetationCache(prague);
+    await saveVegetationCache(paris);
+
+    const caches = await loadVegetationCache();
+
+    expect(vegetationCacheForRequest(caches, coordinates)).toEqual(prague);
+    expect(vegetationCacheForRequest(caches, parisVegetation.coordinates)).toEqual(paris);
   });
 });

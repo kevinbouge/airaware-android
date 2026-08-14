@@ -430,15 +430,13 @@ export function bestActivityWindowForDate(
   const dayHours = hours.filter((hour) => hour.timestamp.slice(0, 10) === date);
 
   for (const category of availableCategoriesByRank(dayHours)) {
-    const candidates = candidateWindowsForCategory(hours, category, minimumDurationHours).filter(
-      (candidate) => candidate.startTime.slice(0, 10) === date,
-    );
+    const candidates = candidateWindowsForCategory(dayHours, category, minimumDurationHours);
     if (candidates.length > 0) {
       return selectBestWindow(candidates);
     }
   }
 
-  return unavailableWindow();
+  return minimumDurationHours > 1 ? bestActivityWindow(dayHours, 1) : unavailableWindow();
 }
 
 export function bestActivityWindowForRange(

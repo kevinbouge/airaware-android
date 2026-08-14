@@ -1,9 +1,10 @@
 import { StatusBar } from 'expo-status-bar';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 import { AppState } from 'react-native';
 import { AppNavigator } from './src/navigation/AppNavigator';
-import { useCapabilities } from './src/hooks/useCapabilities';
-import { shouldRefreshAfterHydration, shouldRunScheduledRefresh } from './src/state/appLifecycle';
+import { installQueryFocusListener, queryClient } from './src/services/queryClient';
+import { shouldRefreshAfterHydration } from './src/state/appLifecycle';
 import {
   disposeAppStoreResources,
   flushPendingSettingsSave,
@@ -13,64 +14,53 @@ import {
 export default function App() {
   const hydrate = useAppStore((state) => state.hydrate);
   const hydrated = useAppStore((state) => state.hydrated);
-  const environment = useAppStore((state) => state.environment);
   const refresh = useAppStore((state) => state.refresh);
-  const refreshIntervalMinutes = useAppStore((state) => state.settings.refreshIntervalMinutes);
   const locationOnboardingComplete = useAppStore(
     (state) => state.settings.locationOnboardingComplete,
   );
-  const capabilities = useCapabilities();
-  const extendedRefreshAttempted = useRef(false);
+  const appState = useRef(AppState.currentState);
 
   useEffect(() => {
     void hydrate();
-    return () => disposeAppStoreResources();
+    const uninstallQueryFocusListener = installQueryFocusListener();
+    return () => {
+      uninstallQueryFocusListener();
+      disposeAppStoreResources();
+    };
   }, [hydrate]);
 
   useEffect(() => {
-    const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'background' || state === 'inactive') {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      const wasInactive = appState.current === 'background' || appState.current === 'inactive';
+      appState.current = nextState;
+
+      if (nextState === 'background' || nextState === 'inactive') {
         void flushPendingSettingsSave();
+      }
+
+      if (nextState === 'active' && wasInactive && hydrated && locationOnboardingComplete) {
+        void refresh();
       }
     });
 
     return () => subscription.remove();
-  }, []);
+  }, [hydrated, locationOnboardingComplete, refresh]);
 
   useEffect(() => {
     if (
       shouldRefreshAfterHydration({
         hydrated,
-        environment,
         locationOnboardingComplete,
-        capabilities,
-        extendedRefreshAttempted: extendedRefreshAttempted.current,
       })
     ) {
-      extendedRefreshAttempted.current = true;
       void refresh();
     }
-  }, [capabilities, environment, hydrated, locationOnboardingComplete, refresh]);
-
-  useEffect(() => {
-    if (!shouldRunScheduledRefresh({ hydrated, locationOnboardingComplete })) {
-      return undefined;
-    }
-
-    const timer = setInterval(
-      () => {
-        void refresh();
-      },
-      refreshIntervalMinutes * 60 * 1000,
-    );
-
-    return () => clearInterval(timer);
-  }, [hydrated, locationOnboardingComplete, refresh, refreshIntervalMinutes]);
+  }, [hydrated, locationOnboardingComplete, refresh]);
 
   return (
-    <>
+    <QueryClientProvider client={queryClient}>
       <AppNavigator />
       <StatusBar style="auto" />
-    </>
+    </QueryClientProvider>
   );
 }

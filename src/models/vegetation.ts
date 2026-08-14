@@ -19,7 +19,7 @@ export interface VegetationTaxonSummary {
 export interface NormalizedVegetationContext {
   provider: 'openstreetmap';
   coordinates: Coordinates;
-  radiusMeters: 1000 | 2000 | 5000;
+  radiusMeters: 2000;
   fetchedAt: string;
   categories: Record<VegetationCategoryId, VegetationFeatureSummary>;
   mappedTaxa: Record<VegetationTaxonId, VegetationTaxonSummary>;

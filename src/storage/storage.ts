@@ -1,7 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { z } from 'zod';
 import {
   CACHE_SCHEMA_VERSION,
   DATA_DETAIL_CACHE_SCHEMA_VERSION,
+  NEARBY_VEGETATION_RADIUS_METERS,
   VEGETATION_CACHE_SCHEMA_VERSION,
 } from '../core/constants';
 import type {
@@ -37,6 +39,7 @@ import {
 import { isFiniteNumber } from '../utils/number';
 import { ACTIVITY_IDS, DEFAULT_ACTIVITY_SETTINGS } from '../core/activityDefinitions';
 import type { ActivitySettings } from '../models/activities';
+import { vegetationCacheKey } from '../services/vegetationCache';
 
 const SETTINGS_KEY = 'airaware.settings.v1';
 const PROFILE_KEY = 'airaware.profile.v1';
@@ -48,13 +51,52 @@ const BILLING_ENTITLEMENT_CACHE_KEY = 'airaware.billing-entitlement-cache.v1';
 const BILLING_ENTITLEMENT_CACHE_SCHEMA_VERSION = 1;
 const VEGETATION_CACHE_KEY = 'airaware.vegetation-cache.v1';
 const DATA_DETAIL_CACHE_PREFIX = 'airaware.data-detail-cache.v1:';
+const MAX_VEGETATION_CACHE_ENTRIES = 12;
+
+const jsonObjectSchema = z.record(z.string(), z.unknown());
+const persistedSettingsSchema = jsonObjectSchema;
+const persistedProfileSchema = jsonObjectSchema;
+const persistedBillingEntitlementCacheSchema = z
+  .object({
+    version: z.literal(BILLING_ENTITLEMENT_CACHE_SCHEMA_VERSION),
+    entitlement: jsonObjectSchema,
+    verifiedAt: z.string().refine((value) => Number.isFinite(Date.parse(value))),
+    source: z.enum(['revenuecat', 'cached_revenuecat']),
+  })
+  .passthrough();
+const cachedEnvironmentEnvelopeSchema = z
+  .object({
+    metadata: z
+      .object({
+        version: z.literal(CACHE_SCHEMA_VERSION),
+        savedAt: z.string(),
+        stale: z.boolean().optional(),
+      })
+      .passthrough(),
+    data: z.unknown(),
+  })
+  .passthrough();
+const vegetationCacheEnvelopeSchema = z
+  .object({
+    version: z.literal(VEGETATION_CACHE_SCHEMA_VERSION),
+    entries: z.array(z.unknown()),
+  })
+  .passthrough();
+const dataDetailCacheEnvelopeSchema = z
+  .object({
+    version: z.literal(DATA_DETAIL_CACHE_SCHEMA_VERSION),
+    savedAt: z.string(),
+    cacheKey: z.string(),
+    data: z.unknown(),
+  })
+  .passthrough();
 
 function readObject(value: string | null): Record<string, unknown> | null {
   if (value === null) return null;
 
   try {
     const parsed = JSON.parse(value);
-    return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+    return jsonObjectSchema.safeParse(parsed).data ?? null;
   } catch (error) {
     console.warn('AirAware: invalid local JSON', error);
     return null;
@@ -75,18 +117,6 @@ function booleanRecord(value: unknown): Record<string, boolean> {
 
 function validLocationMode(value: unknown): AppSettings['locationMode'] {
   return value === 'manual' || value === 'automatic' ? value : DEFAULT_SETTINGS.locationMode;
-}
-
-function validRefreshInterval(value: unknown): AppSettings['refreshIntervalMinutes'] {
-  return value === 30 || value === 60 || value === 120
-    ? value
-    : DEFAULT_SETTINGS.refreshIntervalMinutes;
-}
-
-function validVegetationRadius(value: unknown): AppSettings['nearbyVegetationRadiusMeters'] {
-  return value === 1000 || value === 2000 || value === 5000
-    ? value
-    : DEFAULT_SETTINGS.nearbyVegetationRadiusMeters;
 }
 
 function validScorePreference(
@@ -137,6 +167,14 @@ function knownActivityDomains(value: unknown): (typeof ACTIVITY_IDS)[number][] {
     (activityId): activityId is (typeof ACTIVITY_IDS)[number] =>
       typeof activityId === 'string' && allowed.has(activityId),
   );
+}
+
+function knownProviderVariables(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+
+  return Array.from(
+    new Set(value.filter((item): item is string => typeof item === 'string' && item.length > 0)),
+  ).sort();
 }
 
 function stringOrDefault(value: unknown, fallback: string): string {
@@ -285,9 +323,7 @@ function isVegetationContext(value: unknown): value is NormalizedVegetationConte
     coordinates !== undefined &&
     isFiniteNumber(coordinates.latitude) &&
     isFiniteNumber(coordinates.longitude) &&
-    (object.radiusMeters === 1000 ||
-      object.radiusMeters === 2000 ||
-      object.radiusMeters === 5000) &&
+    object.radiusMeters === NEARBY_VEGETATION_RADIUS_METERS &&
     typeof object.fetchedAt === 'string' &&
     typeof categories === 'object' &&
     categories !== null &&
@@ -434,19 +470,23 @@ function normalizedCachedEnvironment(data: CachedEnvironment['data']): CachedEnv
       airQualitySource: data.metadata.airQualitySource ?? 'fresh',
       weatherSource: data.metadata.weatherSource ?? 'fresh',
       requestedActivityDomains: knownActivityDomains(data.metadata.requestedActivityDomains),
+      requestedAirQualityVariables: knownProviderVariables(
+        data.metadata.requestedAirQualityVariables,
+      ),
+      requestedWeatherVariables: knownProviderVariables(data.metadata.requestedWeatherVariables),
     },
   };
 }
 
 export async function loadSettings(): Promise<AppSettings> {
-  const object = readObject(await AsyncStorage.getItem(SETTINGS_KEY));
+  const object =
+    persistedSettingsSchema.safeParse(readObject(await AsyncStorage.getItem(SETTINGS_KEY))).data ??
+    {};
 
   return {
     locationMode: validLocationMode(object?.locationMode),
     manualLatitude: stringOrDefault(object?.manualLatitude, DEFAULT_SETTINGS.manualLatitude),
     manualLongitude: stringOrDefault(object?.manualLongitude, DEFAULT_SETTINGS.manualLongitude),
-    refreshIntervalMinutes: validRefreshInterval(object?.refreshIntervalMinutes),
-    nearbyVegetationRadiusMeters: validVegetationRadius(object?.nearbyVegetationRadiusMeters),
     summaryScore: validScorePreference(object?.summaryScore, DEFAULT_SETTINGS.summaryScore),
     summaryLocation: validSummaryLocation(object?.summaryLocation),
     riskTransitionNotificationsEnabled: object?.riskTransitionNotificationsEnabled === true,
@@ -464,7 +504,9 @@ export async function saveSettings(settings: AppSettings): Promise<void> {
 }
 
 export async function loadProfile(): Promise<PersonalAllergyProfile> {
-  const object = readObject(await AsyncStorage.getItem(PROFILE_KEY));
+  const object =
+    persistedProfileSchema.safeParse(readObject(await AsyncStorage.getItem(PROFILE_KEY))).data ??
+    {};
   return {
     enabled: object?.enabled === true,
     factors: knownProfileFactors(object?.factors),
@@ -476,28 +518,22 @@ export async function saveProfile(profile: PersonalAllergyProfile): Promise<void
 }
 
 export async function loadEnvironmentCache(): Promise<CachedEnvironment | null> {
-  const object = readObject(await AsyncStorage.getItem(ENVIRONMENT_CACHE_KEY));
+  const parsed = cachedEnvironmentEnvelopeSchema.safeParse(
+    readObject(await AsyncStorage.getItem(ENVIRONMENT_CACHE_KEY)),
+  );
+  if (!parsed.success) return null;
 
-  if (object?.metadata === null || typeof object?.metadata !== 'object' || object?.data === null) {
-    return null;
-  }
-
-  const metadata = object.metadata as Record<string, unknown>;
-  if (metadata.version !== CACHE_SCHEMA_VERSION || typeof metadata.savedAt !== 'string') {
-    return null;
-  }
-
-  if (!isValidCachedEnvironment(object.data)) {
+  if (!isValidCachedEnvironment(parsed.data.data)) {
     return null;
   }
 
   return {
     metadata: {
       version: CACHE_SCHEMA_VERSION,
-      savedAt: metadata.savedAt,
-      stale: metadata.stale === true,
+      savedAt: parsed.data.metadata.savedAt,
+      stale: parsed.data.metadata.stale === true,
     },
-    data: normalizedCachedEnvironment(object.data),
+    data: normalizedCachedEnvironment(parsed.data.data),
   };
 }
 
@@ -552,16 +588,13 @@ export interface BillingEntitlementCache {
 }
 
 function isBillingEntitlementCache(value: unknown): value is BillingEntitlementCache {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const parsed = persistedBillingEntitlementCacheSchema.safeParse(value);
+  if (!parsed.success) return false;
 
-  const object = value as Record<string, unknown>;
+  const object = parsed.data;
   return (
-    object.version === BILLING_ENTITLEMENT_CACHE_SCHEMA_VERSION &&
-    (object.source === 'revenuecat' || object.source === 'cached_revenuecat') &&
-    typeof object.verifiedAt === 'string' &&
-    Number.isFinite(Date.parse(object.verifiedAt)) &&
     normalizeEntitlement(object.entitlement).kind ===
-      (object.entitlement as Record<string, unknown> | null)?.kind
+    (object.entitlement as Record<string, unknown> | null)?.kind
   );
 }
 
@@ -582,18 +615,20 @@ export async function saveBillingEntitlementCache(cache: BillingEntitlementCache
   );
 }
 
-export async function loadVegetationCache(): Promise<CachedVegetationContext | null> {
-  const object = readObject(await AsyncStorage.getItem(VEGETATION_CACHE_KEY));
-
+function vegetationCacheFromObject(value: unknown): CachedVegetationContext | null {
   if (
-    object?.metadata === null ||
-    typeof object?.metadata !== 'object' ||
-    object?.data === null ||
-    object.data === undefined
+    value === null ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    (value as Record<string, unknown>).metadata === null ||
+    typeof (value as Record<string, unknown>).metadata !== 'object' ||
+    (value as Record<string, unknown>).data === null ||
+    (value as Record<string, unknown>).data === undefined
   ) {
     return null;
   }
 
+  const object = value as Record<string, unknown>;
   const metadata = object.metadata as Record<string, unknown>;
   if (
     metadata.version !== VEGETATION_CACHE_SCHEMA_VERSION ||
@@ -607,6 +642,10 @@ export async function loadVegetationCache(): Promise<CachedVegetationContext | n
     return null;
   }
 
+  if (metadata.cacheKey !== vegetationCacheKey(object.data.coordinates)) {
+    return null;
+  }
+
   return {
     metadata: {
       version: VEGETATION_CACHE_SCHEMA_VERSION,
@@ -617,31 +656,56 @@ export async function loadVegetationCache(): Promise<CachedVegetationContext | n
   };
 }
 
+export async function loadVegetationCache(): Promise<CachedVegetationContext[]> {
+  const parsed = vegetationCacheEnvelopeSchema.safeParse(
+    readObject(await AsyncStorage.getItem(VEGETATION_CACHE_KEY)),
+  );
+  if (!parsed.success) return [];
+
+  return parsed.data.entries
+    .map(vegetationCacheFromObject)
+    .filter((entry): entry is CachedVegetationContext => entry !== null)
+    .slice(0, MAX_VEGETATION_CACHE_ENTRIES);
+}
+
 export async function saveVegetationCache(cache: CachedVegetationContext): Promise<void> {
-  await AsyncStorage.setItem(VEGETATION_CACHE_KEY, JSON.stringify(cache));
+  const existing = await loadVegetationCache();
+  const entries = [
+    cache,
+    ...existing.filter((entry) => entry.metadata.cacheKey !== cache.metadata.cacheKey),
+  ].slice(0, MAX_VEGETATION_CACHE_ENTRIES);
+
+  await AsyncStorage.setItem(
+    VEGETATION_CACHE_KEY,
+    JSON.stringify({
+      version: VEGETATION_CACHE_SCHEMA_VERSION,
+      entries,
+    }),
+  );
 }
 
 export async function loadDataDetailCache(
   cacheKey: string,
 ): Promise<CachedDataDetailTimeline | null> {
-  const object = readObject(await AsyncStorage.getItem(`${DATA_DETAIL_CACHE_PREFIX}${cacheKey}`));
+  const parsed = dataDetailCacheEnvelopeSchema.safeParse(
+    readObject(await AsyncStorage.getItem(`${DATA_DETAIL_CACHE_PREFIX}${cacheKey}`)),
+  );
 
   if (
-    object?.version !== DATA_DETAIL_CACHE_SCHEMA_VERSION ||
-    typeof object.savedAt !== 'string' ||
-    object.cacheKey !== cacheKey ||
-    !isDataDetailTimeline(object.data)
+    !parsed.success ||
+    parsed.data.cacheKey !== cacheKey ||
+    !isDataDetailTimeline(parsed.data.data)
   ) {
     return null;
   }
 
   return {
     version: DATA_DETAIL_CACHE_SCHEMA_VERSION,
-    savedAt: object.savedAt,
+    savedAt: parsed.data.savedAt,
     cacheKey,
     data: {
-      ...object.data,
-      forecastTruncated: object.data.forecastTruncated ?? false,
+      ...parsed.data.data,
+      forecastTruncated: parsed.data.data.forecastTruncated ?? false,
     },
   };
 }

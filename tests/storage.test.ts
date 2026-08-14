@@ -99,10 +99,8 @@ describe('settings storage', () => {
     const settings = await loadSettings();
 
     expect(settings.locationMode).toBe(DEFAULT_SETTINGS.locationMode);
-    expect(settings.refreshIntervalMinutes).toBe(DEFAULT_SETTINGS.refreshIntervalMinutes);
-    expect(settings.nearbyVegetationRadiusMeters).toBe(
-      DEFAULT_SETTINGS.nearbyVegetationRadiusMeters,
-    );
+    expect('refreshIntervalMinutes' in settings).toBe(false);
+    expect('nearbyVegetationRadiusMeters' in settings).toBe(false);
     expect('outdoorWindowDurationHours' in settings).toBe(false);
     expect('headlineScore' in settings).toBe(false);
     expect(settings.summaryScore).toBe(DEFAULT_SETTINGS.summaryScore);

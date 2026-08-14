@@ -16,7 +16,22 @@ describe('data detail service request windows', () => {
         rangeId: '24h',
         now: '2026-08-11T00:30:00+02:00',
       }),
-    ).toBe('50.08,14.44:pm25:24h:2026-08-11');
+    ).toBe('50.07550,14.43780:pm25:24h:2026-08-11');
+    expect(
+      dataDetailCacheKey({
+        coordinates: { latitude: 50.07551, longitude: 14.43781 },
+        variableId: 'pm25',
+        rangeId: '24h',
+        now: '2026-08-11T00:30:00+02:00',
+      }),
+    ).not.toBe(
+      dataDetailCacheKey({
+        coordinates: { latitude: 50.07559, longitude: 14.43789 },
+        variableId: 'pm25',
+        rangeId: '24h',
+        now: '2026-08-11T00:30:00+02:00',
+      }),
+    );
   });
 
   it('uses the provider-local date for cache keys around negative UTC offsets', () => {

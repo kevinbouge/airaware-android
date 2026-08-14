@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { Coordinates } from '../models/environment';
 import type {
   NormalizedVegetationContext,
@@ -6,29 +7,34 @@ import type {
   VegetationTaxonId,
   VegetationTaxonSummary,
 } from '../models/vegetation';
+import { NEARBY_VEGETATION_RADIUS_METERS } from '../core/constants';
 import { distanceMeters } from '../utils/geo';
 import { coordinateNumber, isFiniteNumber } from '../utils/number';
 import { fetchJson } from './http';
 
 const DEFAULT_OVERPASS_ENDPOINT = 'https://overpass-api.de/api/interpreter';
-const VEGETATION_RADII = [1000, 2000, 5000] as const;
-type VegetationRadiusMeters = (typeof VEGETATION_RADII)[number];
 
-type OverpassElement = {
-  type?: unknown;
-  id?: unknown;
-  lat?: unknown;
-  lon?: unknown;
-  center?: {
-    lat?: unknown;
-    lon?: unknown;
-  };
-  tags?: unknown;
-};
+const overpassElementSchema = z
+  .object({
+    type: z.unknown().optional(),
+    id: z.unknown().optional(),
+    lat: z.unknown().optional(),
+    lon: z.unknown().optional(),
+    center: z
+      .object({
+        lat: z.unknown().optional(),
+        lon: z.unknown().optional(),
+      })
+      .optional(),
+    tags: z.unknown().optional(),
+  })
+  .passthrough();
+const overpassPayloadSchema = z.object({
+  elements: z.array(overpassElementSchema),
+});
 
-type OverpassPayload = {
-  elements?: unknown;
-};
+type OverpassElement = z.infer<typeof overpassElementSchema>;
+type OverpassPayload = z.infer<typeof overpassPayloadSchema>;
 
 const CATEGORY_IDS: VegetationCategoryId[] = [
   'woodland',
@@ -52,14 +58,6 @@ function emptyTaxa(): Record<VegetationTaxonId, VegetationTaxonSummary> {
   return Object.fromEntries(
     TAXON_IDS.map((id) => [id, { featureCount: 0, nearestMeters: null }]),
   ) as Record<VegetationTaxonId, VegetationTaxonSummary>;
-}
-
-function validateRadius(radiusMeters: number): VegetationRadiusMeters {
-  if (VEGETATION_RADII.includes(radiusMeters as VegetationRadiusMeters)) {
-    return radiusMeters as VegetationRadiusMeters;
-  }
-
-  throw new Error('Invalid vegetation radius');
 }
 
 function validateCoordinates(coordinates: Coordinates): Coordinates {
@@ -167,10 +165,9 @@ function addTaxon(
   };
 }
 
-export function buildVegetationQuery(coordinates: Coordinates, radiusMeters: number): string {
+export function buildVegetationQuery(coordinates: Coordinates): string {
   const { latitude, longitude } = validateCoordinates(coordinates);
-  const radius = validateRadius(radiusMeters);
-  const around = `around:${radius},${latitude},${longitude}`;
+  const around = `around:${NEARBY_VEGETATION_RADIUS_METERS},${latitude},${longitude}`;
 
   return `[out:json][timeout:20];
 (
@@ -183,26 +180,23 @@ out center tags;`;
 
 export function buildVegetationUrl(
   coordinates: Coordinates,
-  radiusMeters: number,
   endpoint = DEFAULT_OVERPASS_ENDPOINT,
 ): string {
   const params = new URLSearchParams({
-    data: buildVegetationQuery(coordinates, radiusMeters),
+    data: buildVegetationQuery(coordinates),
   });
 
   return `${endpoint}?${params.toString()}`;
 }
 
 export function normalizeVegetationResponse(
-  payload: OverpassPayload,
+  payload: unknown,
   coordinates: Coordinates,
-  radiusMeters: number,
   fetchedAt = new Date().toISOString(),
 ): NormalizedVegetationContext {
   const effectiveCoordinates = validateCoordinates(coordinates);
-  const radius = validateRadius(radiusMeters);
-
-  if (!Array.isArray(payload.elements)) {
+  const parsed = overpassPayloadSchema.safeParse(payload);
+  if (!parsed.success) {
     throw new Error('Invalid Overpass response');
   }
 
@@ -210,12 +204,7 @@ export function normalizeVegetationResponse(
   const mappedTaxa = emptyTaxa();
   const seen = new Set<string>();
 
-  for (const rawElement of payload.elements) {
-    if (rawElement === null || typeof rawElement !== 'object' || Array.isArray(rawElement)) {
-      continue;
-    }
-
-    const element = rawElement as OverpassElement;
+  for (const element of parsed.data.elements) {
     const type = typeof element.type === 'string' ? element.type : null;
     const id = isFiniteNumber(element.id) ? String(Math.trunc(element.id)) : null;
     if (!type || !id) continue;
@@ -242,7 +231,7 @@ export function normalizeVegetationResponse(
   return {
     provider: 'openstreetmap',
     coordinates: effectiveCoordinates,
-    radiusMeters: radius,
+    radiusMeters: NEARBY_VEGETATION_RADIUS_METERS,
     fetchedAt,
     categories,
     mappedTaxa,
@@ -253,11 +242,8 @@ export function normalizeVegetationResponse(
 
 export async function fetchVegetationContext(
   coordinates: Coordinates,
-  radiusMeters: number,
   endpoint = DEFAULT_OVERPASS_ENDPOINT,
 ): Promise<NormalizedVegetationContext> {
-  const payload = await fetchJson<OverpassPayload>(
-    buildVegetationUrl(coordinates, radiusMeters, endpoint),
-  );
-  return normalizeVegetationResponse(payload, coordinates, radiusMeters);
+  const payload = await fetchJson<OverpassPayload>(buildVegetationUrl(coordinates, endpoint));
+  return normalizeVegetationResponse(payload, coordinates);
 }

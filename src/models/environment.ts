@@ -211,6 +211,8 @@ export interface NormalizedEnvironment {
     airQualitySource: 'fresh' | 'cached' | 'unavailable';
     weatherSource: 'fresh' | 'cached' | 'unavailable';
     requestedActivityDomains?: ActivityDomainId[] | undefined;
+    requestedAirQualityVariables?: string[] | undefined;
+    requestedWeatherVariables?: string[] | undefined;
     partial: boolean;
   };
 }

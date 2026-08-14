@@ -1,10 +1,11 @@
 import { nearbyVegetationRows } from '../src/components/NearbyVegetationSection';
+import { NEARBY_VEGETATION_RADIUS_METERS } from '../src/core/constants';
 import type { NormalizedVegetationContext } from '../src/models/vegetation';
 
 const vegetation: NormalizedVegetationContext = {
   provider: 'openstreetmap',
   coordinates: { latitude: 50.0755, longitude: 14.4378 },
-  radiusMeters: 2000,
+  radiusMeters: NEARBY_VEGETATION_RADIUS_METERS,
   fetchedAt: '2026-08-01T12:00:00Z',
   categories: {
     woodland: { present: true, featureCount: 1, nearestMeters: 1100 },

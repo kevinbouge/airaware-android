@@ -11,6 +11,7 @@ import { ScoreCard } from '../src/components/ScoreCard';
 import { SectionCard } from '../src/components/SectionCard';
 import { SummaryMetricGrid } from '../src/components/ui/SummaryMetricGrid';
 import { FREE_CAPABILITIES } from '../src/capabilities/config';
+import { visibleCurrentDataDetailValue } from '../src/core/dataDetailCurrentValue';
 
 describe('shared UI components', () => {
   it('does not add header spacing to untitled section cards', () => {
@@ -145,6 +146,35 @@ describe('shared UI components', () => {
 
     expect(section.type).toBe(ForecastBarSection);
     expect(section.props.emptyLabel).toBe('Forecast data is unavailable.');
+  });
+
+  it('falls back to the timeline current value on variable detail pages', () => {
+    expect(
+      visibleCurrentDataDetailValue({
+        environmentCurrentValue: null,
+        timeline: {
+          summary: {
+            current: 28,
+            minimum: 10,
+            maximum: 30,
+            average: 20,
+          },
+        } as never,
+      }),
+    ).toBe(28);
+    expect(
+      visibleCurrentDataDetailValue({
+        environmentCurrentValue: 12,
+        timeline: {
+          summary: {
+            current: 28,
+            minimum: 10,
+            maximum: 30,
+            average: 20,
+          },
+        } as never,
+      }),
+    ).toBe(12);
   });
 
   it('shows category labels next to scores in daily risk forecasts', () => {

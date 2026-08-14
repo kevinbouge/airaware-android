@@ -1,3 +1,4 @@
+import { differenceInMilliseconds, subDays, subHours } from 'date-fns';
 import type { EnvironmentalVariableId } from '../capabilities/types';
 import {
   DATA_DETAIL_CACHE_SCHEMA_VERSION,
@@ -7,12 +8,10 @@ import { buildDataDetailTimeline } from '../core/dataTimeline';
 import { dataDetailRange, dataDetailVariable } from '../core/dataVariableMetadata';
 import type { DataDetailRangeId, DataDetailTimeline } from '../models/dataDetail';
 import type { Coordinates } from '../models/environment';
-import { fetchDataDetailSource } from '../api/openMeteoDataDetail';
+import { fetchDataDetailSourceQuery } from './dataDetailQueries';
 import { loadDataDetailCache, saveDataDetailCache } from '../storage/storage';
 import { providerLocalDate } from '../utils/time';
 
-const HOUR_MS = 60 * 60 * 1000;
-const DAY_MS = 24 * HOUR_MS;
 const TIMESTAMP_OFFSET_PATTERN = /(Z|[+-]\d{2}:\d{2})$/;
 
 function dateKey(time: number): string {
@@ -55,7 +54,7 @@ export function dataDetailLocalDateKey(now: string): string {
 }
 
 function cacheCoordinates(coordinates: Coordinates): string {
-  return `${coordinates.latitude.toFixed(2)},${coordinates.longitude.toFixed(2)}`;
+  return `${coordinates.latitude.toFixed(5)},${coordinates.longitude.toFixed(5)}`;
 }
 
 export function dataDetailCacheKey(input: {
@@ -74,8 +73,9 @@ export function dataDetailHistoryDatesForNow(
 ): { startDate: string; endDate: string } {
   const nowTime = Date.parse(now);
   const safeNow = Number.isFinite(nowTime) ? nowTime : Date.now();
+  const historyStart = subDays(subHours(new Date(safeNow), historyHours), 1).getTime();
   return {
-    startDate: dateKeyInReferenceOffset(safeNow - historyHours * HOUR_MS - DAY_MS, now),
+    startDate: dateKeyInReferenceOffset(historyStart, now),
     endDate: dataDetailLocalDateKey(now),
   };
 }
@@ -97,12 +97,14 @@ function forecastHoursFor(
 async function cachedTimeline(cacheKey: string): Promise<DataDetailTimeline | null> {
   const cache = await loadDataDetailCache(cacheKey);
   if (!cache) return null;
+  const savedAt = Date.parse(cache.savedAt);
+  const cacheExpired =
+    !Number.isFinite(savedAt) ||
+    differenceInMilliseconds(new Date(), new Date(savedAt)) > DATA_DETAIL_CACHE_STALE_AFTER_MS;
 
   return {
     ...cache.data,
-    partial:
-      cache.data.partial ||
-      Date.now() - Date.parse(cache.savedAt) > DATA_DETAIL_CACHE_STALE_AFTER_MS,
+    partial: cache.data.partial || cacheExpired,
   };
 }
 
@@ -147,14 +149,14 @@ export async function loadDataDetailTimeline(input: {
 
   const dates = dataDetailHistoryDatesForNow(input.now, range.historyHours);
   const [historyResult, forecastResult] = await Promise.allSettled([
-    fetchDataDetailSource({
+    fetchDataDetailSourceQuery({
       coordinates: input.coordinates,
       variable,
       source: 'history',
       startDate: dates.startDate,
       endDate: dates.endDate,
     }),
-    fetchDataDetailSource({
+    fetchDataDetailSourceQuery({
       coordinates: input.coordinates,
       variable,
       source: 'forecast',

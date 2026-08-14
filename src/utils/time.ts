@@ -20,7 +20,7 @@ export function timestampWithUtcOffset(value: unknown, utcOffsetSeconds: unknown
   if (/(Z|[+-]\d{2}:\d{2})$/.test(value)) return value;
 
   const suffix = utcOffsetSuffix(utcOffsetSeconds);
-  return suffix ? `${value}${suffix}` : value;
+  return suffix ? `${value}${suffix}` : null;
 }
 
 export function providerLocalDate(value: string): string | null {

@@ -3,12 +3,13 @@ import {
   buildVegetationUrl,
   normalizeVegetationResponse,
 } from '../src/api/openStreetMapVegetation';
+import { NEARBY_VEGETATION_RADIUS_METERS } from '../src/core/constants';
 
 const coordinates = { latitude: 50.0755, longitude: 14.4378 };
 
 describe('OpenStreetMap vegetation provider', () => {
-  it('builds an encoded Overpass URL with supported radii and no full geometry request', () => {
-    const url = buildVegetationUrl(coordinates, 2000, 'https://example.test/interpreter');
+  it('builds an encoded Overpass URL with the standard radius and no full geometry request', () => {
+    const url = buildVegetationUrl(coordinates, 'https://example.test/interpreter');
     const parsed = new URL(url);
     const query = parsed.searchParams.get('data') ?? '';
 
@@ -19,20 +20,18 @@ describe('OpenStreetMap vegetation provider', () => {
     expect(query).not.toContain('out geom');
   });
 
-  it('supports 1 km, 2 km, and 5 km vegetation radii', () => {
-    expect(buildVegetationQuery(coordinates, 1000)).toContain('around:1000');
-    expect(buildVegetationQuery(coordinates, 2000)).toContain('around:2000');
-    expect(buildVegetationQuery(coordinates, 5000)).toContain('around:5000');
+  it('uses the standard vegetation radius', () => {
+    expect(NEARBY_VEGETATION_RADIUS_METERS).toBe(2000);
+    expect(buildVegetationQuery(coordinates)).toContain('around:2000');
   });
 
-  it('rejects invalid coordinates and radius values', () => {
-    expect(() => buildVegetationQuery({ latitude: 91, longitude: 14 }, 2000)).toThrow(
+  it('rejects invalid coordinates', () => {
+    expect(() => buildVegetationQuery({ latitude: 91, longitude: 14 })).toThrow(
       'Invalid vegetation coordinates',
     );
-    expect(() => buildVegetationQuery({ latitude: 50, longitude: 181 }, 2000)).toThrow(
+    expect(() => buildVegetationQuery({ latitude: 50, longitude: 181 })).toThrow(
       'Invalid vegetation coordinates',
     );
-    expect(() => buildVegetationQuery(coordinates, 3000)).toThrow('Invalid vegetation radius');
   });
 
   it('normalizes broad vegetation categories, coordinates, centers, taxa, and duplicates', () => {
@@ -103,7 +102,6 @@ describe('OpenStreetMap vegetation provider', () => {
         ],
       },
       coordinates,
-      2000,
       '2026-08-01T12:00:00Z',
     );
 
@@ -122,13 +120,11 @@ describe('OpenStreetMap vegetation provider', () => {
   });
 
   it('keeps valid empty responses distinct from invalid response structures', () => {
-    const empty = normalizeVegetationResponse({ elements: [] }, coordinates, 2000);
+    const empty = normalizeVegetationResponse({ elements: [] }, coordinates);
 
     expect(empty.categories.woodland.present).toBe(false);
     expect(empty.mappedTaxa.birch.featureCount).toBe(0);
-    expect(() => normalizeVegetationResponse({}, coordinates, 2000)).toThrow(
-      'Invalid Overpass response',
-    );
+    expect(() => normalizeVegetationResponse({}, coordinates)).toThrow('Invalid Overpass response');
   });
 
   it('does not mutate input payloads', () => {
@@ -145,7 +141,7 @@ describe('OpenStreetMap vegetation provider', () => {
     };
     const before = JSON.stringify(payload);
 
-    normalizeVegetationResponse(payload, coordinates, 2000);
+    normalizeVegetationResponse(payload, coordinates);
 
     expect(JSON.stringify(payload)).toBe(before);
   });

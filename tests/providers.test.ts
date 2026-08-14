@@ -80,6 +80,7 @@ describe('Open-Meteo providers', () => {
       latitude: 50,
       longitude: 14,
       timezone: 'Europe/Prague',
+      utc_offset_seconds: 7200,
       current: {
         time: '2026-08-01T12:00',
         temperature_2m: 20,
@@ -155,6 +156,7 @@ describe('Open-Meteo providers', () => {
       latitude: 50,
       longitude: 14,
       timezone: 'Europe/Prague',
+      utc_offset_seconds: 7200,
       current: {
         time: '2026-08-01T12:00',
         pm2_5: 8,
@@ -222,6 +224,7 @@ describe('Open-Meteo providers', () => {
       latitude: 50,
       longitude: 14,
       timezone: 'Europe/Prague',
+      utc_offset_seconds: 7200,
       current: {
         time: '2026-08-01T12:00',
         temperature_2m: 20,
@@ -283,6 +286,46 @@ describe('Open-Meteo providers', () => {
     });
     expect(response.hourly[0]?.extended.pressureMsl).toBe(1019);
     expect(response.hourly[0]?.extended.sunshineDuration).toBe(1800);
+  });
+
+  it('does not parse offset-less provider-local weather timestamps as device-local time', () => {
+    const response = normalizeWeather({
+      latitude: 50,
+      longitude: 14,
+      timezone: 'Europe/Prague',
+      current: {
+        time: '2026-08-01T12:00',
+        temperature_2m: 20,
+      },
+      hourly: {
+        time: ['2026-08-01T12:00'],
+        temperature_2m: [21],
+      },
+    });
+
+    expect(response.current.timestamp).toBeNull();
+    expect(response.hourly).toEqual([]);
+    expect(response.partial).toBe(true);
+  });
+
+  it('does not parse offset-less provider-local air-quality timestamps as device-local time', () => {
+    const response = normalizeAirQuality({
+      latitude: 50,
+      longitude: 14,
+      timezone: 'Europe/Prague',
+      current: {
+        time: '2026-08-01T12:00',
+        pm2_5: 8,
+      },
+      hourly: {
+        time: ['2026-08-01T12:00'],
+        pm2_5: [9],
+      },
+    });
+
+    expect(response.current.timestamp).toBeNull();
+    expect(response.hourly).toEqual([]);
+    expect(response.partial).toBe(true);
   });
 
   it('rejects weather responses with no usable numeric readings', () => {

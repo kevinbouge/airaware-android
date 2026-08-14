@@ -385,6 +385,60 @@ describe('Activities capability and model', () => {
     expect(formatActivityWindow(dailyWindow)).toBe('14:00–16:00');
   });
 
+  it('does not mark earlier activity forecast days unavailable when later days score higher', () => {
+    const result = evaluateActivity(testProfile(), {
+      coordinates: { latitude: 50, longitude: 14 },
+      now: '2026-08-01T12:00:00+02:00',
+      hourly: [
+        hour('2026-08-01T12:00:00+02:00', {
+          weather: { ...hour('2026-08-01T12:00:00+02:00').weather, windSpeed: 10 },
+        }),
+        hour('2026-08-01T13:00:00+02:00', {
+          weather: { ...hour('2026-08-01T13:00:00+02:00').weather, windSpeed: 10 },
+        }),
+        hour('2026-08-02T12:00:00+02:00', {
+          weather: { ...hour('2026-08-02T12:00:00+02:00').weather, windSpeed: 1 },
+        }),
+        hour('2026-08-02T13:00:00+02:00', {
+          weather: { ...hour('2026-08-02T13:00:00+02:00').weather, windSpeed: 1 },
+        }),
+      ],
+      enabledActivities: settings({ drone_operations: true }),
+      forecastDates: ['2026-08-01', '2026-08-02'],
+    });
+
+    const firstDay = bestActivityWindowForDate(result.hours, '2026-08-01');
+    const secondDay = bestActivityWindowForDate(result.hours, '2026-08-02');
+
+    expect(firstDay.available).toBe(true);
+    expect(firstDay.startTime).toBe('2026-08-01T12:00:00+02:00');
+    expect(secondDay.available).toBe(true);
+    expect(secondDay.startTime).toBe('2026-08-02T12:00:00+02:00');
+  });
+
+  it('keeps an activity forecast day available when data exists but no minimum window fits', () => {
+    const result = evaluateActivity(testProfile({ minimumUsefulWindowDuration: 3 }), {
+      coordinates: { latitude: 50, longitude: 14 },
+      now: '2026-08-01T12:00:00+02:00',
+      hourly: [
+        hour('2026-08-02T12:00:00+02:00', {
+          weather: { ...hour('2026-08-02T12:00:00+02:00').weather, windSpeed: 8 },
+        }),
+        hour('2026-08-02T13:00:00+02:00', {
+          weather: { ...hour('2026-08-02T13:00:00+02:00').weather, windSpeed: 8 },
+        }),
+      ],
+      enabledActivities: settings({ drone_operations: true }),
+      forecastDates: ['2026-08-02'],
+    });
+
+    const tomorrow = bestActivityWindowForDate(result.hours, '2026-08-02', 3);
+
+    expect(tomorrow.available).toBe(true);
+    expect(tomorrow.startTime).toBe('2026-08-02T12:00:00+02:00');
+    expect(formatActivityWindow(tomorrow)).toBe('12:00–14:00');
+  });
+
   it('falls back to a lower scoring continuous activity window when an isolated peak is too short', () => {
     const result = evaluateActivity(testProfile(), {
       coordinates: { latitude: 50, longitude: 14 },

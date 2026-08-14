@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { FORECAST_DAY_LIMITS } from '../capabilities/config';
 import { activityOpenMeteoVariables } from '../core/activityDefinitions';
 import type { ActivityDomainId } from '../models/activities';
@@ -40,15 +41,20 @@ const DAILY_VARIABLES = [
   'wind_speed_10m_mean',
 ];
 
-type OpenMeteoWeatherPayload = Record<string, unknown> & {
-  latitude?: unknown;
-  longitude?: unknown;
-  timezone?: unknown;
-  utc_offset_seconds?: unknown;
-  current?: Record<string, unknown>;
-  hourly?: Record<string, unknown>;
-  daily?: Record<string, unknown>;
-};
+const openMeteoRecordSchema = z.record(z.string(), z.unknown());
+const openMeteoWeatherPayloadSchema = z
+  .object({
+    latitude: z.unknown().optional(),
+    longitude: z.unknown().optional(),
+    timezone: z.unknown().optional(),
+    utc_offset_seconds: z.unknown().optional(),
+    current: openMeteoRecordSchema.optional(),
+    hourly: openMeteoRecordSchema.optional(),
+    daily: openMeteoRecordSchema.optional(),
+  })
+  .passthrough();
+
+type OpenMeteoWeatherPayload = z.infer<typeof openMeteoWeatherPayloadSchema>;
 
 export interface NormalizedWeather {
   coordinates: Coordinates;
@@ -182,7 +188,9 @@ function hasAnyNumeric(values: object): boolean {
   return Object.values(values).some((item) => typeof item === 'number' && Number.isFinite(item));
 }
 
-function weatherVariablesFor(activityIds: readonly ActivityDomainId[] = []): string[] {
+export function weatherVariableCoverageFor(
+  activityIds: readonly ActivityDomainId[] = [],
+): string[] {
   const activityVariables = activityOpenMeteoVariables(activityIds).weather;
   return Array.from(
     new Set([
@@ -210,7 +218,7 @@ export function buildWeatherUrl(
   coordinates: Coordinates,
   options: { enabledActivities?: readonly ActivityDomainId[] } = {},
 ): string {
-  const variables = weatherVariablesFor(options.enabledActivities ?? []);
+  const variables = weatherVariableCoverageFor(options.enabledActivities ?? []);
   const params = new URLSearchParams({
     latitude: String(coordinates.latitude),
     longitude: String(coordinates.longitude),
@@ -226,6 +234,12 @@ export function buildWeatherUrl(
 }
 
 export function normalizeWeather(payload: OpenMeteoWeatherPayload): NormalizedWeather {
+  const parsed = openMeteoWeatherPayloadSchema.safeParse(payload);
+  if (!parsed.success) {
+    throw new Error('Invalid Open-Meteo weather response');
+  }
+  payload = parsed.data;
+
   const latitude = coordinateNumber(payload.latitude);
   const longitude = coordinateNumber(payload.longitude);
 

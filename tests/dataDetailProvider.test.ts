@@ -103,6 +103,8 @@ describe('Open-Meteo data detail provider', () => {
       {
         latitude: 50,
         longitude: 14,
+        timezone: 'Europe/Prague',
+        utc_offset_seconds: 7200,
         hourly: {
           time: ['2026-08-10T12:00'],
           temperature_2m: [22],
@@ -122,6 +124,24 @@ describe('Open-Meteo data detail provider', () => {
 
     expect(result.points[0]?.value).toBe(expected.score);
     expect(result.points[0]?.source).toBe('forecast');
+  });
+
+  it('does not parse offset-less provider-local timestamps as device-local time', () => {
+    const result = normalizeDataDetailSource(
+      {
+        latitude: 50,
+        longitude: 14,
+        timezone: 'Europe/Prague',
+        hourly: {
+          time: ['2026-08-10T12:00'],
+          pm2_5: [8],
+        },
+      },
+      variable('pm25'),
+      'forecast',
+    );
+
+    expect(result.points).toEqual([]);
   });
 
   it('rejects invalid coordinates and missing hourly data', () => {

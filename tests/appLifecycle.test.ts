@@ -1,57 +1,14 @@
 import {
   shouldRefreshAfterHydration,
   shouldRefreshAfterLocationSettingsChange,
-  shouldRunScheduledRefresh,
 } from '../src/state/appLifecycle';
-import { FREE_CAPABILITIES, PRO_LIFETIME_CAPABILITIES } from '../src/capabilities/config';
 import { DEFAULT_SETTINGS } from '../src/models/profile';
-import type { NormalizedEnvironment } from '../src/models/environment';
-
-function environmentWithForecastDays(dayCount: number): NormalizedEnvironment {
-  return {
-    forecastDays: Array.from({ length: dayCount }, (_, index) => ({
-      date: `2026-08-0${index + 1}`,
-      label: `Day ${index + 1}`,
-      score: null,
-    })),
-    current: {
-      extended: {
-        airQuality: {
-          carbonDioxide: null,
-          ammonia: null,
-          methane: null,
-          nitrogenMonoxide: null,
-          formaldehyde: null,
-          nonMethaneVolatileOrganicCompounds: null,
-        },
-        weather: {
-          pressureMsl: null,
-          surfacePressure: null,
-          visibility: null,
-          cloudCover: null,
-          cloudCoverLow: null,
-          cloudCoverMid: null,
-          cloudCoverHigh: null,
-          dewPoint: null,
-          wetBulbTemperature: null,
-          windGusts: null,
-          shortwaveRadiation: null,
-          directNormalIrradiance: null,
-          diffuseRadiation: null,
-          sunshineDuration: null,
-          cape: null,
-        },
-      },
-    },
-  } as NormalizedEnvironment;
-}
 
 describe('app lifecycle refresh policy', () => {
   it('does not refresh before the location explanation has been accepted', () => {
     expect(
       shouldRefreshAfterHydration({
         hydrated: true,
-        environment: null,
         locationOnboardingComplete: false,
       }),
     ).toBe(false);
@@ -61,68 +18,14 @@ describe('app lifecycle refresh policy', () => {
     expect(
       shouldRefreshAfterHydration({
         hydrated: true,
-        environment: null,
         locationOnboardingComplete: true,
       }),
     ).toBe(true);
   });
 
-  it('refreshes a cached forecast when the active capability needs more days', () => {
+  it('runs the centralized freshness check after hydrated launch with cached data', () => {
     expect(
       shouldRefreshAfterHydration({
-        hydrated: true,
-        environment: environmentWithForecastDays(3),
-        locationOnboardingComplete: true,
-        capabilities: PRO_LIFETIME_CAPABILITIES,
-      }),
-    ).toBe(true);
-  });
-
-  it('does not refresh a cached forecast that satisfies the active capability limit', () => {
-    expect(
-      shouldRefreshAfterHydration({
-        hydrated: true,
-        environment: environmentWithForecastDays(3),
-        locationOnboardingComplete: true,
-        capabilities: FREE_CAPABILITIES,
-      }),
-    ).toBe(false);
-  });
-
-  it('does not refresh a Pro cache solely because generic extended readings are absent', () => {
-    expect(
-      shouldRefreshAfterHydration({
-        hydrated: true,
-        environment: environmentWithForecastDays(7),
-        locationOnboardingComplete: true,
-        capabilities: PRO_LIFETIME_CAPABILITIES,
-      }),
-    ).toBe(false);
-  });
-
-  it('does not refresh a Free cache solely because extended readings are absent', () => {
-    expect(
-      shouldRefreshAfterHydration({
-        hydrated: true,
-        environment: environmentWithForecastDays(3),
-        locationOnboardingComplete: true,
-        capabilities: FREE_CAPABILITIES,
-      }),
-    ).toBe(false);
-  });
-
-  it('does not start scheduled refresh before onboarding is complete', () => {
-    expect(
-      shouldRunScheduledRefresh({
-        hydrated: true,
-        locationOnboardingComplete: false,
-      }),
-    ).toBe(false);
-  });
-
-  it('starts scheduled refresh after onboarding is complete', () => {
-    expect(
-      shouldRunScheduledRefresh({
         hydrated: true,
         locationOnboardingComplete: true,
       }),
@@ -180,7 +83,7 @@ describe('app lifecycle refresh policy', () => {
     expect(
       shouldRefreshAfterLocationSettingsChange({
         previousSettings: automaticSettings,
-        nextSettings: { ...automaticSettings, refreshIntervalMinutes: 120 },
+        nextSettings: { ...automaticSettings, summaryLocation: 'hidden' },
       }),
     ).toBe(false);
     expect(

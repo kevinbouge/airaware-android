@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { Coordinates } from '../models/environment';
 import type {
   DataDetailSource,
@@ -13,14 +14,19 @@ const AIR_QUALITY_URL = 'https://air-quality-api.open-meteo.com/v1/air-quality';
 const WEATHER_FORECAST_URL = 'https://api.open-meteo.com/v1/forecast';
 const WEATHER_HISTORY_URL = 'https://historical-forecast-api.open-meteo.com/v1/forecast';
 
-type OpenMeteoTimelinePayload = Record<string, unknown> & {
-  latitude?: unknown;
-  longitude?: unknown;
-  timezone?: unknown;
-  utc_offset_seconds?: unknown;
-  hourly?: Record<string, unknown>;
-  daily?: Record<string, unknown>;
-};
+const openMeteoRecordSchema = z.record(z.string(), z.unknown());
+const openMeteoTimelinePayloadSchema = z
+  .object({
+    latitude: z.unknown().optional(),
+    longitude: z.unknown().optional(),
+    timezone: z.unknown().optional(),
+    utc_offset_seconds: z.unknown().optional(),
+    hourly: openMeteoRecordSchema.optional(),
+    daily: openMeteoRecordSchema.optional(),
+  })
+  .passthrough();
+
+type OpenMeteoTimelinePayload = z.infer<typeof openMeteoTimelinePayloadSchema>;
 
 const MOLD_DAILY_VARIABLES = ['leaf_wetness_probability_mean'] as const;
 
@@ -152,6 +158,12 @@ export function normalizeDataDetailSource(
   variable: DataDetailVariableDefinition,
   source: DataDetailSource,
 ): NormalizedDataDetailSource {
+  const parsed = openMeteoTimelinePayloadSchema.safeParse(payload);
+  if (!parsed.success) {
+    throw new Error('Invalid Open-Meteo detail response');
+  }
+  payload = parsed.data;
+
   const latitude = coordinateNumber(payload.latitude);
   const longitude = coordinateNumber(payload.longitude);
 

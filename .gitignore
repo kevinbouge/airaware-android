@@ -49,3 +49,5 @@ coverage/
 # Keystore
 android/app/*.keystore
 android/app/*.jks
+
+.idea/

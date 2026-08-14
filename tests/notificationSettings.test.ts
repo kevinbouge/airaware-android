@@ -114,18 +114,18 @@ describe('notification settings', () => {
   });
 
   it('flushes pending settings saves before the app can be suspended', async () => {
-    await useAppStore.getState().updateSettings({ refreshIntervalMinutes: 120 });
+    await useAppStore.getState().updateSettings({ summaryLocation: 'hidden' });
     await flushPendingSettingsSave();
 
     await expect(loadSettings()).resolves.toEqual(
-      expect.objectContaining({ refreshIntervalMinutes: 120 }),
+      expect.objectContaining({ summaryLocation: 'hidden' }),
     );
   });
 
   it('preserves concurrent settings changes while notification permission is pending', async () => {
     let nestedSettingsUpdate: Promise<void> | null = null;
     jest.mocked(requestRiskNotificationPermission).mockImplementation(async () => {
-      nestedSettingsUpdate = useAppStore.getState().updateSettings({ refreshIntervalMinutes: 120 });
+      nestedSettingsUpdate = useAppStore.getState().updateSettings({ summaryLocation: 'hidden' });
       return 'granted';
     });
 
@@ -133,7 +133,7 @@ describe('notification settings', () => {
     await nestedSettingsUpdate;
 
     expect(useAppStore.getState().settings.riskTransitionNotificationsEnabled).toBe(true);
-    expect(useAppStore.getState().settings.refreshIntervalMinutes).toBe(120);
+    expect(useAppStore.getState().settings.summaryLocation).toBe('hidden');
   });
 
   it('preserves rapid collapsed-section toggles from the latest settings state', async () => {

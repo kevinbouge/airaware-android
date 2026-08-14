@@ -109,43 +109,6 @@ export function SettingsScreen() {
         </SectionCard>
 
         <SectionCard
-          title="Nearby vegetation"
-          subtitle="OpenStreetMap vegetation context around the active location."
-        >
-          <View style={styles.buttonRow}>
-            {[
-              { label: '1 km', value: 1000 },
-              { label: '2 km', value: 2000 },
-              { label: '5 km', value: 5000 },
-            ].map((option) => (
-              <OptionButton
-                key={option.value}
-                label={option.label}
-                selected={settings.nearbyVegetationRadiusMeters === option.value}
-                onPress={() =>
-                  updateSettings({
-                    nearbyVegetationRadiusMeters: option.value as 1000 | 2000 | 5000,
-                  })
-                }
-              />
-            ))}
-          </View>
-        </SectionCard>
-
-        <SectionCard title="Refresh">
-          <View style={styles.buttonRow}>
-            {[30, 60, 120].map((minutes) => (
-              <OptionButton
-                key={minutes}
-                label={`${minutes} min`}
-                selected={settings.refreshIntervalMinutes === minutes}
-                onPress={() => updateSettings({ refreshIntervalMinutes: minutes as 30 | 60 | 120 })}
-              />
-            ))}
-          </View>
-        </SectionCard>
-
-        <SectionCard
           title="Notifications"
           subtitle="Risk transition notifications are evaluated during app refreshes."
         >

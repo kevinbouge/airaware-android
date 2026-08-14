@@ -71,6 +71,10 @@ function normalizedActivityDomains(
   return Array.from(new Set(activityDomains ?? [])).sort();
 }
 
+function normalizedVariables(variables: readonly string[] | undefined): string[] {
+  return Array.from(new Set(variables ?? [])).sort();
+}
+
 function addDays(date: string, days: number): string | null {
   const match = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return null;
@@ -278,6 +282,8 @@ export function assembleEnvironment(input: {
   weather: NormalizedWeather | null;
   fallback?: NormalizedEnvironment | null;
   requestedActivityDomains?: readonly ActivityDomainId[] | undefined;
+  requestedAirQualityVariables?: readonly string[] | undefined;
+  requestedWeatherVariables?: readonly string[] | undefined;
 }): NormalizedEnvironment {
   const current = mergeCurrent(input.airQuality, input.weather, input.fallback ?? null);
   const hourly = mergeHourly(input.airQuality, input.weather, input.fallback ?? null);
@@ -305,6 +311,12 @@ export function assembleEnvironment(input: {
       ),
       weatherSource: sourceForProvider(input.weather, input.fallback?.metadata.weatherFetchedAt),
       requestedActivityDomains,
+      requestedAirQualityVariables: normalizedVariables(
+        input.requestedAirQualityVariables ?? input.fallback?.metadata.requestedAirQualityVariables,
+      ),
+      requestedWeatherVariables: normalizedVariables(
+        input.requestedWeatherVariables ?? input.fallback?.metadata.requestedWeatherVariables,
+      ),
       partial: input.airQuality?.partial === true || input.weather?.partial === true,
     },
   };

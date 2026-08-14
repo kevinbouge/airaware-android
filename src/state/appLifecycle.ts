@@ -1,23 +1,6 @@
-import type { NormalizedEnvironment } from '../models/environment';
-import type { AppCapabilities } from '../capabilities/types';
 import type { AppSettings } from '../models/profile';
-import { forecastDayLimit } from '../capabilities/forecast';
 
 export function shouldRefreshAfterHydration(input: {
-  hydrated: boolean;
-  environment: NormalizedEnvironment | null;
-  locationOnboardingComplete: boolean;
-  capabilities?: AppCapabilities;
-  extendedRefreshAttempted?: boolean;
-}): boolean {
-  if (!input.hydrated || !input.locationOnboardingComplete) return false;
-  if (!input.environment) return true;
-  if (!input.capabilities) return false;
-
-  return input.environment.forecastDays.length < forecastDayLimit(input.capabilities);
-}
-
-export function shouldRunScheduledRefresh(input: {
   hydrated: boolean;
   locationOnboardingComplete: boolean;
 }): boolean {
