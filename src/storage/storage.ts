@@ -38,7 +38,15 @@ import {
   type WidgetSnapshotEnvelope,
 } from '../models/widgets';
 import {
+  type EnvironmentalEventNotificationCategory,
+  type EnvironmentalEventNotificationSettings,
+  type EnvironmentalEventNotificationState,
+  type EnvironmentalEventSeverity,
+  type EnvironmentalEventNotificationRecord,
+} from '../models/environmentalEvents';
+import {
   DEFAULT_PROFILE,
+  DEFAULT_ENVIRONMENTAL_EVENT_NOTIFICATIONS,
   DEFAULT_SETTINGS,
   type AppSettings,
   type PersonalAllergyProfile,
@@ -53,6 +61,7 @@ const SETTINGS_KEY = 'airaware.settings.v1';
 const PROFILE_KEY = 'airaware.profile.v1';
 const ENVIRONMENT_CACHE_KEY = 'airaware.environment-cache.v1';
 const RISK_NOTIFICATION_TRANSITION_KEY = 'airaware.risk-notification-transition.v1';
+const ENVIRONMENTAL_EVENT_NOTIFICATION_KEY = 'airaware.environmental-event-notifications.v1';
 const WIDGET_SNAPSHOT_KEY = 'airaware.widget-snapshot.v1';
 const DEVELOPMENT_ENTITLEMENT_OVERRIDE_KEY = 'airaware.development-entitlement.v1';
 const BILLING_ENTITLEMENT_CACHE_KEY = 'airaware.billing-entitlement-cache.v1';
@@ -60,6 +69,7 @@ const BILLING_ENTITLEMENT_CACHE_SCHEMA_VERSION = 1;
 const VEGETATION_CACHE_KEY = 'airaware.vegetation-cache.v1';
 const DATA_DETAIL_CACHE_PREFIX = 'airaware.data-detail-cache.v1:';
 const MAX_VEGETATION_CACHE_ENTRIES = 12;
+const MAX_ENVIRONMENTAL_EVENT_NOTIFICATION_RECORDS = 80;
 
 const jsonObjectSchema = z.record(z.string(), z.unknown());
 const persistedSettingsSchema = jsonObjectSchema;
@@ -146,6 +156,23 @@ function validRiskTransitionThreshold(
   return value === 'highAndVeryHigh' || value === 'veryHighOnly'
     ? value
     : DEFAULT_SETTINGS.riskTransitionNotificationThreshold;
+}
+
+const ENVIRONMENTAL_EVENT_NOTIFICATION_CATEGORIES = Object.keys(
+  DEFAULT_ENVIRONMENTAL_EVENT_NOTIFICATIONS,
+) as EnvironmentalEventNotificationCategory[];
+
+function knownEnvironmentalEventNotificationSettings(
+  value: unknown,
+): EnvironmentalEventNotificationSettings {
+  const toggles = booleanRecord(value);
+
+  return Object.fromEntries(
+    ENVIRONMENTAL_EVENT_NOTIFICATION_CATEGORIES.map((category) => [
+      category,
+      toggles[category] ?? DEFAULT_ENVIRONMENTAL_EVENT_NOTIFICATIONS[category],
+    ]),
+  ) as EnvironmentalEventNotificationSettings;
 }
 
 function knownActivities(value: unknown): ActivitySettings {
@@ -412,6 +439,37 @@ function isRiskNotificationTransitionState(
   );
 }
 
+function isEnvironmentalEventSeverity(value: unknown): value is EnvironmentalEventSeverity {
+  return value === 'moderate' || value === 'high' || value === 'very-high';
+}
+
+function isEnvironmentalEventNotificationRecord(
+  value: unknown,
+): value is EnvironmentalEventNotificationRecord {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const object = value as Record<string, unknown>;
+
+  return (
+    typeof object.fingerprint === 'string' &&
+    isEnvironmentalEventSeverity(object.severity) &&
+    typeof object.deliveredAt === 'string' &&
+    Number.isFinite(Date.parse(object.deliveredAt))
+  );
+}
+
+function isEnvironmentalEventNotificationState(
+  value: unknown,
+): value is EnvironmentalEventNotificationState {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const object = value as Record<string, unknown>;
+
+  return (
+    object.version === 1 &&
+    Array.isArray(object.records) &&
+    object.records.every(isEnvironmentalEventNotificationRecord)
+  );
+}
+
 function isRiskCategoryValue(value: unknown): boolean {
   return (
     value === 'low' ||
@@ -562,7 +620,15 @@ const EMPTY_EXTENDED_AIR_QUALITY: ExtendedAirQualityReadings = {
   methane: null,
   nitrogenMonoxide: null,
   formaldehyde: null,
+  glyoxal: null,
   nonMethaneVolatileOrganicCompounds: null,
+  peroxyacylNitrates: null,
+  secondaryInorganicAerosol: null,
+  residentialElementaryCarbon: null,
+  totalElementaryCarbon: null,
+  pm25TotalOrganicMatter: null,
+  seaSaltAerosol: null,
+  uvIndexClearSky: null,
 };
 
 const EMPTY_EXTENDED_WEATHER: ExtendedWeatherReadings = {
@@ -643,6 +709,7 @@ function normalizedCachedEnvironment(data: CachedEnvironment['data']): CachedEnv
     hourly: data.hourly.map(normalizeHourlyReading),
     metadata: {
       ...data.metadata,
+      airQualityModel: data.metadata.airQualityModel ?? 'auto',
       airQualitySource: data.metadata.airQualitySource ?? 'fresh',
       weatherSource: data.metadata.weatherSource ?? 'fresh',
       requestedActivityDomains: knownActivityDomains(data.metadata.requestedActivityDomains),
@@ -667,6 +734,9 @@ export async function loadSettings(): Promise<AppSettings> {
     riskTransitionNotificationsEnabled: object?.riskTransitionNotificationsEnabled === true,
     riskTransitionNotificationThreshold: validRiskTransitionThreshold(
       object?.riskTransitionNotificationThreshold,
+    ),
+    environmentalEventNotifications: knownEnvironmentalEventNotificationSettings(
+      object?.environmentalEventNotifications,
     ),
     enabledActivities: knownActivities(object?.enabledActivities),
     collapsedSections: booleanRecord(object?.collapsedSections),
@@ -748,6 +818,24 @@ export async function saveRiskNotificationTransitionState(
   state: RiskNotificationTransitionState,
 ): Promise<void> {
   await AsyncStorage.setItem(RISK_NOTIFICATION_TRANSITION_KEY, JSON.stringify(state));
+}
+
+export async function loadEnvironmentalEventNotificationState(): Promise<EnvironmentalEventNotificationState | null> {
+  const object = readObject(await AsyncStorage.getItem(ENVIRONMENTAL_EVENT_NOTIFICATION_KEY));
+  return isEnvironmentalEventNotificationState(object) ? object : null;
+}
+
+export async function saveEnvironmentalEventNotificationState(
+  state: EnvironmentalEventNotificationState,
+): Promise<void> {
+  const boundedState: EnvironmentalEventNotificationState = {
+    version: 1,
+    records: [...state.records]
+      .sort((left, right) => Date.parse(right.deliveredAt) - Date.parse(left.deliveredAt))
+      .slice(0, MAX_ENVIRONMENTAL_EVENT_NOTIFICATION_RECORDS),
+  };
+
+  await AsyncStorage.setItem(ENVIRONMENTAL_EVENT_NOTIFICATION_KEY, JSON.stringify(boundedState));
 }
 
 export async function loadWidgetSnapshot(): Promise<WidgetSnapshotEnvelope | null> {

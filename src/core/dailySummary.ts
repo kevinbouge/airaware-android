@@ -112,7 +112,7 @@ export function buildDailySummary(input: {
     bestOutdoorWindow: input.bestOutdoorWindow,
     uvPeak: input.includeUvPeak === false ? null : uvPeak(input.environment, referenceTime),
     stale: input.stale,
-    attribution: ['Open-Meteo'],
+    attribution: ['Open-Meteo', 'CAMS ENSEMBLE data providers'],
   };
 }
 

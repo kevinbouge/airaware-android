@@ -8,6 +8,7 @@ import { SectionCard } from '../components/SectionCard';
 import { appDisclaimerText } from '../core/appDisclaimers';
 import { googlePlayPrivacyDisclosureText } from '../core/googlePlayCompliance';
 import { useCapabilities } from '../hooks/useCapabilities';
+import type { EnvironmentalEventNotificationSettings } from '../models/environmentalEvents';
 import { CURRENT_LOCATION_ID, coordinatesForSavedLocation } from '../models/location';
 import { useAppStore } from '../state/useAppStore';
 import { colors, spacing } from '../theme/theme';
@@ -17,6 +18,19 @@ const DEFAULT_MAP_COORDINATES = {
   latitude: 50.0755,
   longitude: 14.4378,
 };
+
+const ENVIRONMENTAL_ALERT_OPTIONS: {
+  id: keyof EnvironmentalEventNotificationSettings;
+  label: string;
+}[] = [
+  { id: 'pollen', label: 'Pollen' },
+  { id: 'airPollution', label: 'Air pollution' },
+  { id: 'saharanDust', label: 'Saharan dust' },
+  { id: 'wildfirePollution', label: 'Wildfire-related pollution' },
+  { id: 'uv', label: 'UV' },
+  { id: 'mold', label: 'Mold potential' },
+  { id: 'headlineRisk', label: 'Overall environmental risk' },
+];
 
 export function SettingsScreen() {
   const [mapPickerVisible, setMapPickerVisible] = useState(false);
@@ -50,6 +64,15 @@ export function SettingsScreen() {
   const manualLocationCount = settings.locations.filter((item) => item.type === 'manual').length;
   const manualLocationLimitReached =
     manualLocationCount >= capabilities.locations.maxSavedLocations;
+  const advancedEnvironmentalAlertsAvailable = isFeatureAvailable(
+    capabilities,
+    'advanced_environment_notifications',
+  );
+  const environmentalAlertsEnabled = Object.values(settings.environmentalEventNotifications).some(
+    (enabled) => enabled,
+  );
+  const notificationsEnabled =
+    settings.riskTransitionNotificationsEnabled || environmentalAlertsEnabled;
   const fallbackMapCoordinates =
     location.coordinates ?? environment?.coordinates ?? DEFAULT_MAP_COORDINATES;
 
@@ -77,6 +100,15 @@ export function SettingsScreen() {
       void updateSavedLocationCoordinates(mapPickerMode.id, mapPickerCoordinates);
     }
     setMapPickerVisible(false);
+  };
+
+  const toggleEnvironmentalAlert = (id: keyof EnvironmentalEventNotificationSettings) => {
+    void updateSettings({
+      environmentalEventNotifications: {
+        ...settings.environmentalEventNotifications,
+        [id]: !settings.environmentalEventNotifications[id],
+      },
+    });
   };
 
   return (
@@ -218,8 +250,7 @@ export function SettingsScreen() {
             />
           </View>
           {notificationMessage ? <Text style={styles.notice}>{notificationMessage}</Text> : null}
-          {notificationPermissionStatus === 'granted' &&
-          settings.riskTransitionNotificationsEnabled ? (
+          {notificationPermissionStatus === 'granted' && notificationsEnabled ? (
             <Text style={styles.notice}>Notification permission is enabled.</Text>
           ) : null}
           <AppButton
@@ -230,14 +261,38 @@ export function SettingsScreen() {
           />
           <View style={styles.buttonRow}>
             {notificationPermissionStatus === 'denied' ||
-            (settings.riskTransitionNotificationsEnabled &&
-              notificationPermissionStatus !== 'granted') ? (
+            (notificationsEnabled && notificationPermissionStatus !== 'granted') ? (
               <OptionButton
                 label="Open Android settings"
                 selected={false}
                 onPress={openNotificationSettings}
               />
             ) : null}
+          </View>
+          <View style={styles.notificationDivider} />
+          <Text style={styles.sectionLabel}>Environmental alerts</Text>
+          <Text style={styles.notice}>
+            Event alerts are evaluated during normal app refreshes for the active location only.
+          </Text>
+          {!advancedEnvironmentalAlertsAvailable ? (
+            <Text style={styles.notice}>
+              Environmental alert notifications are available with AirAware Pro. Events still appear
+              on Today.
+            </Text>
+          ) : null}
+          <View style={styles.buttonRow}>
+            {ENVIRONMENTAL_ALERT_OPTIONS.map((option) => (
+              <OptionButton
+                key={option.id}
+                label={option.label}
+                selected={
+                  advancedEnvironmentalAlertsAvailable &&
+                  settings.environmentalEventNotifications[option.id]
+                }
+                disabled={!advancedEnvironmentalAlertsAvailable}
+                onPress={() => toggleEnvironmentalAlert(option.id)}
+              />
+            ))}
           </View>
         </SectionCard>
 
@@ -397,6 +452,16 @@ const styles = StyleSheet.create({
   },
   manualLocationActions: {
     gap: spacing.sm,
+  },
+  notificationDivider: {
+    backgroundColor: colors.border,
+    height: StyleSheet.hairlineWidth,
+    marginVertical: spacing.sm,
+  },
+  sectionLabel: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '700',
   },
   mapModal: {
     backgroundColor: colors.background,

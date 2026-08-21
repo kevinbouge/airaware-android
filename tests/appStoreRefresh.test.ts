@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { FREE_ENTITLEMENT } from '../src/capabilities/entitlements';
+import { FREE_ENTITLEMENT, PRO_LIFETIME_ENTITLEMENT } from '../src/capabilities/entitlements';
 import { CURRENT_LOCATION_ID, currentLocationEntry } from '../src/models/location';
 import { DEFAULT_PROFILE, DEFAULT_SETTINGS, type AppSettings } from '../src/models/profile';
 
@@ -94,6 +94,7 @@ function airQuality(fetchedAt = timestamp, itemCoordinates = coordinates): Norma
       dust: 2,
       wildfirePm10: 0,
     },
+    uvIndex: 4,
     extended: {
       carbonDioxide: null,
       ammonia: null,
@@ -108,6 +109,7 @@ function airQuality(fetchedAt = timestamp, itemCoordinates = coordinates): Norma
     coordinates: itemCoordinates,
     fetchedAt,
     timezone: 'Europe/Prague',
+    atmosphericModel: 'auto',
     current: reading,
     hourly: [reading],
     partial: false,
@@ -159,6 +161,21 @@ function weather(fetchedAt = timestamp, itemCoordinates = coordinates): Normaliz
     current: reading,
     hourly: [reading],
     daily: [],
+    partial: false,
+  };
+}
+
+function weatherWithEventHours(
+  itemCoordinates = coordinates,
+  fetchedAt = new Date().toISOString(),
+): NormalizedWeather {
+  const next = weather(fetchedAt, itemCoordinates);
+  return {
+    ...next,
+    hourly: [
+      { ...next.current, timestamp: '2026-08-14T13:00:00Z' },
+      { ...next.current, timestamp: '2026-08-14T14:00:00Z' },
+    ],
     partial: false,
   };
 }
@@ -221,6 +238,44 @@ function highAirQuality(itemCoordinates = coordinates): NormalizedAirQuality {
         ragweed: 250,
       },
     })),
+  };
+}
+
+function dustEventAirQuality(
+  itemCoordinates = coordinates,
+  fetchedAt = new Date().toISOString(),
+): NormalizedAirQuality {
+  const next = airQuality(fetchedAt, itemCoordinates);
+  const firstHour = {
+    ...next.current,
+    timestamp: '2026-08-14T13:00:00Z',
+    atmosphericIrritants: {
+      ...next.current.atmosphericIrritants,
+      aerosolOpticalDepth: 0.8,
+      dust: 260,
+    },
+    regulatedPollutants: {
+      ...next.current.regulatedPollutants,
+      pm10: 150,
+    },
+    pollutantAqi: {
+      ...next.current.pollutantAqi,
+      pm10: 82,
+    },
+  };
+  const secondHour = {
+    ...firstHour,
+    timestamp: '2026-08-14T14:00:00Z',
+    atmosphericIrritants: {
+      ...firstHour.atmosphericIrritants,
+      dust: 300,
+    },
+  };
+
+  return {
+    ...next,
+    hourly: [firstHour, secondHour],
+    partial: false,
   };
 }
 
@@ -315,6 +370,8 @@ describe('app store refresh orchestration', () => {
       vegetationLoading: false,
       vegetationError: null,
       riskNotificationTransitionState: null,
+      environmentalEvents: [],
+      environmentalEventNotificationState: null,
     });
   });
 
@@ -798,6 +855,66 @@ describe('app store refresh orchestration', () => {
     expect(mockDeliverRiskTransitionNotification).not.toHaveBeenCalled();
   });
 
+  it('derives environmental events during refresh and deduplicates Pro event notifications', async () => {
+    useAppStore.setState({
+      entitlement: PRO_LIFETIME_ENTITLEMENT,
+      settings: {
+        ...useAppStore.getState().settings,
+        environmentalEventNotifications: {
+          ...useAppStore.getState().settings.environmentalEventNotifications,
+          saharanDust: true,
+        },
+      },
+    });
+    mockFetchAirQuality.mockResolvedValue(dustEventAirQuality());
+    mockFetchWeather.mockResolvedValue(weather(new Date().toISOString()));
+
+    await useAppStore.getState().refresh({ force: true });
+    await useAppStore.getState().refresh({ force: true });
+
+    expect(useAppStore.getState().environmentalEvents[0]).toMatchObject({
+      type: 'saharan-dust',
+      locationId: 'manual-prague',
+    });
+    expect(mockDeliverRiskTransitionNotification).toHaveBeenCalledTimes(1);
+    expect(mockDeliverRiskTransitionNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Saharan dust' }),
+    );
+    expect(useAppStore.getState().environmentalEventNotificationState?.records).toHaveLength(1);
+  });
+
+  it('does not notify from stale cached environmental events after a partial refresh', async () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const cachedEnvironment = assembleEnvironment({
+      coordinates,
+      placeName: 'Prague',
+      airQuality: dustEventAirQuality(coordinates, timestamp),
+      weather: weatherWithEventHours(coordinates, timestamp),
+    });
+    useAppStore.setState({
+      entitlement: PRO_LIFETIME_ENTITLEMENT,
+      environment: cachedEnvironment,
+      settings: {
+        ...useAppStore.getState().settings,
+        environmentalEventNotifications: {
+          ...useAppStore.getState().settings.environmentalEventNotifications,
+          saharanDust: true,
+        },
+      },
+    });
+    mockFetchAirQuality.mockRejectedValue(new Error('air unavailable'));
+    mockFetchWeather.mockResolvedValue(weatherWithEventHours());
+
+    try {
+      await useAppStore.getState().refresh({ force: true });
+    } finally {
+      warnSpy.mockRestore();
+    }
+
+    expect(useAppStore.getState().environmentalEvents).toEqual([]);
+    expect(mockDeliverRiskTransitionNotification).not.toHaveBeenCalled();
+  });
+
   it('does not let an old location refresh overwrite a newer active location', async () => {
     const firstAirQuality = deferred<NormalizedAirQuality>();
     const firstWeather = deferred<NormalizedWeather>();
@@ -859,7 +976,7 @@ describe('app store refresh orchestration', () => {
     const firstRefresh = useAppStore.getState().refresh({ force: true });
     await flushMicrotasks();
     await useAppStore.getState().setActiveLocation('manual-brno');
-    firstAirQuality.resolve(airQuality(timestamp, coordinates));
+    firstAirQuality.resolve(dustEventAirQuality(coordinates));
     firstWeather.resolve(weather(timestamp, coordinates));
     await firstRefresh;
     for (let attempt = 0; attempt < 10 && !useAppStore.getState().environment; attempt += 1) {
@@ -869,5 +986,7 @@ describe('app store refresh orchestration', () => {
     expect(useAppStore.getState().settings.activeLocationId).toBe('manual-brno');
     expect(useAppStore.getState().environment?.coordinates).toEqual(brnoCoordinates);
     expect(useAppStore.getState().environment?.placeName).toBe('Brno');
+    expect(useAppStore.getState().environmentalEvents).toEqual([]);
+    expect(mockDeliverRiskTransitionNotification).not.toHaveBeenCalled();
   });
 });

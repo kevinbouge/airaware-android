@@ -26,11 +26,17 @@ import {
 } from '../core/activityEvaluator';
 import { useAppStore } from '../state/useAppStore';
 import { colors, riskColor, spacing } from '../theme/theme';
-import { formatCoordinates, formatTimeRangeWithTomorrow, formatTimestamp } from '../utils/format';
+import {
+  formatCoordinates,
+  formatMeasurement,
+  formatTimeRangeWithTomorrow,
+  formatTimestamp,
+} from '../utils/format';
 import { contributorFromScore } from '../utils/contributorLabels';
 import type { ActivitySemanticType, ActivitySuitabilityCategory } from '../models/activities';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 import { coordinatesForSavedLocation } from '../models/location';
+import type { EnvironmentalEvent } from '../models/environmentalEvents';
 
 interface TodayNavigation {
   navigate: <RouteName extends keyof RootStackParamList>(
@@ -123,9 +129,69 @@ function locationSelectorRightLabel(input: {
   return formatCoordinates(input.coordinates) ?? undefined;
 }
 
+function eventIcon(event: EnvironmentalEvent): string {
+  switch (event.type) {
+    case 'pollen':
+      return '🌾';
+    case 'saharan-dust':
+      return '🟠';
+    case 'wildfire-pollution':
+      return '🔥';
+    case 'uv':
+      return '☀️';
+    case 'mold':
+      return '🍄';
+    case 'pollution':
+    case 'aerosol':
+      return '🌫️';
+    case 'headline-risk':
+      return '🎯';
+  }
+}
+
+function eventSeverityColor(event: EnvironmentalEvent): string {
+  if (event.severity === 'very-high') return colors.veryHigh;
+  if (event.severity === 'high') return colors.high;
+  return colors.moderate;
+}
+
+function eventTimingLabel(event: EnvironmentalEvent, referenceTime: string | null): string {
+  if (!event.endTime || event.startTime === event.endTime) {
+    return event.peakTime
+      ? `Peaks ${formatTimestamp(event.peakTime)}`
+      : formatTimestamp(event.startTime);
+  }
+
+  return formatTimeRangeWithTomorrow(event.startTime, event.endTime, referenceTime);
+}
+
+function evidenceLabel(variable: string): string {
+  const labels: Record<string, string> = {
+    dust: 'Saharan dust',
+    pm10: 'PM10',
+    pm2_5: 'PM2.5',
+    pm10_wildfires: 'Wildfire-related PM10',
+    aerosol_optical_depth: 'Aerosol optical depth',
+    pm2_5_total_organic_matter: 'PM2.5 organic matter',
+    total_elementary_carbon: 'Total elementary carbon',
+    uv_index: 'UV index',
+    mold_potential: 'Mold potential',
+    environmental_burden: 'Environmental burden',
+    personalized_risk: 'Personalized risk',
+  };
+
+  return labels[variable] ?? variable.replaceAll('_', ' ');
+}
+
+function formatEvidenceValue(value: number | null | undefined, unit: string | undefined): string {
+  if (unit === undefined) return formatMeasurement(value ?? null, '', 1);
+  return formatMeasurement(value ?? null, unit, unit === 'µg/m³' || unit === 'grains/m³' ? 0 : 1);
+}
+
 export function TodayScreen() {
   const navigation = useNavigation<TodayNavigation>();
   const [locationSelectorVisible, setLocationSelectorVisible] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState<EnvironmentalEvent | null>(null);
   const hydrated = useAppStore((state) => state.hydrated);
   const loading = useAppStore((state) => state.loading);
   const stale = useAppStore((state) => state.stale);
@@ -134,6 +200,7 @@ export function TodayScreen() {
   const location = useAppStore((state) => state.location);
   const settings = useAppStore((state) => state.settings);
   const environment = useAppStore((state) => state.environment);
+  const environmentalEvents = useAppStore((state) => state.environmentalEvents);
   const refresh = useAppStore((state) => state.refresh);
   const updateSettings = useAppStore((state) => state.updateSettings);
   const setActiveLocation = useAppStore((state) => state.setActiveLocation);
@@ -246,6 +313,31 @@ export function TodayScreen() {
             details={personalizedDetails}
             onPress={() => navigation.navigate('PersonalizedRiskDetail', undefined)}
           />
+        ) : null}
+
+        {environmentalEvents.length > 0 ? (
+          <View style={styles.eventSection}>
+            <Text style={styles.sectionTitle}>Environmental events</Text>
+            {environmentalEvents.slice(0, 4).map((event) => (
+              <Pressable
+                key={event.id}
+                accessibilityRole="button"
+                onPress={() => setSelectedEvent(event)}
+                style={({ pressed }) => [styles.eventCard, pressed ? styles.pressed : null]}
+              >
+                <View style={styles.eventHeader}>
+                  <Text style={styles.eventTitle}>
+                    {eventIcon(event)} {event.title}
+                  </Text>
+                  <Text style={[styles.eventSeverity, { color: eventSeverityColor(event) }]}>
+                    {event.category ?? event.severity}
+                  </Text>
+                </View>
+                <Text style={styles.eventTiming}>{eventTimingLabel(event, referenceTime)}</Text>
+                <Text style={styles.eventBody}>{event.body}</Text>
+              </Pressable>
+            ))}
+          </View>
         ) : null}
 
         {environment ? (
@@ -375,6 +467,44 @@ export function TodayScreen() {
           </View>
         </SafeAreaView>
       </Modal>
+      <Modal
+        animationType="fade"
+        onRequestClose={() => setSelectedEvent(null)}
+        transparent
+        visible={selectedEvent !== null}
+      >
+        <SafeAreaView style={styles.selectorOverlay}>
+          <View style={styles.selectorPanel}>
+            {selectedEvent ? (
+              <>
+                <Text style={styles.selectorTitle}>{selectedEvent.title}</Text>
+                <Text style={styles.eventTiming}>
+                  Expected: {eventTimingLabel(selectedEvent, referenceTime)}
+                </Text>
+                {selectedEvent.peakTime ? (
+                  <Text style={styles.eventTiming}>
+                    Peak: {formatTimestamp(selectedEvent.peakTime)}
+                  </Text>
+                ) : null}
+                <Text style={styles.body}>{selectedEvent.body}</Text>
+                {selectedEvent.evidence.slice(0, 4).map((evidence) => (
+                  <View key={`${evidence.variable}:${evidence.role}`} style={styles.evidenceRow}>
+                    <Text style={styles.evidenceVariable}>{evidenceLabel(evidence.variable)}</Text>
+                    <Text style={styles.evidenceValue}>
+                      {formatEvidenceValue(evidence.value, evidence.unit)}
+                    </Text>
+                  </View>
+                ))}
+                <Text style={styles.notice}>
+                  Data: Open-Meteo Air Quality API using CAMS forecasts. Environmental conditions
+                  only, not medical advice.
+                </Text>
+              </>
+            ) : null}
+            <AppButton title="Close" fullWidth onPress={() => setSelectedEvent(null)} />
+          </View>
+        </SafeAreaView>
+      </Modal>
     </>
   );
 }
@@ -400,6 +530,60 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     gap: spacing.sm,
+  },
+  eventBody: {
+    color: colors.text,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  eventCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: spacing.xs,
+    padding: spacing.md,
+  },
+  eventHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.sm,
+    justifyContent: 'space-between',
+  },
+  eventSection: {
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  eventSeverity: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  eventTiming: {
+    color: colors.muted,
+    fontSize: 13,
+  },
+  eventTitle: {
+    color: colors.text,
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  evidenceRow: {
+    alignItems: 'center',
+    borderBottomColor: colors.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.xs,
+  },
+  evidenceValue: {
+    color: colors.text,
+    fontWeight: '700',
+  },
+  evidenceVariable: {
+    color: colors.muted,
+    flex: 1,
+    marginRight: spacing.md,
   },
   content: {
     padding: spacing.lg,

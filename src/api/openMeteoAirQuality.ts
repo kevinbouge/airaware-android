@@ -4,6 +4,7 @@ import { activityOpenMeteoVariables } from '../core/activityDefinitions';
 import type { ActivityDomainId } from '../models/activities';
 import type {
   AtmosphericIrritants,
+  AtmosphericModel,
   Coordinates,
   ExtendedAirQualityReadings,
   PollenReadings,
@@ -43,7 +44,14 @@ const BASE_VARIABLES = [
   'mugwort_pollen',
   'olive_pollen',
   'ragweed_pollen',
+  'uv_index',
+  'uv_index_clear_sky',
   'pm10_wildfires',
+  'secondary_inorganic_aerosol',
+  'residential_elementary_carbon',
+  'total_elementary_carbon',
+  'pm2_5_total_organic_matter',
+  'sea_salt_aerosol',
 ] as const;
 
 const EXTENDED_AIR_QUALITY_VARIABLES = [
@@ -52,13 +60,16 @@ const EXTENDED_AIR_QUALITY_VARIABLES = [
   'methane',
   'nitrogen_monoxide',
   'formaldehyde',
+  'glyoxal',
   'non_methane_volatile_organic_compounds',
+  'peroxyacyl_nitrates',
 ] as const;
 
 export interface NormalizedAirQuality {
   coordinates: Coordinates;
   fetchedAt: string;
   timezone: string | null;
+  atmosphericModel: AtmosphericModel;
   current: {
     timestamp: string | null;
     pollen: PollenReadings;
@@ -67,6 +78,7 @@ export interface NormalizedAirQuality {
     aqiLabel: 'US AQI' | 'EU AQI';
     atmosphericIrritants: AtmosphericIrritants;
     extended: ExtendedAirQualityReadings;
+    uvIndex: number | null;
   };
   hourly: {
     timestamp: string;
@@ -76,6 +88,7 @@ export interface NormalizedAirQuality {
     aqiLabel: 'US AQI' | 'EU AQI';
     atmosphericIrritants: AtmosphericIrritants;
     extended: ExtendedAirQualityReadings;
+    uvIndex: number | null;
   }[];
   partial: boolean;
 }
@@ -223,8 +236,22 @@ function extendedFrom(
     methane: from('methane'),
     nitrogenMonoxide: from('nitrogen_monoxide'),
     formaldehyde: from('formaldehyde'),
+    glyoxal: from('glyoxal'),
     nonMethaneVolatileOrganicCompounds: from('non_methane_volatile_organic_compounds'),
+    peroxyacylNitrates: from('peroxyacyl_nitrates'),
+    secondaryInorganicAerosol: from('secondary_inorganic_aerosol'),
+    residentialElementaryCarbon: from('residential_elementary_carbon'),
+    totalElementaryCarbon: from('total_elementary_carbon'),
+    pm25TotalOrganicMatter: from('pm2_5_total_organic_matter'),
+    seaSaltAerosol: from('sea_salt_aerosol'),
+    uvIndexClearSky: from('uv_index_clear_sky'),
   };
+}
+
+function uvIndexFrom(source: Record<string, unknown> | undefined, index?: number): number | null {
+  const candidate =
+    index === undefined ? value(source, 'uv_index') : arrayValue(source, 'uv_index', index);
+  return candidate !== null && candidate >= 0 ? candidate : null;
 }
 
 function hasAnyNumeric(values: object): boolean {
@@ -254,6 +281,7 @@ export function buildAirQualityUrl(
     longitude: String(coordinates.longitude),
     current: variables.join(','),
     hourly: variables.join(','),
+    domains: 'auto',
     forecast_days: String(FORECAST_DAY_LIMITS.providerRequest),
     timezone: 'auto',
   });
@@ -285,6 +313,7 @@ export function normalizeAirQuality(payload: OpenMeteoPayload): NormalizedAirQua
   const currentAqi = aqiFrom(current, selectedSource);
   const currentIrritants = irritantsFrom(current);
   const currentExtended = extendedFrom(current);
+  const currentUvIndex = uvIndexFrom(current);
   const hourlyTime = Array.isArray(payload.hourly?.time) ? payload.hourly.time : [];
   const hourly = hourlyTime
     .map((rawTimestamp, index) => {
@@ -301,6 +330,7 @@ export function normalizeAirQuality(payload: OpenMeteoPayload): NormalizedAirQua
         aqiLabel: aqiLabel(selectedSource),
         atmosphericIrritants: irritantsFrom(payload.hourly, index),
         extended: extendedFrom(payload.hourly, index),
+        uvIndex: uvIndexFrom(payload.hourly, index),
       };
     })
     .filter((item): item is NormalizedAirQuality['hourly'][number] => item !== null);
@@ -310,7 +340,8 @@ export function normalizeAirQuality(payload: OpenMeteoPayload): NormalizedAirQua
     !hasAnyNumeric(currentPollutants) &&
     !hasAnyNumeric(currentAqi) &&
     !hasAnyNumeric(currentIrritants) &&
-    !hasAnyNumeric(currentExtended)
+    !hasAnyNumeric(currentExtended) &&
+    currentUvIndex === null
   ) {
     throw new Error('Open-Meteo air-quality response has no usable current readings');
   }
@@ -319,6 +350,7 @@ export function normalizeAirQuality(payload: OpenMeteoPayload): NormalizedAirQua
     coordinates: { latitude, longitude },
     fetchedAt: new Date().toISOString(),
     timezone,
+    atmosphericModel: 'auto',
     current: {
       timestamp: time,
       pollen: currentPollen,
@@ -327,6 +359,7 @@ export function normalizeAirQuality(payload: OpenMeteoPayload): NormalizedAirQua
       aqiLabel: aqiLabel(selectedSource),
       atmosphericIrritants: currentIrritants,
       extended: currentExtended,
+      uvIndex: currentUvIndex,
     },
     hourly,
     partial: hourly.length === 0,

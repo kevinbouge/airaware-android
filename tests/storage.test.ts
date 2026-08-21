@@ -8,11 +8,13 @@ import {
   loadRiskNotificationTransitionState,
   loadSettings,
   loadWidgetSnapshot,
+  loadEnvironmentalEventNotificationState,
   saveRiskNotificationTransitionState,
   saveBillingEntitlementCache,
   saveEnvironmentCache,
   saveSettings,
   saveWidgetSnapshot,
+  saveEnvironmentalEventNotificationState,
 } from '../src/storage/storage';
 import { PRO_LIFETIME_ENTITLEMENT } from '../src/capabilities/entitlements';
 import {
@@ -46,6 +48,26 @@ describe('settings storage', () => {
 
     expect(settings.collapsedSections['today.pollen']).toBe(true);
     expect(settings.collapsedSections['today.regulatedPollution']).toBe(false);
+  });
+
+  it('persists environmental event notification settings with unknown keys ignored', async () => {
+    await AsyncStorage.setItem(
+      'airaware.settings.v1',
+      JSON.stringify({
+        environmentalEventNotifications: {
+          pollen: true,
+          saharanDust: true,
+          aod: true,
+        },
+      }),
+    );
+
+    const settings = await loadSettings();
+
+    expect(settings.environmentalEventNotifications.pollen).toBe(true);
+    expect(settings.environmentalEventNotifications.saharanDust).toBe(true);
+    expect(settings.environmentalEventNotifications.airPollution).toBe(false);
+    expect(settings.environmentalEventNotifications).not.toHaveProperty('aod');
   });
 
   it('persists multiple saved locations and the active location id', async () => {
@@ -270,6 +292,34 @@ describe('settings storage', () => {
     await expect(loadEnvironmentCache()).resolves.toBeNull();
   });
 
+  it('loads and bounds environmental event notification fingerprints', async () => {
+    await saveEnvironmentalEventNotificationState({
+      version: 1,
+      records: Array.from({ length: 90 }, (_, index) => ({
+        fingerprint: `event-${index}`,
+        severity: index % 2 === 0 ? 'high' : 'very-high',
+        deliveredAt: new Date(Date.UTC(2026, 7, 1, 12, index)).toISOString(),
+      })),
+    });
+
+    const state = await loadEnvironmentalEventNotificationState();
+
+    expect(state?.records).toHaveLength(80);
+    expect(state?.records[0]?.fingerprint).toBe('event-89');
+  });
+
+  it('falls back when environmental event notification state is corrupt', async () => {
+    await AsyncStorage.setItem(
+      'airaware.environmental-event-notifications.v1',
+      JSON.stringify({
+        version: 1,
+        records: [{ fingerprint: 'bad', severity: 'critical', deliveredAt: 'not-a-date' }],
+      }),
+    );
+
+    await expect(loadEnvironmentalEventNotificationState()).resolves.toBeNull();
+  });
+
   it('loads older valid environment caches without extended environmental data', async () => {
     await AsyncStorage.setItem(
       'airaware.environment-cache.v1',
@@ -354,7 +404,7 @@ describe('settings storage', () => {
 
     const cache = await loadEnvironmentCache();
 
-    expect(cache?.data.current.extended?.airQuality).toEqual({
+    expect(cache?.data.current.extended?.airQuality).toMatchObject({
       carbonDioxide: null,
       ammonia: null,
       methane: null,
@@ -362,6 +412,7 @@ describe('settings storage', () => {
       formaldehyde: null,
       nonMethaneVolatileOrganicCompounds: null,
     });
+    expect(cache?.data.current.extended?.airQuality.pm25TotalOrganicMatter).toBeNull();
     expect(cache?.data.current.extended?.weather.pressureMsl).toBeNull();
   });
 

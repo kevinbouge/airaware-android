@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { FREE_ENTITLEMENT } from '../src/capabilities/entitlements';
+import { FREE_ENTITLEMENT, PRO_LIFETIME_ENTITLEMENT } from '../src/capabilities/entitlements';
 import { DEFAULT_PROFILE, DEFAULT_SETTINGS } from '../src/models/profile';
 
 /* eslint-disable import/first */
@@ -37,6 +37,8 @@ describe('notification settings', () => {
       entitlement: FREE_ENTITLEMENT,
       environment: null,
       riskNotificationTransitionState: null,
+      environmentalEvents: [],
+      environmentalEventNotificationState: null,
     });
     jest.clearAllMocks();
   });
@@ -134,6 +136,92 @@ describe('notification settings', () => {
 
     expect(useAppStore.getState().settings.riskTransitionNotificationsEnabled).toBe(true);
     expect(useAppStore.getState().settings.summaryLocation).toBe('hidden');
+  });
+
+  it('keeps environmental event notifications disabled for Free users', async () => {
+    await useAppStore.getState().updateSettings({
+      environmentalEventNotifications: {
+        ...DEFAULT_SETTINGS.environmentalEventNotifications,
+        saharanDust: true,
+      },
+    });
+
+    expect(requestRiskNotificationPermission).not.toHaveBeenCalled();
+    expect(useAppStore.getState().settings.environmentalEventNotifications.saharanDust).toBe(false);
+    expect(useAppStore.getState().notificationMessage).toContain('AirAware Pro');
+  });
+
+  it('requests permission when Pro users enable environmental event notifications', async () => {
+    useAppStore.setState({ entitlement: PRO_LIFETIME_ENTITLEMENT });
+    jest.mocked(requestRiskNotificationPermission).mockResolvedValue('granted');
+
+    await useAppStore.getState().updateSettings({
+      environmentalEventNotifications: {
+        ...DEFAULT_SETTINGS.environmentalEventNotifications,
+        pollen: true,
+      },
+    });
+
+    expect(requestRiskNotificationPermission).toHaveBeenCalledTimes(1);
+    expect(useAppStore.getState().settings.environmentalEventNotifications.pollen).toBe(true);
+  });
+
+  it('disables environmental event notifications when permission is denied', async () => {
+    useAppStore.setState({ entitlement: PRO_LIFETIME_ENTITLEMENT });
+    jest.mocked(requestRiskNotificationPermission).mockResolvedValue('denied');
+
+    await useAppStore.getState().updateSettings({
+      environmentalEventNotifications: {
+        ...DEFAULT_SETTINGS.environmentalEventNotifications,
+        wildfirePollution: true,
+      },
+    });
+
+    expect(useAppStore.getState().settings.environmentalEventNotifications.wildfirePollution).toBe(
+      false,
+    );
+    expect(useAppStore.getState().notificationMessage).toContain('denied');
+  });
+
+  it('does not turn off risk notifications when an event-alert permission request is denied', async () => {
+    useAppStore.setState({
+      entitlement: PRO_LIFETIME_ENTITLEMENT,
+      settings: {
+        ...DEFAULT_SETTINGS,
+        riskTransitionNotificationsEnabled: true,
+      },
+    });
+    jest.mocked(requestRiskNotificationPermission).mockResolvedValue('denied');
+
+    await useAppStore.getState().updateSettings({
+      environmentalEventNotifications: {
+        ...DEFAULT_SETTINGS.environmentalEventNotifications,
+        pollen: true,
+      },
+    });
+
+    expect(useAppStore.getState().settings.riskTransitionNotificationsEnabled).toBe(true);
+    expect(useAppStore.getState().settings.environmentalEventNotifications.pollen).toBe(false);
+  });
+
+  it('clears environmental notification messages after all event alerts are disabled', async () => {
+    useAppStore.setState({
+      entitlement: PRO_LIFETIME_ENTITLEMENT,
+      notificationMessage: 'Environmental alerts are available with AirAware Pro.',
+      settings: {
+        ...DEFAULT_SETTINGS,
+        environmentalEventNotifications: {
+          ...DEFAULT_SETTINGS.environmentalEventNotifications,
+          pollen: true,
+        },
+      },
+    });
+
+    await useAppStore.getState().updateSettings({
+      environmentalEventNotifications: DEFAULT_SETTINGS.environmentalEventNotifications,
+    });
+
+    expect(useAppStore.getState().notificationMessage).toBeNull();
   });
 
   it('preserves rapid collapsed-section toggles from the latest settings state', async () => {

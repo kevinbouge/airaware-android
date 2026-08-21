@@ -73,6 +73,9 @@ nvm use 22.13.1
   daily summaries, and widgets
 - Saved manual locations are capped by the app capability model and remain available to Free and Pro
   users
+- Local Environmental Events derived from existing Open-Meteo/CAMS forecasts for pollen,
+  pollution, Saharan dust, wildfire-related particulate pollution, UV, mold potential, and headline
+  risk
 - Environmental burden score using pollen, regulated pollution, atmospheric irritants, and mold
   potential
 - Optional Personal Allergy Profile with a separate personalized environmental risk score
@@ -85,6 +88,8 @@ nvm use 22.13.1
 - Local cache fallback for offline or failed refreshes, with air-quality, weather, vegetation, and
   assembled environment caches isolated by coordinates
 - Contextual environmental measurement drill-downs from Today detail screens
+- Compact Environmental events section on Today, with event detail evidence and Open-Meteo/CAMS
+  attribution
 - Nearby vegetation and land-use context from OpenStreetMap, available to Free and Pro users
 - Pro-only Activity domains for agriculture, drone operations, photography, astronomy, and outdoor
   work
@@ -94,6 +99,8 @@ nvm use 22.13.1
   - Advanced home-screen widget with current score, best outdoor window, and compact forecast
     summaries
 - Optional Free risk transition notifications for the active headline score
+- Pro-only configurable Environmental Event alert notifications, evaluated during normal app
+  refreshes
 - Gas-mask app icon and risk-colored Today icon
 - Capability-based Free/Pro forecast horizon, Activities, and advanced widget access
 - AirAware Pro lifetime purchase entitlement managed through RevenueCat and Google Play when a
@@ -101,8 +108,9 @@ nvm use 22.13.1
 
 ## Screens
 
-- **Today**: headline scores, scrollable active location selector, update status, main factor, best
-  outdoor window, refresh, share summary, and enabled Activity summary cards
+- **Today**: headline scores, scrollable active location selector, Environmental Events, update
+  status, main factor, best outdoor window, refresh, share summary, and enabled Activity summary
+  cards
 - **Context detail screens**: Environmental burden, Personalized risk, and Activity details with
   Daily forecast graphs, current-to-next-24-hour forecast graphs, and tappable environmental
   measurements
@@ -183,12 +191,52 @@ concentration.
 - OpenStreetMap Overpass API for nearby vegetation and land-use context
 - OpenStreetMap map tiles for manual location selection
 
+Open-Meteo Air Quality data includes CAMS ENSEMBLE atmospheric forecasts where available.
 Availability varies by variable, region, model domain, and season.
 
 Activities request only the additional Open-Meteo variables needed by enabled profiles. Examples
 include visibility, cloud cover, wind gusts, precipitation probability, soil moisture, soil
 temperature, ET0, VPD, radiation, temperature, humidity, PM2.5, and ozone where supported. Missing
 values are omitted rather than treated as zero.
+
+## Environmental Events
+
+Environmental Events are first-class local domain objects derived from the same normalized
+Open-Meteo Air Quality and Weather data used by Today, forecasts, widgets, and summaries. AirAware
+does not add another provider, API key, backend, provider account, telemetry, analytics, background
+location, or continuous background monitor for this feature.
+
+Events inspect the next 24 hours of the active location forecast and group qualifying hours into
+episodes. For example, several consecutive High or Very High grass pollen hours become one pollen
+episode with a start, end, peak, severity, confidence, and structured internal evidence. The engine
+correlates related evidence so a dust-driven PM10/AOD episode appears as Saharan dust rather than
+three redundant dust, PM10, and aerosol alerts. A severe independent pollutant, such as ozone, can
+still appear alongside a Saharan dust event.
+
+Implemented event types:
+
+- Pollen: alder, birch, grass, mugwort, olive, and ragweed using AirAware's existing pollen scoring
+  categories
+- Pollution: PM2.5, PM10, nitrogen dioxide, ozone, and sulphur dioxide using pollutant-specific AQI
+  where available
+- Saharan dust: derived directly from the CAMS/Open-Meteo `dust` field, with AOD and PM values used
+  only as supporting evidence
+- Wildfire-related particulate pollution: derived only when CAMS/Open-Meteo provides
+  wildfire-attributed PM10 (`pm10_wildfires`)
+- Aerosol/haze: derived from elevated aerosol optical depth only when no stronger source-attributed
+  event is supported
+- UV: based on existing UV category behavior
+- Mold potential: based on AirAware's existing weather-inferred mold potential model
+- Headline risk: based on Personalized risk when available, otherwise Environmental burden
+
+AirAware can report wildfire-related particulate pollution when source-attributed wildfire PM10 is
+available. It does not detect active fires, fire names, fire perimeters, fire distance, fire
+direction, fire count, or whether a fire is nearby. Wildfire-related pollution copy must not imply
+fire location or movement.
+
+Events use model forecasts, not local sensors, and do not predict medical symptoms. Advanced CAMS
+fields may be unavailable for some regions, model domains, or forecast hours. Missing optional event
+evidence is omitted rather than treated as zero.
 
 ## Nearby Vegetation
 
@@ -222,6 +270,11 @@ Activity selections remain in local app storage and are not sent to Open-Meteo, 
 RevenueCat, or any other environmental provider. Shared summaries are generated locally and passed
 to the Android share sheet; AirAware does not upload them.
 
+Environmental Events are detected locally from already requested Open-Meteo/CAMS forecast values for
+the active coordinates. AirAware does not send saved-location names, saved-location IDs, the saved
+location list, Personal Allergy Profile selections, event settings, detected events, notification
+fingerprints, widget snapshots, or RevenueCat state to Open-Meteo, Overpass, or unrelated services.
+
 AirAware uses RevenueCat to manage AirAware Pro purchase entitlement. Google Play processes
 payments; AirAware does not directly handle card or payment information. RevenueCat may process
 anonymous app identifiers, purchase records, product identifiers, entitlement state, and device/app
@@ -243,8 +296,9 @@ AirAware requests only approximate foreground location. It does not request back
 precise location, contacts, camera, microphone, SMS, call logs, health permissions, installed-app
 inventory, or advertising ID in this MVP.
 
-Notification permission is requested only if the user enables risk transition notifications in
-Settings. AirAware does not request notification permission on first launch.
+Notification permission is requested only if the user enables risk transition notifications or
+Pro Environmental Event alert notifications in Settings. AirAware does not request notification
+permission on first launch.
 
 Because AirAware has no account system and no server-side user profile, clearing app storage or
 uninstalling the app removes locally stored settings, saved locations, cached provider responses,
@@ -276,8 +330,9 @@ Before submitting to Google Play:
 - Disclose that Google Play Billing is used indirectly through RevenueCat for a one-time
   non-consumable AirAware Pro purchase. Google Play processes payments and RevenueCat manages
   entitlement validation.
-- If risk transition notifications are enabled, disclose that notification permission is optional
-  and used only for local AirAware risk-category transition notifications.
+- If notifications are enabled, disclose that notification permission is optional and used only for
+  local AirAware risk transition notifications and Pro Environmental Event alerts evaluated during
+  normal app refreshes.
 - Re-run `npm run validate`, `npx expo-doctor`, and the Google Play policy guardrail tests before
   release.
 
@@ -354,10 +409,12 @@ Allergy Profile data remains local and is not sent to RevenueCat, Open-Meteo, or
 Notification capabilities are modeled separately:
 
 - Free and Pro: basic transition notifications for the active headline score
-- Pro lifetime: advanced environmental notification capability reserved for future alert types
+- Pro lifetime: configurable Environmental Event alert notifications for pollen, air pollution,
+  Saharan dust, wildfire-related particulate pollution, UV, mold potential, and overall
+  environmental risk
 
-Only basic transition notifications are implemented today. Advanced environmental notification
-types are not implemented and no Pro-only notification settings are shown.
+Environmental Events are visible on Today for Free and Pro users. Only the configurable event alert
+notifications are gated by the advanced environmental notification capability.
 
 Real purchase testing requires an Android development or release build. Expo Go cannot perform native
 RevenueCat purchases. RevenueCat Test Store can be used for development testing when configured, but
@@ -411,6 +468,19 @@ fetch, background location, alarm scheduling, headless tasks, or foreground serv
 
 The Settings screen also includes a local test-notification action. It verifies Android notification
 delivery without creating a fake risk transition or changing transition state.
+
+AirAware Pro can also enable Environmental Event alert categories for pollen, air pollution,
+Saharan dust, wildfire-related particulate pollution, UV, mold potential, and overall environmental
+risk. These alerts reuse the same local notification architecture and are generated only from fresh
+or accepted current forecast data during normal app refreshes. Event notification fingerprints are
+scoped by active location, event type, factor, severity, and episode start bucket so repeated
+refreshes do not notify repeatedly. A later meaningful severity escalation can notify again, while
+minor timing drift should not. Stale cached events may be displayed when the cache is still accepted,
+but stale reloads do not create new event notifications.
+
+Environmental Event alerts are always for the active location only. AirAware does not fetch events
+for every saved location and does not let a stale refresh from a previously active location update
+visible events, notifications, or widget snapshots.
 
 ## Share Daily Summary
 
@@ -514,7 +584,8 @@ integrations.
 ```text
 src/api/          Open-Meteo and OpenStreetMap network providers and response normalization
 src/capabilities/ Static capability profiles, feature metadata, and availability selectors
-src/core/         Pure scoring, mold, personalization, forecast, activity, and summary logic
+src/core/         Pure scoring, mold, Environmental Events, personalization, forecast, activity,
+                  and summary logic
 src/models/       Provider-independent TypeScript domain models
 src/services/     Location, billing gateway, notifications, widgets, and environment assembly
 src/storage/      AsyncStorage-backed settings and cache
@@ -531,9 +602,11 @@ plugins/          Expo config plugin that generates Android widget native code
 Screens do not parse provider JSON and do not implement scoring formulas directly. Air-quality and
 weather provider responses are validated independently, so a partial provider failure can reuse the
 last valid cached data for the failed provider without discarding fresh data from the successful
-provider. Provider query keys and persisted environment/vegetation cache entries are isolated by
-coordinates, so Location A data is not presented as Location B data after switching active
-locations.
+provider. Environmental Events are detected by a pure TypeScript engine from normalized
+provider-independent models after environment assembly; React components and notification code do
+not parse provider JSON or implement event thresholds directly. Provider query keys and persisted
+environment/vegetation cache entries are isolated by coordinates, so Location A data is not
+presented as Location B data after switching active locations.
 
 ## Capabilities
 
@@ -551,8 +624,8 @@ Capabilities describe stable application concepts:
   locations for Free and Pro users
 - Provider availability, currently Open-Meteo
 - Sharing support, currently local daily summary sharing through the Android share sheet
-- Notification capabilities, currently Free basic transition notifications and a reserved Pro
-  advanced environmental notification capability
+- Notification capabilities, currently Free basic transition notifications and Pro advanced
+  Environmental Event alerts
 - Widget capabilities, currently Free compact Android widget and Pro advanced Android widget
 - Environmental variable detail history, fetched on demand from Open-Meteo rather than built from
   locally recorded readings
@@ -599,15 +672,19 @@ forecast horizon, while the widget renders only a compact subset of daily summar
 overcrowding. Widget code consumes a presentation-safe snapshot prepared by the app; it does not
 parse provider JSON or duplicate scoring logic.
 
-Basic transition notifications are available in Free and Pro. Advanced environmental notifications
-are represented as a Pro capability boundary only; no advanced notification types are implemented in
-this milestone.
+Basic transition notifications are available in Free and Pro. Environmental Events are visible on
+Today for Free and Pro users. Advanced environmental notification settings are exposed only through
+the Pro notification capability, and services use capability selectors rather than direct tier
+checks in event detection.
 
 ## Limitations
 
 - This MVP targets Android only.
 - Forecasts are model estimates, not exact local sensor readings.
+- Environmental Events are forecast-derived episodes evaluated during app refreshes, not continuous
+  monitoring or local sensor detections.
 - Pollen data may be unavailable outside covered regions or seasons.
+- CAMS/Open-Meteo advanced event evidence varies by region, model domain, and forecast hour.
 - Mold potential is not a measured mold-spore concentration.
 - UV can be included in the personalized score when selected, but the environmental burden score
   remains unchanged.
@@ -627,12 +704,15 @@ this milestone.
   mean vegetation is absent.
 - Widgets update when the app writes a fresh local widget snapshot. They do not perform aggressive
   independent polling, background location, or independent provider requests.
-- No background location, advanced environmental notifications, accounts, analytics, subscriptions,
-  or long-term history are included in this Android milestone.
+- Wildfire-related particulate pollution events require wildfire-attributed CAMS/Open-Meteo PM10.
+  AirAware does not detect active fires, fire distance, fire perimeters, fire names, fire direction,
+  or number of fires.
+- No background location, accounts, analytics, subscriptions, or long-term history are included in
+  this Android milestone.
 - AirAware Pro purchase testing requires RevenueCat and Google Play configuration plus an Android
   development or release build. Expo Go cannot validate native purchases.
-- The currently implemented Pro capabilities are Extended Forecast, Activities, and the advanced
-  home-screen widget; advanced environmental notifications are capability metadata only.
+- The currently implemented Pro capabilities are Extended Forecast, Activities, the advanced
+  home-screen widget, and configurable Environmental Event alert notifications.
 
 ## License
 

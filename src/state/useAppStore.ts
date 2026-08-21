@@ -67,6 +67,20 @@ import {
   vegetationCacheForRequest,
 } from '../services/vegetationCache';
 import {
+  detectEnvironmentalEvents,
+  environmentalEventNeedsNotification,
+  environmentalEventNotificationStateAfterDelivery,
+  formatEnvironmentalEventNotification,
+  freshEnvironmentalEventNotificationState,
+  staleForecastCanDisplayEvents,
+} from '../core/environmentalEvents';
+import type {
+  EnvironmentalEvent,
+  EnvironmentalEventNotificationState,
+} from '../models/environmentalEvents';
+import {
+  loadEnvironmentalEventNotificationState,
+  saveEnvironmentalEventNotificationState,
   loadEnvironmentCache,
   loadEnvironmentCacheForCoordinates,
   loadDevelopmentEntitlementOverride,
@@ -115,6 +129,8 @@ interface AppStore {
   vegetationLoading: boolean;
   vegetationError: string | null;
   riskNotificationTransitionState: RiskNotificationTransitionState | null;
+  environmentalEvents: EnvironmentalEvent[];
+  environmentalEventNotificationState: EnvironmentalEventNotificationState | null;
   hydrate: () => Promise<void>;
   refresh: (options?: { force?: boolean }) => Promise<void>;
   updateSettings: (settings: Partial<AppSettings>) => Promise<void>;
@@ -378,6 +394,47 @@ function activeVegetationCoordinatesKey(): string | null {
   return coordinates ? coordinateRequestKey(coordinates) : null;
 }
 
+function environmentalEventNotificationsEnabled(settings: AppSettings): boolean {
+  return Object.values(settings.environmentalEventNotifications).some((enabled) => enabled);
+}
+
+async function deliverEnvironmentalEventNotifications(input: {
+  events: readonly EnvironmentalEvent[];
+  settings: AppSettings;
+  capabilityAvailable: boolean;
+  permissionStatus: NotificationPermissionStatus;
+  previousState: EnvironmentalEventNotificationState | null;
+}): Promise<EnvironmentalEventNotificationState | null> {
+  if (!input.capabilityAvailable || input.permissionStatus !== 'granted') {
+    return input.previousState;
+  }
+
+  let state = freshEnvironmentalEventNotificationState(input.previousState);
+  let deliveredCount = 0;
+
+  for (const event of input.events) {
+    if (deliveredCount >= 2) break;
+    if (
+      !environmentalEventNeedsNotification({
+        event,
+        settings: input.settings,
+        state,
+      })
+    ) {
+      continue;
+    }
+
+    const delivered = await deliverRiskTransitionNotification(
+      formatEnvironmentalEventNotification(event),
+    );
+    if (!delivered) continue;
+    state = environmentalEventNotificationStateAfterDelivery({ event, state });
+    deliveredCount += 1;
+  }
+
+  return state;
+}
+
 function refreshPreflightCoordinates(input: {
   settings: AppSettings;
   cached: NormalizedEnvironment | null;
@@ -453,6 +510,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
   vegetationLoading: false,
   vegetationError: null,
   riskNotificationTransitionState: null,
+  environmentalEvents: [],
+  environmentalEventNotificationState: null,
 
   hydrate: async () => {
     const [
@@ -462,6 +521,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       rawBillingState,
       developmentOverride,
       notificationState,
+      eventNotificationState,
     ] = await Promise.all([
       loadSettings(),
       loadProfile(),
@@ -469,6 +529,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       billingGateway.initializeBilling(),
       loadDevelopmentEntitlementOverride(),
       loadRiskNotificationTransitionState(),
+      loadEnvironmentalEventNotificationState(),
     ]);
     const billingState = effectiveBillingState(rawBillingState, developmentOverride);
     const entitlement = billingState.entitlement;
@@ -502,6 +563,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const cachedVegetation = await loadCachedVegetationFor({
       coordinates: environment?.coordinates ?? null,
     });
+    const environmentalEvents =
+      environment && staleForecastCanDisplayEvents(environment)
+        ? detectEnvironmentalEvents(environment, {
+            locationId: settings.activeLocationId,
+            profile,
+            settings,
+          })
+        : [];
 
     if (settings !== storedSettings) {
       scheduleSettingsSave(settings);
@@ -519,6 +588,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
       vegetationStale: cachedVegetation.stale,
       vegetationError: null,
       riskNotificationTransitionState: notificationState,
+      environmentalEvents,
+      environmentalEventNotificationState:
+        freshEnvironmentalEventNotificationState(eventNotificationState),
       stale: staleFrom(activeCache?.metadata.savedAt ?? null),
       location: hydratedLocation,
     });
@@ -596,6 +668,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
         force: options.force,
       });
       if (freshCache) {
+        const environmentalEvents = detectEnvironmentalEvents(freshCache.environment, {
+          locationId: settings.activeLocationId,
+          profile: get().profile,
+          settings,
+        });
         await persistWidgetSnapshotFor({
           environment: freshCache.environment,
           profile: get().profile,
@@ -614,6 +691,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
           stale: false,
           location: freshCache.location,
           environment: freshCache.environment,
+          environmentalEvents,
         });
         void get().refreshVegetation(false);
         await runPendingRefresh();
@@ -649,6 +727,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
       });
 
       if (!refreshPolicy.needsRefresh && refreshPolicy.usableCache) {
+        const environmentalEvents = detectEnvironmentalEvents(refreshPolicy.usableCache, {
+          locationId: resolvedSettings.activeLocationId,
+          profile: get().profile,
+          settings: resolvedSettings,
+        });
         await persistWidgetSnapshotFor({
           environment: refreshPolicy.usableCache,
           profile: get().profile,
@@ -667,6 +750,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
           stale: false,
           location,
           environment: refreshPolicy.usableCache,
+          environmentalEvents,
         });
         void get().refreshVegetation(false);
         await runPendingRefresh();
@@ -736,9 +820,21 @@ export const useAppStore = create<AppStore>((set, get) => ({
       }
 
       const derived = deriveEnvironmentState(environment, get().profile, capabilities);
+      const environmentalEvents = staleForecastCanDisplayEvents(environment)
+        ? detectEnvironmentalEvents(environment, {
+            locationId: requestActiveLocationId,
+            profile: get().profile,
+            settings: resolvedSettings,
+          })
+        : [];
       const canNotify = isFeatureAvailable(capabilities, 'basic_transition_notifications');
+      const canNotifyEvents = isFeatureAvailable(
+        capabilities,
+        'advanced_environment_notifications',
+      );
       const permissionStatus =
-        canNotify && resolvedSettings.riskTransitionNotificationsEnabled
+        (canNotify && resolvedSettings.riskTransitionNotificationsEnabled) ||
+        (canNotifyEvents && environmentalEventNotificationsEnabled(resolvedSettings))
           ? await getRiskNotificationPermissionStatus()
           : get().notificationPermissionStatus;
       if (get().settings.activeLocationId !== requestActiveLocationId) {
@@ -781,6 +877,22 @@ export const useAppStore = create<AppStore>((set, get) => ({
         await finishObsoleteRefresh();
         return;
       }
+      const nextEventNotificationState = hasCompleteFreshProviderData
+        ? await deliverEnvironmentalEventNotifications({
+            events: environmentalEvents,
+            settings: resolvedSettings,
+            capabilityAvailable: canNotifyEvents,
+            permissionStatus,
+            previousState: get().environmentalEventNotificationState,
+          })
+        : get().environmentalEventNotificationState;
+      if (get().settings.activeLocationId !== requestActiveLocationId) {
+        await finishObsoleteRefresh();
+        return;
+      }
+      if (nextEventNotificationState) {
+        await saveEnvironmentalEventNotificationState(nextEventNotificationState);
+      }
       const nextNotificationState = transitionEvaluation
         ? riskTransitionStateAfterDeliveryAttempt({
             nextState: transitionEvaluation.nextState,
@@ -812,6 +924,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
         notificationPermissionStatus: permissionStatus,
         riskNotificationTransitionState:
           nextNotificationState ?? get().riskNotificationTransitionState,
+        environmentalEventNotificationState:
+          nextEventNotificationState ?? get().environmentalEventNotificationState,
+        environmentalEvents,
       });
       void get().refreshVegetation(false);
       await runPendingRefresh();
@@ -835,6 +950,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
           cacheForCoordinates(cached, fallbackCoordinates))
         : null;
       const nextStale = environment !== null;
+      const environmentalEvents =
+        environment && staleForecastCanDisplayEvents(environment)
+          ? detectEnvironmentalEvents(environment, {
+              locationId: get().settings.activeLocationId,
+              profile: get().profile,
+              settings: get().settings,
+            })
+          : [];
 
       await persistWidgetSnapshotFor({
         environment: environment ?? null,
@@ -852,6 +975,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
           : 'No environmental data is available.',
         environment: environment ?? null,
         location: resolvedLocation ?? get().location,
+        environmentalEvents,
       });
       await runPendingRefresh();
     }
@@ -866,20 +990,45 @@ export const useAppStore = create<AppStore>((set, get) => ({
         let notificationPermissionStatus = get().notificationPermissionStatus;
         let notificationMessage: string | null = null;
         let normalizedPatch = settingsPatch;
-
-        if (
+        const requestedSettings = { ...currentSettings, ...settingsPatch };
+        const riskTransitionRequested =
           settingsPatch.riskTransitionNotificationsEnabled === true &&
-          currentSettings.riskTransitionNotificationsEnabled !== true
-        ) {
-          if (!isFeatureAvailable(capabilities, 'basic_transition_notifications')) {
+          currentSettings.riskTransitionNotificationsEnabled !== true;
+        const eventNotificationsRequested =
+          settingsPatch.environmentalEventNotifications !== undefined &&
+          environmentalEventNotificationsEnabled(requestedSettings);
+
+        if (riskTransitionRequested || eventNotificationsRequested) {
+          if (
+            riskTransitionRequested &&
+            !isFeatureAvailable(capabilities, 'basic_transition_notifications')
+          ) {
             normalizedPatch = { ...settingsPatch, riskTransitionNotificationsEnabled: false };
             notificationMessage = 'Risk transition notifications are unavailable in this build.';
+          } else if (
+            eventNotificationsRequested &&
+            !isFeatureAvailable(capabilities, 'advanced_environment_notifications')
+          ) {
+            normalizedPatch = {
+              ...settingsPatch,
+              environmentalEventNotifications: DEFAULT_SETTINGS.environmentalEventNotifications,
+            };
+            notificationMessage = 'Environmental alerts are available with AirAware Pro.';
           } else if (notificationPermissionStatus === 'denied') {
             notificationPermissionStatus = await getRiskNotificationPermissionStatus();
-            if (notificationPermissionStatus === 'granted') {
-              normalizedPatch = { ...settingsPatch, riskTransitionNotificationsEnabled: true };
-            } else {
-              normalizedPatch = { ...settingsPatch, riskTransitionNotificationsEnabled: false };
+            if (notificationPermissionStatus !== 'granted') {
+              normalizedPatch = {
+                ...settingsPatch,
+                riskTransitionNotificationsEnabled: riskTransitionRequested
+                  ? false
+                  : currentSettings.riskTransitionNotificationsEnabled,
+              };
+              if (eventNotificationsRequested) {
+                normalizedPatch = {
+                  ...normalizedPatch,
+                  environmentalEventNotifications: DEFAULT_SETTINGS.environmentalEventNotifications,
+                };
+              }
               notificationMessage =
                 'Notification permission is denied. Open Android settings to allow notifications.';
             }
@@ -887,7 +1036,18 @@ export const useAppStore = create<AppStore>((set, get) => ({
             notificationPermissionStatus = await requestRiskNotificationPermission();
 
             if (notificationPermissionStatus !== 'granted') {
-              normalizedPatch = { ...settingsPatch, riskTransitionNotificationsEnabled: false };
+              normalizedPatch = {
+                ...settingsPatch,
+                riskTransitionNotificationsEnabled: riskTransitionRequested
+                  ? false
+                  : currentSettings.riskTransitionNotificationsEnabled,
+              };
+              if (eventNotificationsRequested) {
+                normalizedPatch = {
+                  ...normalizedPatch,
+                  environmentalEventNotifications: DEFAULT_SETTINGS.environmentalEventNotifications,
+                };
+              }
               notificationMessage =
                 notificationPermissionStatus === 'denied'
                   ? 'Notification permission was denied. You can retry from Settings.'
@@ -899,12 +1059,25 @@ export const useAppStore = create<AppStore>((set, get) => ({
         if (settingsPatch.riskTransitionNotificationsEnabled === false) {
           notificationMessage = null;
         }
+        if (
+          settingsPatch.environmentalEventNotifications !== undefined &&
+          !environmentalEventNotificationsEnabled(requestedSettings)
+        ) {
+          notificationMessage = null;
+        }
 
         const settings = settingsForProfileState(
           { ...get().settings, ...normalizedPatch },
           get().profile,
         );
-        set({ settings });
+        const environmentalEvents = get().environment
+          ? detectEnvironmentalEvents(get().environment, {
+              locationId: settings.activeLocationId,
+              profile: get().profile,
+              settings,
+            })
+          : [];
+        set({ settings, environmentalEvents });
         set({ notificationPermissionStatus, notificationMessage });
         scheduleSettingsSave(settings);
         void persistWidgetSnapshotFor({
@@ -977,6 +1150,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
           settings,
           location,
           environment,
+          environmentalEvents:
+            environment && staleForecastCanDisplayEvents(environment)
+              ? detectEnvironmentalEvents(environment, {
+                  locationId,
+                  profile: get().profile,
+                  settings,
+                })
+              : [],
           stale,
           error: null,
           vegetation: null,
@@ -1028,6 +1209,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
           settings,
           location: locationInfoFromSettings(settings),
           environment: null,
+          environmentalEvents: [],
           stale: false,
           error: null,
           vegetation: null,
@@ -1075,6 +1257,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
               ? locationInfoFromSettings(settings)
               : get().location,
           environment,
+          environmentalEvents:
+            settings.activeLocationId === locationId && environment
+              ? detectEnvironmentalEvents(environment, {
+                  locationId,
+                  profile: get().profile,
+                  settings,
+                })
+              : get().environmentalEvents,
         });
         scheduleSettingsSave(settings);
         await persistWidgetSnapshotFor({
@@ -1115,6 +1305,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
           settings,
           location: active ? locationInfoFromSettings(settings) : get().location,
           environment: active ? null : get().environment,
+          environmentalEvents: active ? [] : get().environmentalEvents,
           stale: active ? false : get().stale,
           error: active ? null : get().error,
           vegetation: active ? null : get().vegetation,
@@ -1163,6 +1354,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
           settings,
           location: activeDeleted ? locationInfoFromSettings(settings) : get().location,
           environment: activeDeleted ? null : get().environment,
+          environmentalEvents: activeDeleted ? [] : get().environmentalEvents,
           stale: activeDeleted ? false : get().stale,
           error: activeDeleted ? null : get().error,
           vegetation: activeDeleted ? null : get().vegetation,
@@ -1189,7 +1381,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const profile = { ...get().profile, ...profilePatch };
     const currentSettings = get().settings;
     const settings = settingsForProfileState(currentSettings, profile);
-    set({ profile, settings });
+    const environmentalEvents = get().environment
+      ? detectEnvironmentalEvents(get().environment, {
+          locationId: settings.activeLocationId,
+          profile,
+          settings,
+        })
+      : [];
+    set({ profile, settings, environmentalEvents });
     if (settings !== currentSettings) {
       scheduleSettingsSave(settings);
     }
@@ -1212,7 +1411,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
         [factor]: !profile.factors[factor],
       },
     };
-    set({ profile: nextProfile });
+    const environmentalEvents = get().environment
+      ? detectEnvironmentalEvents(get().environment, {
+          locationId: get().settings.activeLocationId,
+          profile: nextProfile,
+          settings: get().settings,
+        })
+      : [];
+    set({ profile: nextProfile, environmentalEvents });
     await enqueueProfileSave(nextProfile);
     await persistWidgetSnapshotFor({
       environment: get().environment,

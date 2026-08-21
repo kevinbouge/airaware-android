@@ -33,7 +33,15 @@ const EMPTY_EXTENDED_AIR_QUALITY: ExtendedAirQualityReadings = {
   methane: null,
   nitrogenMonoxide: null,
   formaldehyde: null,
+  glyoxal: null,
   nonMethaneVolatileOrganicCompounds: null,
+  peroxyacylNitrates: null,
+  secondaryInorganicAerosol: null,
+  residentialElementaryCarbon: null,
+  totalElementaryCarbon: null,
+  pm25TotalOrganicMatter: null,
+  seaSaltAerosol: null,
+  uvIndexClearSky: null,
 };
 
 const EMPTY_EXTENDED_WEATHER: ExtendedWeatherReadings = {
@@ -162,7 +170,8 @@ function mergeCurrent(
     weather: weatherContext,
     extended,
     moldPotential: calculateMoldPotential(weatherContext),
-    uvIndex: weather?.current.uvIndex ?? fallback?.current.uvIndex ?? null,
+    uvIndex:
+      airQuality?.current.uvIndex ?? weather?.current.uvIndex ?? fallback?.current.uvIndex ?? null,
   };
 }
 
@@ -233,7 +242,7 @@ function mergeHourly(
       weather: weatherContext,
       extended,
       moldPotential: calculateMoldPotential(weatherContext),
-      uvIndex: weatherHour?.uvIndex ?? fallbackHour?.uvIndex ?? null,
+      uvIndex: air?.uvIndex ?? weatherHour?.uvIndex ?? fallbackHour?.uvIndex ?? null,
     };
   });
 }
@@ -305,6 +314,8 @@ export function assembleEnvironment(input: {
         input.airQuality?.fetchedAt ?? input.fallback?.metadata.airQualityFetchedAt ?? null,
       weatherFetchedAt:
         input.weather?.fetchedAt ?? input.fallback?.metadata.weatherFetchedAt ?? null,
+      airQualityModel:
+        input.airQuality?.atmosphericModel ?? input.fallback?.metadata.airQualityModel ?? 'auto',
       airQualitySource: sourceForProvider(
         input.airQuality,
         input.fallback?.metadata.airQualityFetchedAt,

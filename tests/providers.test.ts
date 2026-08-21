@@ -10,9 +10,15 @@ describe('Open-Meteo providers', () => {
     expect(url).toContain('hourly=');
     expect(url).toContain('timezone=auto');
     expect(url).toContain(`forecast_days=${FORECAST_DAY_LIMITS.providerRequest}`);
+    expect(url).toContain('domains=auto');
     expect(url).not.toContain('past_hours=');
     expect(url).toContain('us_aqi_pm2_5');
     expect(url).toContain('ragweed_pollen');
+    expect(url).toContain('aerosol_optical_depth');
+    expect(url).toContain('dust');
+    expect(url).toContain('pm10_wildfires');
+    expect(url).toContain('secondary_inorganic_aerosol');
+    expect(url).toContain('pm2_5_total_organic_matter');
     expect(url).not.toContain('carbon_dioxide');
     expect(url).not.toContain('ammonia');
   });
@@ -161,40 +167,82 @@ describe('Open-Meteo providers', () => {
         time: '2026-08-01T12:00',
         pm2_5: 8,
         european_aqi_pm2_5: 20,
+        uv_index: 6.1,
+        uv_index_clear_sky: 7.2,
+        pm10_wildfires: 4,
+        secondary_inorganic_aerosol: 2.5,
+        residential_elementary_carbon: 0.4,
+        total_elementary_carbon: 0.9,
+        pm2_5_total_organic_matter: 3.1,
+        sea_salt_aerosol: 1.2,
         carbon_dioxide: 418,
         ammonia: 'bad',
         nitrogen_monoxide: 3.2,
         formaldehyde: Number.NaN,
+        glyoxal: 0.02,
+        peroxyacyl_nitrates: null,
       },
       hourly: {
-        time: ['2026-08-01T12:00'],
+        time: ['2026-08-01T12:00', '2026-08-01T13:00'],
         pm2_5: [8],
         european_aqi_pm2_5: [20],
+        uv_index: [6.2, 'bad'],
+        uv_index_clear_sky: [7.3],
+        pm10_wildfires: [5],
+        secondary_inorganic_aerosol: [2.7],
+        residential_elementary_carbon: [0.5],
+        total_elementary_carbon: [1],
+        pm2_5_total_organic_matter: [3.3],
+        sea_salt_aerosol: [1.4],
         carbon_dioxide: [420],
         ammonia: [1.8],
         methane: [1900],
         nitrogen_monoxide: [3],
         formaldehyde: [0.7],
+        glyoxal: [0.03],
         non_methane_volatile_organic_compounds: [14],
+        peroxyacyl_nitrates: [0.08],
       },
     });
 
+    expect(response.current.uvIndex).toBeCloseTo(6.1);
+    expect(response.current.atmosphericIrritants.wildfirePm10).toBe(4);
     expect(response.current.extended).toEqual({
       carbonDioxide: 418,
       ammonia: null,
       methane: null,
       nitrogenMonoxide: 3.2,
       formaldehyde: null,
+      glyoxal: 0.02,
       nonMethaneVolatileOrganicCompounds: null,
+      peroxyacylNitrates: null,
+      secondaryInorganicAerosol: 2.5,
+      residentialElementaryCarbon: 0.4,
+      totalElementaryCarbon: 0.9,
+      pm25TotalOrganicMatter: 3.1,
+      seaSaltAerosol: 1.2,
+      uvIndexClearSky: 7.2,
     });
+    expect(response.hourly[0]?.uvIndex).toBeCloseTo(6.2);
+    expect(response.hourly[0]?.atmosphericIrritants.wildfirePm10).toBe(5);
     expect(response.hourly[0]?.extended).toEqual({
       carbonDioxide: 420,
       ammonia: 1.8,
       methane: 1900,
       nitrogenMonoxide: 3,
       formaldehyde: 0.7,
+      glyoxal: 0.03,
       nonMethaneVolatileOrganicCompounds: 14,
+      peroxyacylNitrates: 0.08,
+      secondaryInorganicAerosol: 2.7,
+      residentialElementaryCarbon: 0.5,
+      totalElementaryCarbon: 1,
+      pm25TotalOrganicMatter: 3.3,
+      seaSaltAerosol: 1.4,
+      uvIndexClearSky: 7.3,
     });
+    expect(response.hourly[1]?.uvIndex).toBeNull();
+    expect(response.hourly[1]?.extended.pm25TotalOrganicMatter).toBeNull();
   });
 
   it('applies provider UTC offsets to air-quality timestamps', () => {

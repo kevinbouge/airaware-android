@@ -177,7 +177,7 @@ describe('daily summary', () => {
     expect(text).toContain('☀️ UV peak');
     expect(text).toContain('High at');
     expect(text).not.toContain('Very High');
-    expect(text).toContain('📡 Data: Open-Meteo');
+    expect(text).toContain('📡 Data: Open-Meteo, CAMS ENSEMBLE data providers');
     expect(text).not.toContain('50.0755');
     expect(text).not.toContain('14.4378');
     expect(text).not.toContain('undefined');

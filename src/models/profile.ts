@@ -1,5 +1,6 @@
 import { DEFAULT_ACTIVITY_SETTINGS } from '../core/activityDefinitions';
 import type { ActivitySettings } from './activities';
+import type { EnvironmentalEventNotificationSettings } from './environmentalEvents';
 import { CURRENT_LOCATION_ID, currentLocationEntry, type SavedLocation } from './location';
 
 type PollenFactorId =
@@ -54,10 +55,21 @@ export interface AppSettings {
   summaryLocation: 'place' | 'hidden';
   riskTransitionNotificationsEnabled: boolean;
   riskTransitionNotificationThreshold: 'highAndVeryHigh' | 'veryHighOnly';
+  environmentalEventNotifications: EnvironmentalEventNotificationSettings;
   enabledActivities: ActivitySettings;
   collapsedSections: Record<string, boolean>;
   locationOnboardingComplete: boolean;
 }
+
+export const DEFAULT_ENVIRONMENTAL_EVENT_NOTIFICATIONS: EnvironmentalEventNotificationSettings = {
+  pollen: false,
+  airPollution: false,
+  saharanDust: false,
+  wildfirePollution: false,
+  uv: false,
+  mold: false,
+  headlineRisk: false,
+};
 
 export const DEFAULT_SETTINGS: AppSettings = {
   locations: [currentLocationEntry()],
@@ -66,6 +78,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   summaryLocation: 'place',
   riskTransitionNotificationsEnabled: false,
   riskTransitionNotificationThreshold: 'highAndVeryHigh',
+  environmentalEventNotifications: DEFAULT_ENVIRONMENTAL_EVENT_NOTIFICATIONS,
   enabledActivities: DEFAULT_ACTIVITY_SETTINGS,
   collapsedSections: {},
   locationOnboardingComplete: false,

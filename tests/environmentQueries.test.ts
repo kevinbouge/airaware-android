@@ -13,6 +13,7 @@ function airQuality(): NormalizedAirQuality {
     coordinates,
     fetchedAt: '2026-08-14T12:00:00Z',
     timezone: 'Europe/Prague',
+    atmosphericModel: 'auto',
     current: {
       timestamp: '2026-08-14T12:00:00+02:00',
       pollen: { alder: null, birch: null, grass: 10, mugwort: null, olive: null, ragweed: null },
@@ -37,6 +38,7 @@ function airQuality(): NormalizedAirQuality {
         dust: null,
         wildfirePm10: null,
       },
+      uvIndex: 4,
       extended: {
         carbonDioxide: null,
         ammonia: null,

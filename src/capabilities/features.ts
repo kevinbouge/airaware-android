@@ -138,8 +138,10 @@ export function featureDefinitions(capabilities: AppCapabilities): FeatureDefini
       available: hasNotificationCapability(capabilities, 'advanced_environment_notifications'),
       requiredEntitlement: 'pro_lifetime',
       freeBehavior: 'Not included',
-      proBehavior: 'Available for future advanced environmental alerts',
-      description: 'Prepared capability only. No advanced alert types are implemented yet.',
+      proBehavior:
+        'Configurable pollen, pollution, Saharan dust, wildfire-related pollution, UV, mold, and risk event alerts',
+      description:
+        'Configurable local notifications for Environmental Events detected during normal app refreshes.',
     },
   ];
 }

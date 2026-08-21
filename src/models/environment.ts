@@ -7,6 +7,8 @@ export interface Coordinates {
   longitude: number;
 }
 
+export type AtmosphericModel = 'auto' | 'cams-europe' | 'cams-global';
+
 export interface LocationInfo {
   activeLocationId: string;
   activeLocationName: string;
@@ -54,7 +56,15 @@ export interface ExtendedAirQualityReadings {
   methane: number | null;
   nitrogenMonoxide: number | null;
   formaldehyde: number | null;
+  glyoxal?: number | null;
   nonMethaneVolatileOrganicCompounds: number | null;
+  peroxyacylNitrates?: number | null;
+  secondaryInorganicAerosol?: number | null;
+  residentialElementaryCarbon?: number | null;
+  totalElementaryCarbon?: number | null;
+  pm25TotalOrganicMatter?: number | null;
+  seaSaltAerosol?: number | null;
+  uvIndexClearSky?: number | null;
 }
 
 export interface ExtendedWeatherReadings {
@@ -210,6 +220,7 @@ export interface NormalizedEnvironment {
     timezone: string | null;
     airQualityFetchedAt: string | null;
     weatherFetchedAt: string | null;
+    airQualityModel?: AtmosphericModel | undefined;
     airQualitySource: 'fresh' | 'cached' | 'unavailable';
     weatherSource: 'fresh' | 'cached' | 'unavailable';
     requestedActivityDomains?: ActivityDomainId[] | undefined;
