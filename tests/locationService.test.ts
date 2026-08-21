@@ -1,4 +1,10 @@
-import { parseManualCoordinates, resolveLocation } from '../src/services/locationService';
+import {
+  parseManualCoordinates,
+  resolveActiveLocation,
+  resolveLocation,
+  reverseGeocodePlaceName,
+} from '../src/services/locationService';
+import { CURRENT_LOCATION_ID, currentLocationEntry } from '../src/models/location';
 import { DEFAULT_SETTINGS } from '../src/models/profile';
 
 function dependencies(overrides = {}) {
@@ -135,5 +141,68 @@ describe('location service', () => {
     expect(deps.requestPermission).not.toHaveBeenCalled();
     expect(deps.getCurrentCoordinates).toHaveBeenCalledTimes(1);
     expect(location.placeName).toBe('Prague');
+  });
+
+  it('resolves Current location through the automatic foreground flow', async () => {
+    const deps = dependencies({
+      getPermission: jest.fn(async () => 'granted' as const),
+    });
+
+    const location = await resolveActiveLocation(
+      {
+        locations: [currentLocationEntry()],
+        activeLocationId: CURRENT_LOCATION_ID,
+      },
+      deps,
+    );
+
+    expect(location.activeLocationId).toBe(CURRENT_LOCATION_ID);
+    expect(location.mode).toBe('automatic');
+    expect(location.coordinates).toEqual({ latitude: 50.0755, longitude: 14.4378 });
+  });
+
+  it('resolves saved manual locations without requesting device location', async () => {
+    const deps = dependencies();
+
+    const location = await resolveActiveLocation(
+      {
+        locations: [
+          currentLocationEntry(),
+          {
+            id: 'manual-home',
+            type: 'manual',
+            name: 'Home',
+            latitude: 49.1951,
+            longitude: 16.6068,
+            placeName: 'Brno',
+            createdAt: 0,
+            updatedAt: 0,
+          },
+        ],
+        activeLocationId: 'manual-home',
+      },
+      deps,
+    );
+
+    expect(location.activeLocationName).toBe('Home');
+    expect(location.coordinates).toEqual({ latitude: 49.1951, longitude: 16.6068 });
+    expect(deps.getCurrentCoordinates).not.toHaveBeenCalled();
+  });
+
+  it('keeps reverse geocoding best effort', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const deps = dependencies({
+      reverseGeocode: jest.fn(async () => {
+        throw new Error('reverse geocode unavailable');
+      }),
+    });
+
+    try {
+      await expect(
+        reverseGeocodePlaceName({ latitude: 50, longitude: 14 }, deps),
+      ).resolves.toBeNull();
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

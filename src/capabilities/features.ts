@@ -93,9 +93,9 @@ export function featureDefinitions(capabilities: AppCapabilities): FeatureDefini
     },
     {
       id: 'manual_location',
-      displayName: 'Manual location',
+      displayName: 'Saved manual locations',
       category: 'locations',
-      available: capabilities.locations.manualLocation,
+      available: capabilities.locations.savedManualLocations,
     },
     {
       id: 'daily_summary',

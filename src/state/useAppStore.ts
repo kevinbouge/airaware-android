@@ -40,8 +40,17 @@ import {
   type AppSettings,
   type PersonalAllergyProfile,
 } from '../models/profile';
+import {
+  CURRENT_LOCATION_ID,
+  LEGACY_MANUAL_LOCATION_ID,
+  activeSavedLocation,
+  coordinatesForSavedLocation,
+  currentLocationEntry,
+  locationDisplayName,
+  type ManualSavedLocation,
+} from '../models/location';
 import { deriveEnvironmentState } from './derivedEnvironment';
-import { parseManualCoordinates, resolveLocation } from '../services/locationService';
+import { resolveActiveLocation, reverseGeocodePlaceName } from '../services/locationService';
 import { assembleEnvironment } from '../services/environmentAssembler';
 import { activeEnvironmentalProvider } from '../services/environmentProviders';
 import { environmentRefreshPolicy } from '../services/environmentRefreshPolicy';
@@ -59,6 +68,7 @@ import {
 } from '../services/vegetationCache';
 import {
   loadEnvironmentCache,
+  loadEnvironmentCacheForCoordinates,
   loadDevelopmentEntitlementOverride,
   saveDevelopmentEntitlementOverride,
   loadProfile,
@@ -81,7 +91,6 @@ import {
   requestRiskNotificationPermission,
 } from '../services/notificationService';
 import { settingsForProfileState } from './settingsPolicy';
-import { shouldRefreshAfterLocationSettingsChange } from './appLifecycle';
 import { enabledActivityIds } from '../core/activityDefinitions';
 
 interface AppStore {
@@ -110,6 +119,17 @@ interface AppStore {
   refresh: (options?: { force?: boolean }) => Promise<void>;
   updateSettings: (settings: Partial<AppSettings>) => Promise<void>;
   toggleCollapsedSection: (sectionId: string) => Promise<void>;
+  setActiveLocation: (locationId: string) => Promise<void>;
+  addSavedLocation: (
+    coordinates: NormalizedEnvironment['coordinates'],
+    name?: string | undefined,
+  ) => Promise<void>;
+  renameSavedLocation: (locationId: string, name: string) => Promise<void>;
+  updateSavedLocationCoordinates: (
+    locationId: string,
+    coordinates: NormalizedEnvironment['coordinates'],
+  ) => Promise<void>;
+  deleteSavedLocation: (locationId: string) => Promise<void>;
   updateProfile: (profile: Partial<PersonalAllergyProfile>) => Promise<void>;
   toggleProfileFactor: (factor: keyof PersonalAllergyProfile['factors']) => Promise<void>;
   shareDailySummary: () => Promise<void>;
@@ -123,6 +143,8 @@ interface AppStore {
 }
 
 const emptyLocation: LocationInfo = {
+  activeLocationId: CURRENT_LOCATION_ID,
+  activeLocationName: 'Current location',
   coordinates: null,
   placeName: null,
   mode: 'automatic',
@@ -194,6 +216,8 @@ let pendingSettings: AppSettings | null = null;
 let settingsSaveTimeout: ReturnType<typeof setTimeout> | null = null;
 let pendingRefresh = false;
 let pendingRefreshForce = false;
+let nextManualLocationSequence = 0;
+let vegetationRefreshSequence = 0;
 const billingGateway = createBillingGateway();
 let unsubscribeBillingGateway: (() => void) | null = null;
 
@@ -283,14 +307,84 @@ function enabledProviderActivities(settings: AppSettings, entitlement: Entitleme
   );
 }
 
+function locationInfoFromSettings(settings: AppSettings): LocationInfo {
+  const location = activeSavedLocation(settings);
+  const coordinates = coordinatesForSavedLocation(location);
+
+  return {
+    activeLocationId: location.id,
+    activeLocationName: locationDisplayName(location),
+    coordinates,
+    placeName: location.type === 'current' ? location.placeName : location.name,
+    mode: location.type === 'current' ? 'automatic' : 'manual',
+    permissionStatus: 'unknown',
+  };
+}
+
+function settingsWithCurrentLocation(settings: AppSettings, location: LocationInfo): AppSettings {
+  if (location.activeLocationId !== CURRENT_LOCATION_ID || location.mode !== 'automatic') {
+    return settings;
+  }
+
+  const current = currentLocationEntry({
+    coordinates: location.coordinates,
+    placeName: location.placeName,
+    updatedAt: Date.now(),
+  });
+
+  return {
+    ...settings,
+    locations: [current, ...settings.locations.filter((item) => item.id !== CURRENT_LOCATION_ID)],
+  };
+}
+
+function activeCoordinatesFromSettings(
+  settings: AppSettings,
+): NormalizedEnvironment['coordinates'] | null {
+  return coordinatesForSavedLocation(activeSavedLocation(settings));
+}
+
+function generatedManualLocationId(): string {
+  nextManualLocationSequence += 1;
+  return `manual-${Date.now().toString(36)}-${nextManualLocationSequence.toString(36)}`;
+}
+
+function manualLocationName(
+  name: string | null,
+  coordinates: NormalizedEnvironment['coordinates'],
+): string {
+  return name?.trim() || `${coordinates.latitude.toFixed(4)}, ${coordinates.longitude.toFixed(4)}`;
+}
+
+function manualSavedLocationCount(settings: AppSettings): number {
+  return settings.locations.filter((location) => location.type === 'manual').length;
+}
+
+function isSilentQueryCancellation(error: unknown): boolean {
+  return (
+    error !== null &&
+    typeof error === 'object' &&
+    (error as Record<string, unknown>).silent === true
+  );
+}
+
+function coordinateRequestKey(coordinates: NormalizedEnvironment['coordinates']): string {
+  return `${coordinates.latitude.toFixed(5)},${coordinates.longitude.toFixed(5)}`;
+}
+
+function activeVegetationCoordinatesKey(): string | null {
+  const state = useAppStore.getState();
+  const coordinates = state.environment?.coordinates ?? state.location.coordinates;
+  return coordinates ? coordinateRequestKey(coordinates) : null;
+}
+
 function refreshPreflightCoordinates(input: {
   settings: AppSettings;
   cached: NormalizedEnvironment | null;
   currentLocation: LocationInfo;
 }): NormalizedEnvironment['coordinates'] | null {
-  if (input.settings.locationMode === 'manual') {
-    return parseManualCoordinates(input.settings);
-  }
+  const active = activeSavedLocation(input.settings);
+  if (active.type === 'manual') return coordinatesForSavedLocation(active);
 
   return input.cached?.coordinates ?? input.currentLocation.coordinates;
 }
@@ -325,15 +419,11 @@ function freshCachePreflight(input: {
 
   return {
     environment: policy.usableCache,
-    location:
-      input.settings.locationMode === 'manual'
-        ? {
-            coordinates,
-            placeName: policy.usableCache.placeName,
-            mode: 'manual',
-            permissionStatus: 'unknown',
-          }
-        : input.currentLocation,
+    location: {
+      ...locationInfoFromSettings(input.settings),
+      coordinates,
+      placeName: policy.usableCache.placeName,
+    },
   };
 }
 
@@ -368,7 +458,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const [
       storedSettings,
       profile,
-      cache,
+      latestCache,
       rawBillingState,
       developmentOverride,
       notificationState,
@@ -382,8 +472,33 @@ export const useAppStore = create<AppStore>((set, get) => ({
     ]);
     const billingState = effectiveBillingState(rawBillingState, developmentOverride);
     const entitlement = billingState.entitlement;
-    const settings = settingsForProfileState(storedSettings, profile);
-    const environment = cache?.data ?? null;
+    let settings = settingsForProfileState(storedSettings, profile);
+    const activeCoordinates = activeCoordinatesFromSettings(settings);
+    const activeCache =
+      (await loadEnvironmentCacheForCoordinates(activeCoordinates)) ??
+      (activeCoordinates ? null : latestCache);
+    const environment = activeCache?.data ?? null;
+    const hydratedLocation = environment
+      ? {
+          ...locationInfoFromSettings(settings),
+          coordinates: environment.coordinates,
+          placeName: environment.placeName,
+        }
+      : locationInfoFromSettings(settings);
+    if (environment?.placeName && settings.activeLocationId === LEGACY_MANUAL_LOCATION_ID) {
+      settings = {
+        ...settings,
+        locations: settings.locations.map((location) =>
+          location.id === LEGACY_MANUAL_LOCATION_ID && location.type === 'manual'
+            ? {
+                ...location,
+                name: environment.placeName ?? location.name,
+                placeName: environment.placeName,
+              }
+            : location,
+        ),
+      };
+    }
     const cachedVegetation = await loadCachedVegetationFor({
       coordinates: environment?.coordinates ?? null,
     });
@@ -404,15 +519,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
       vegetationStale: cachedVegetation.stale,
       vegetationError: null,
       riskNotificationTransitionState: notificationState,
-      stale: staleFrom(cache?.metadata.savedAt ?? null),
-      location: environment
-        ? {
-            coordinates: environment.coordinates,
-            placeName: environment.placeName,
-            mode: settings.locationMode,
-            permissionStatus: 'unknown',
-          }
-        : emptyLocation,
+      stale: staleFrom(activeCache?.metadata.savedAt ?? null),
+      location: hydratedLocation,
     });
 
     if (!unsubscribeBillingGateway) {
@@ -443,7 +551,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         profile,
         settings,
         entitlement,
-        stale: staleFrom(cache?.metadata.savedAt ?? null),
+        stale: staleFrom(activeCache?.metadata.savedAt ?? null),
       });
       void get().refreshVegetation(false);
     }
@@ -456,22 +564,27 @@ export const useAppStore = create<AppStore>((set, get) => ({
       return;
     }
 
-    const runPendingRefresh = () => {
+    const runPendingRefresh = async () => {
       if (!pendingRefresh) return;
 
       const force = pendingRefreshForce;
       pendingRefresh = false;
       pendingRefreshForce = false;
-      void get().refresh({ force });
+      await get().refresh({ force });
     };
 
     const settings = get().settings;
+    const requestActiveLocationId = settings.activeLocationId;
     const cached = get().environment;
     const requestedActivityDomains = enabledProviderActivities(settings, get().entitlement);
     const requestedAirQualityVariables = airQualityVariableCoverageFor(requestedActivityDomains);
     const requestedWeatherVariables = weatherVariableCoverageFor(requestedActivityDomains);
     const capabilities = capabilitiesForEntitlement(get().entitlement);
     let resolvedLocation: LocationInfo | null = null;
+    const finishObsoleteRefresh = () => {
+      set({ loading: false });
+      return runPendingRefresh();
+    };
 
     try {
       const freshCache = freshCachePreflight({
@@ -490,6 +603,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
           entitlement: get().entitlement,
           stale: false,
         });
+        if (get().settings.activeLocationId !== requestActiveLocationId) {
+          await finishObsoleteRefresh();
+          return;
+        }
         set({
           loading: false,
           error: null,
@@ -499,16 +616,27 @@ export const useAppStore = create<AppStore>((set, get) => ({
           environment: freshCache.environment,
         });
         void get().refreshVegetation(false);
-        runPendingRefresh();
+        await runPendingRefresh();
         return;
       }
 
       set({ loading: true, error: null, shareMessage: null });
-      const location = await resolveLocation(settings);
+      const location = await resolveActiveLocation(settings);
       resolvedLocation = location;
+
+      if (get().settings.activeLocationId !== requestActiveLocationId) {
+        await finishObsoleteRefresh();
+        return;
+      }
 
       if (!location.coordinates) {
         throw new Error('Location is unavailable. Add manual coordinates in Settings.');
+      }
+
+      const resolvedSettings = settingsWithCurrentLocation(settings, location);
+      if (resolvedSettings !== settings) {
+        set({ settings: resolvedSettings });
+        scheduleSettingsSave(resolvedSettings);
       }
 
       const cachedForLocation = cacheForCoordinates(cached, location.coordinates);
@@ -524,10 +652,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
         await persistWidgetSnapshotFor({
           environment: refreshPolicy.usableCache,
           profile: get().profile,
-          settings,
+          settings: resolvedSettings,
           entitlement: get().entitlement,
           stale: false,
         });
+        if (get().settings.activeLocationId !== requestActiveLocationId) {
+          await finishObsoleteRefresh();
+          return;
+        }
         set({
           loading: false,
           error: null,
@@ -537,7 +669,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
           environment: refreshPolicy.usableCache,
         });
         void get().refreshVegetation(false);
-        runPendingRefresh();
+        await runPendingRefresh();
         return;
       }
 
@@ -566,6 +698,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
       ]);
       const airQuality = airResult.status === 'fulfilled' ? airResult.value : null;
       const weather = weatherResult.status === 'fulfilled' ? weatherResult.value : null;
+      if (get().settings.activeLocationId !== requestActiveLocationId) {
+        await finishObsoleteRefresh();
+        return;
+      }
       const hasCompleteFreshProviderData =
         (airQuality !== null || !refreshPolicy.fetchAirQuality) &&
         (weather !== null || !refreshPolicy.fetchWeather);
@@ -577,7 +713,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
       const environment = assembleEnvironment({
         coordinates: location.coordinates,
-        placeName: location.placeName,
+        placeName:
+          location.mode === 'manual'
+            ? location.activeLocationName
+            : (location.placeName ?? location.activeLocationName),
         airQuality,
         weather,
         fallback: cachedForLocation,
@@ -599,18 +738,23 @@ export const useAppStore = create<AppStore>((set, get) => ({
       const derived = deriveEnvironmentState(environment, get().profile, capabilities);
       const canNotify = isFeatureAvailable(capabilities, 'basic_transition_notifications');
       const permissionStatus =
-        canNotify && settings.riskTransitionNotificationsEnabled
+        canNotify && resolvedSettings.riskTransitionNotificationsEnabled
           ? await getRiskNotificationPermissionStatus()
           : get().notificationPermissionStatus;
+      if (get().settings.activeLocationId !== requestActiveLocationId) {
+        await finishObsoleteRefresh();
+        return;
+      }
       const transitionEvaluation =
         canNotify && hasFreshProviderData
           ? evaluateRiskTransition({
-              settings,
+              settings: resolvedSettings,
               capabilityAvailable: canNotify,
               permissionStatus,
               environmentalScore: derived.environmentalScore,
               personalizedScore: derived.personalizedScore,
               previousState: get().riskNotificationTransitionState,
+              locationId: requestActiveLocationId,
               coordinates: environment.coordinates,
               placeName: environment.placeName,
               profile: get().profile,
@@ -625,10 +769,17 @@ export const useAppStore = create<AppStore>((set, get) => ({
           : null;
 
       let delivered = false;
-      if (transitionEvaluation?.transition) {
+      if (
+        transitionEvaluation?.transition &&
+        get().settings.activeLocationId === requestActiveLocationId
+      ) {
         delivered = await deliverRiskTransitionNotification(
           formatRiskTransitionNotification(transitionEvaluation.transition),
         );
+      }
+      if (get().settings.activeLocationId !== requestActiveLocationId) {
+        await finishObsoleteRefresh();
+        return;
       }
       const nextNotificationState = transitionEvaluation
         ? riskTransitionStateAfterDeliveryAttempt({
@@ -648,7 +799,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       await persistWidgetSnapshotFor({
         environment,
         profile: get().profile,
-        settings,
+        settings: resolvedSettings,
         entitlement: get().entitlement,
         stale: nextStale,
       });
@@ -663,14 +814,16 @@ export const useAppStore = create<AppStore>((set, get) => ({
           nextNotificationState ?? get().riskNotificationTransitionState,
       });
       void get().refreshVegetation(false);
-      runPendingRefresh();
+      await runPendingRefresh();
     } catch (error) {
       console.warn('AirAware: refresh failed', error);
-      const cache = await loadEnvironmentCache();
+      if (get().settings.activeLocationId !== requestActiveLocationId) {
+        await finishObsoleteRefresh();
+        return;
+      }
       const fallbackCoordinates =
-        settings.locationMode === 'manual'
-          ? parseManualCoordinates(settings)
-          : (resolvedLocation?.coordinates ?? null);
+        resolvedLocation?.coordinates ?? activeCoordinatesFromSettings(settings);
+      const cache = await loadEnvironmentCacheForCoordinates(fallbackCoordinates);
       const environment = fallbackCoordinates
         ? (cacheForActivityDomains(
             cache?.data ?? null,
@@ -681,16 +834,26 @@ export const useAppStore = create<AppStore>((set, get) => ({
           cacheForCoordinates(cache?.data ?? null, fallbackCoordinates) ??
           cacheForCoordinates(cached, fallbackCoordinates))
         : null;
+      const nextStale = environment !== null;
+
+      await persistWidgetSnapshotFor({
+        environment: environment ?? null,
+        profile: get().profile,
+        settings: get().settings,
+        entitlement: get().entitlement,
+        stale: nextStale,
+      });
 
       set({
         loading: false,
-        stale: environment !== null,
+        stale: nextStale,
         error: environment
           ? 'Showing cached environmental data.'
           : 'No environmental data is available.',
         environment: environment ?? null,
+        location: resolvedLocation ?? get().location,
       });
-      runPendingRefresh();
+      await runPendingRefresh();
     }
   },
 
@@ -754,14 +917,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
         if (settingsPatch.enabledActivities !== undefined) {
           void get().refresh();
         }
-        if (
-          shouldRefreshAfterLocationSettingsChange({
-            previousSettings: currentSettings,
-            nextSettings: settings,
-          })
-        ) {
-          void get().refresh();
-        }
       });
 
     return settingsUpdateQueue;
@@ -792,6 +947,239 @@ export const useAppStore = create<AppStore>((set, get) => ({
           entitlement: get().entitlement,
           stale: get().stale,
         });
+      });
+
+    return settingsUpdateQueue;
+  },
+
+  setActiveLocation: async (locationId) => {
+    settingsUpdateQueue = settingsUpdateQueue
+      .catch((error) => console.warn('AirAware: previous settings update failed', error))
+      .then(async () => {
+        const currentSettings = get().settings;
+        if (!currentSettings.locations.some((location) => location.id === locationId)) return;
+        if (currentSettings.activeLocationId === locationId) return;
+
+        const settings = { ...currentSettings, activeLocationId: locationId };
+        const coordinates = activeCoordinatesFromSettings(settings);
+        const cache = await loadEnvironmentCacheForCoordinates(coordinates);
+        const environment = cache?.data ?? null;
+        const stale = staleFrom(cache?.metadata.savedAt ?? null);
+        const location = environment
+          ? {
+              ...locationInfoFromSettings(settings),
+              coordinates: environment.coordinates,
+              placeName: environment.placeName,
+            }
+          : locationInfoFromSettings(settings);
+
+        set({
+          settings,
+          location,
+          environment,
+          stale,
+          error: null,
+          vegetation: null,
+          vegetationStale: false,
+          vegetationError: null,
+        });
+        scheduleSettingsSave(settings);
+        await persistWidgetSnapshotFor({
+          environment,
+          profile: get().profile,
+          settings,
+          entitlement: get().entitlement,
+          stale,
+        });
+        await get().refresh();
+      });
+
+    return settingsUpdateQueue;
+  },
+
+  addSavedLocation: async (coordinates, name) => {
+    settingsUpdateQueue = settingsUpdateQueue
+      .catch((error) => console.warn('AirAware: previous settings update failed', error))
+      .then(async () => {
+        const capabilities = capabilitiesForEntitlement(get().entitlement);
+        if (manualSavedLocationCount(get().settings) >= capabilities.locations.maxSavedLocations) {
+          set({ error: 'Saved location limit reached.' });
+          return;
+        }
+
+        const placeName = await reverseGeocodePlaceName(coordinates);
+        const now = Date.now();
+        const location: ManualSavedLocation = {
+          id: generatedManualLocationId(),
+          type: 'manual',
+          name: manualLocationName(name?.trim() || placeName, coordinates),
+          latitude: coordinates.latitude,
+          longitude: coordinates.longitude,
+          placeName,
+          createdAt: now,
+          updatedAt: now,
+        };
+        const settings = {
+          ...get().settings,
+          locations: [...get().settings.locations, location],
+          activeLocationId: location.id,
+        };
+        set({
+          settings,
+          location: locationInfoFromSettings(settings),
+          environment: null,
+          stale: false,
+          error: null,
+          vegetation: null,
+          vegetationStale: false,
+          vegetationError: null,
+        });
+        scheduleSettingsSave(settings);
+        await persistWidgetSnapshotFor({
+          environment: null,
+          profile: get().profile,
+          settings,
+          entitlement: get().entitlement,
+          stale: false,
+        });
+        await get().refresh({ force: true });
+      });
+
+    return settingsUpdateQueue;
+  },
+
+  renameSavedLocation: async (locationId, name) => {
+    const trimmedName = name.trim();
+    if (!trimmedName || locationId === CURRENT_LOCATION_ID) return;
+
+    settingsUpdateQueue = settingsUpdateQueue
+      .catch((error) => console.warn('AirAware: previous settings update failed', error))
+      .then(async () => {
+        const settings = {
+          ...get().settings,
+          locations: get().settings.locations.map((location) =>
+            location.id === locationId && location.type === 'manual'
+              ? { ...location, name: trimmedName, updatedAt: Date.now() }
+              : location,
+          ),
+        };
+        const currentEnvironment = get().environment;
+        const environment: NormalizedEnvironment | null =
+          settings.activeLocationId === locationId && currentEnvironment
+            ? { ...currentEnvironment, placeName: trimmedName }
+            : currentEnvironment;
+        set({
+          settings,
+          location:
+            settings.activeLocationId === locationId
+              ? locationInfoFromSettings(settings)
+              : get().location,
+          environment,
+        });
+        scheduleSettingsSave(settings);
+        await persistWidgetSnapshotFor({
+          environment,
+          profile: get().profile,
+          settings,
+          entitlement: get().entitlement,
+          stale: get().stale,
+        });
+      });
+
+    return settingsUpdateQueue;
+  },
+
+  updateSavedLocationCoordinates: async (locationId, coordinates) => {
+    if (locationId === CURRENT_LOCATION_ID) return;
+
+    settingsUpdateQueue = settingsUpdateQueue
+      .catch((error) => console.warn('AirAware: previous settings update failed', error))
+      .then(async () => {
+        const placeName = await reverseGeocodePlaceName(coordinates);
+        const settings = {
+          ...get().settings,
+          locations: get().settings.locations.map((location) =>
+            location.id === locationId && location.type === 'manual'
+              ? {
+                  ...location,
+                  latitude: coordinates.latitude,
+                  longitude: coordinates.longitude,
+                  placeName,
+                  updatedAt: Date.now(),
+                }
+              : location,
+          ),
+        };
+        const active = settings.activeLocationId === locationId;
+        set({
+          settings,
+          location: active ? locationInfoFromSettings(settings) : get().location,
+          environment: active ? null : get().environment,
+          stale: active ? false : get().stale,
+          error: active ? null : get().error,
+          vegetation: active ? null : get().vegetation,
+          vegetationStale: active ? false : get().vegetationStale,
+          vegetationError: active ? null : get().vegetationError,
+        });
+        scheduleSettingsSave(settings);
+        await persistWidgetSnapshotFor({
+          environment: active ? null : get().environment,
+          profile: get().profile,
+          settings,
+          entitlement: get().entitlement,
+          stale: active ? false : get().stale,
+        });
+        if (active) {
+          await get().refresh({ force: true });
+        }
+      });
+
+    return settingsUpdateQueue;
+  },
+
+  deleteSavedLocation: async (locationId) => {
+    if (locationId === CURRENT_LOCATION_ID) return;
+
+    settingsUpdateQueue = settingsUpdateQueue
+      .catch((error) => console.warn('AirAware: previous settings update failed', error))
+      .then(async () => {
+        const currentSettings = get().settings;
+        const locations = currentSettings.locations.filter(
+          (location) => location.id !== locationId,
+        );
+        const activeLocationId =
+          currentSettings.activeLocationId === locationId
+            ? CURRENT_LOCATION_ID
+            : currentSettings.activeLocationId;
+        const settings = {
+          ...currentSettings,
+          locations: locations.some((location) => location.id === CURRENT_LOCATION_ID)
+            ? locations
+            : [currentLocationEntry(), ...locations],
+          activeLocationId,
+        };
+        const activeDeleted = currentSettings.activeLocationId === locationId;
+        set({
+          settings,
+          location: activeDeleted ? locationInfoFromSettings(settings) : get().location,
+          environment: activeDeleted ? null : get().environment,
+          stale: activeDeleted ? false : get().stale,
+          error: activeDeleted ? null : get().error,
+          vegetation: activeDeleted ? null : get().vegetation,
+          vegetationStale: activeDeleted ? false : get().vegetationStale,
+          vegetationError: activeDeleted ? null : get().vegetationError,
+        });
+        scheduleSettingsSave(settings);
+        await persistWidgetSnapshotFor({
+          environment: activeDeleted ? null : get().environment,
+          profile: get().profile,
+          settings,
+          entitlement: get().entitlement,
+          stale: activeDeleted ? false : get().stale,
+        });
+        if (activeDeleted) {
+          await get().refresh();
+        }
       });
 
     return settingsUpdateQueue;
@@ -1012,6 +1400,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   refreshVegetation: async (force = false) => {
+    const requestId = (vegetationRefreshSequence += 1);
     const environment = get().environment;
     const coordinates = environment?.coordinates ?? get().location.coordinates;
 
@@ -1020,8 +1409,22 @@ export const useAppStore = create<AppStore>((set, get) => ({
       return;
     }
 
+    const requestCoordinatesKey = coordinateRequestKey(coordinates);
+    const requestStillCurrent = () =>
+      requestId === vegetationRefreshSequence &&
+      activeVegetationCoordinatesKey() === requestCoordinatesKey;
+    const finishObsoleteRequest = () => {
+      if (requestId === vegetationRefreshSequence) {
+        set({ vegetationLoading: false });
+      }
+    };
     const cache = vegetationCacheForRequest(await loadVegetationCache(), coordinates);
     const cacheExpired = cache ? vegetationCacheExpired(cache) : false;
+
+    if (!requestStillCurrent()) {
+      finishObsoleteRequest();
+      return;
+    }
 
     if (cache && !cacheExpired && !force) {
       set({
@@ -1044,6 +1447,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
     try {
       const vegetation = await fetchVegetationQuery({ coordinates, force });
       await saveVegetationCache(vegetationCacheEnvelope(vegetation));
+      if (!requestStillCurrent()) {
+        finishObsoleteRequest();
+        return;
+      }
       set({
         vegetation,
         vegetationStale: false,
@@ -1051,6 +1458,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
         vegetationLoading: false,
       });
     } catch (error) {
+      if (isSilentQueryCancellation(error) || !requestStillCurrent()) {
+        finishObsoleteRequest();
+        return;
+      }
       console.warn('AirAware: nearby vegetation refresh failed', error);
       set({
         vegetation: cache?.data ?? null,

@@ -20,6 +20,7 @@ import type { DerivedEnvironmentState } from '../state/derivedEnvironment';
 import { contributorFromScore } from '../utils/contributorLabels';
 import { formatScore, formatTimeRangeWithTomorrow } from '../utils/format';
 import { isFiniteNumber } from '../utils/number';
+import { locationDisplayNameById } from '../models/location';
 
 const ADVANCED_WIDGET_FORECAST_DISPLAY_DAYS = 4;
 
@@ -174,6 +175,7 @@ export function buildWidgetSnapshot(input: {
     compactAvailable,
     advancedAvailable,
     forecastDayLimit: forecastDayLimit(input.capabilities),
+    activeLocationName: locationDisplayNameById(input.settings, input.settings.activeLocationId),
     placeName: input.environment?.placeName ?? null,
     showPlaceName: input.settings.summaryLocation === 'place',
     stale: input.stale,

@@ -28,6 +28,7 @@ export interface WidgetSnapshot {
   compactAvailable: boolean;
   advancedAvailable: boolean;
   forecastDayLimit: number;
+  activeLocationName: string | null;
   placeName: string | null;
   showPlaceName: boolean;
   stale: boolean;

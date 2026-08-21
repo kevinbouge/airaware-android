@@ -32,9 +32,9 @@ provide medical advice.
 - Open-Meteo Air Quality API and Weather Forecast API through isolated provider modules
 - OpenStreetMap Overpass API through an isolated nearby-vegetation provider
 - Expo Location for foreground approximate location
-- AsyncStorage for local settings, profile selections, a small entitlement presentation cache,
-  development capability preview override, provider cache, notification transition state, and widget
-  snapshots
+- AsyncStorage for local settings, saved locations, active location ID, profile selections, a small
+  entitlement presentation cache, development capability preview override, provider cache,
+  notification transition state, and widget snapshots
 - Android native share sheet for local plain-text daily summaries
 - Expo Notifications for local risk transition notifications
 - OpenStreetMap map tiles for manual coordinate selection
@@ -67,8 +67,12 @@ nvm use 22.13.1
 ## Features
 
 - Open-Meteo Air Quality and Weather Forecast data, no API key required
-- Approximate foreground location with manual map fallback
+- Approximate foreground location plus multiple locally saved manual map locations
 - Location permission is requested only after the first-launch explanation is accepted
+- Exactly one active location drives environmental data, vegetation, forecasts, notifications,
+  daily summaries, and widgets
+- Saved manual locations are capped by the app capability model and remain available to Free and Pro
+  users
 - Environmental burden score using pollen, regulated pollution, atmospheric irritants, and mold
   potential
 - Optional Personal Allergy Profile with a separate personalized environmental risk score
@@ -78,8 +82,8 @@ nvm use 22.13.1
   precipitation, temperature, dew point, wind, and leaf wetness where available
 - UV index visibility and optional personalized-score factor
 - Best outdoor window based on the active headline score
-- Local cache fallback for offline or failed refreshes, with air-quality, weather, and vegetation
-  freshness tracked independently
+- Local cache fallback for offline or failed refreshes, with air-quality, weather, vegetation, and
+  assembled environment caches isolated by coordinates
 - Contextual environmental measurement drill-downs from Today detail screens
 - Nearby vegetation and land-use context from OpenStreetMap, available to Free and Pro users
 - Pro-only Activity domains for agriculture, drone operations, photography, astronomy, and outdoor
@@ -97,8 +101,8 @@ nvm use 22.13.1
 
 ## Screens
 
-- **Today**: headline scores, location, update status, main factor, best outdoor window, refresh,
-  share summary, and enabled Activity summary cards
+- **Today**: headline scores, scrollable active location selector, update status, main factor, best
+  outdoor window, refresh, share summary, and enabled Activity summary cards
 - **Context detail screens**: Environmental burden, Personalized risk, and Activity details with
   Daily forecast graphs, current-to-next-24-hour forecast graphs, and tappable environmental
   measurements
@@ -108,8 +112,8 @@ nvm use 22.13.1
 - **Profile**: local Personal Allergy Profile toggles, including Mold potential and UV index
 - **Pro**: AirAware Pro purchase/restore status, development capability preview, and Activity
   toggles
-- **Settings**: location mode, manual map selection, refresh interval,
-  notification preferences, daily-summary score, privacy and attribution notes, and disclaimers
+- **Settings**: saved-location management, manual map selection, notification preferences,
+  daily-summary score, privacy and attribution notes, and disclaimers
 
 ## Android Home-Screen Widgets
 
@@ -122,10 +126,11 @@ AirAware provides two Android home-screen widgets installed with the app:
   to the active forecast horizon. The snapshot can hold the full active forecast horizon; the widget
   renders a compact subset that fits legibly.
 
-Widgets use the latest locally cached widget snapshot prepared by the app after refreshes and
-relevant settings/profile changes. Widgets do not fetch Open-Meteo directly, do not request
-location, and do not recalculate scores. If Pro is unavailable, the advanced widget shows a compact
-locked informational state and opens AirAware Settings.
+Widgets use the latest locally cached widget snapshot prepared by the app for the active location
+after refreshes and relevant settings/profile/location changes. Widgets do not fetch Open-Meteo
+directly, do not request location, do not choose between saved locations, and do not recalculate
+scores. If Pro is unavailable, the advanced widget shows a compact locked informational state and
+opens AirAware Settings.
 
 Because Android home-screen widgets require native `AppWidgetProvider` code, this project uses a
 local Expo config plugin: `plugins/withAirAwareAndroidWidgets.js`. The plugin generates the native
@@ -205,16 +210,17 @@ AirAware does not use analytics, advertising identifiers, accounts, telemetry, c
 configuration.
 
 Coordinates are sent to Open-Meteo to retrieve local environmental data only after the user accepts
-the location explanation or selects a manual location. When Pro Activities are enabled, AirAware may
-request additional Open-Meteo variables required by those enabled profiles. Manual map selections
-are saved locally and refresh the environmental data for the selected coordinates. When the manual
-map picker is shown, OpenStreetMap tile servers receive requests for the visible map area. When
-Nearby vegetation is used, the active latitude and longitude are sent to the configured
-OpenStreetMap Overpass API to request mapped vegetation and land-use features near the selected
-coordinates. Personal Allergy Profile selections and Activity selections remain in local app storage
-and are not sent to Open-Meteo, OpenStreetMap, RevenueCat, or any other environmental provider.
-Shared summaries are generated locally and passed to the Android share sheet; AirAware does not
-upload them.
+the location explanation, uses Current location, or selects a saved manual location. Exactly one
+active location is used at a time. When Pro Activities are enabled, AirAware may request additional
+Open-Meteo variables required by those enabled profiles. Saved manual locations, custom names, and
+the active location ID are stored locally and are not sent to Open-Meteo, OpenStreetMap,
+RevenueCat, or unrelated services. When the manual map picker is shown, OpenStreetMap tile servers
+receive requests for the visible map area. When Nearby vegetation is used, only the active latitude
+and longitude are sent to the configured OpenStreetMap Overpass API to request mapped vegetation
+and land-use features near the selected coordinates. Personal Allergy Profile selections and
+Activity selections remain in local app storage and are not sent to Open-Meteo, OpenStreetMap,
+RevenueCat, or any other environmental provider. Shared summaries are generated locally and passed
+to the Android share sheet; AirAware does not upload them.
 
 AirAware uses RevenueCat to manage AirAware Pro purchase entitlement. Google Play processes
 payments; AirAware does not directly handle card or payment information. RevenueCat may process
@@ -223,7 +229,9 @@ metadata needed for billing. AirAware does not send RevenueCat coordinates, envi
 Personal Allergy Profile selections, Activity selections, nearby vegetation data, shared summaries,
 or notification settings.
 
-Shared summaries never include coordinates, raw provider JSON, or profile factor lists.
+Shared summaries may include the active saved-location name or resolved place name when configured,
+but never include coordinates, raw provider JSON, cache keys, location IDs, the saved-location list,
+or profile factor lists.
 
 Android widgets display locally cached AirAware snapshot data. They do not independently contact
 Open-Meteo, do not include coordinates, and do not display Personal Allergy Profile selections.
@@ -239,9 +247,9 @@ Notification permission is requested only if the user enables risk transition no
 Settings. AirAware does not request notification permission on first launch.
 
 Because AirAware has no account system and no server-side user profile, clearing app storage or
-uninstalling the app removes locally stored settings, cached provider responses, selected
-coordinates, and Personal Allergy Profile selections. RevenueCat uses anonymous app user IDs; restore
-purchases remains available to recover eligible Google Play purchases.
+uninstalling the app removes locally stored settings, saved locations, cached provider responses,
+active location state, and Personal Allergy Profile selections. RevenueCat uses anonymous app user
+IDs; restore purchases remains available to recover eligible Google Play purchases.
 
 ## Google Play Policy Readiness
 
@@ -523,7 +531,9 @@ plugins/          Expo config plugin that generates Android widget native code
 Screens do not parse provider JSON and do not implement scoring formulas directly. Air-quality and
 weather provider responses are validated independently, so a partial provider failure can reuse the
 last valid cached data for the failed provider without discarding fresh data from the successful
-provider.
+provider. Provider query keys and persisted environment/vegetation cache entries are isolated by
+coordinates, so Location A data is not presented as Location B data after switching active
+locations.
 
 ## Capabilities
 
@@ -537,7 +547,8 @@ Capabilities describe stable application concepts:
 - Forecast horizon, including maximum days, default days, and whether the horizon is configurable
 - Environmental variable groups, currently `standard` plus internal activity variables requested
   only when enabled Activities need them
-- Location support, currently automatic foreground location and one manual location
+- Location support, currently automatic foreground Current location plus multiple saved manual
+  locations for Free and Pro users
 - Provider availability, currently Open-Meteo
 - Sharing support, currently local daily summary sharing through the Android share sheet
 - Notification capabilities, currently Free basic transition notifications and a reserved Pro
@@ -565,6 +576,16 @@ total forecast days. Activities expose professional environmental profiles inste
 advanced data dump. Mold potential and UV index remain standard readings and optional Personal
 Allergy Profile factors for Free and Pro users. These capabilities do not change the environmental
 burden formula, cache behavior, location behavior, notifications, or sharing.
+
+Saved locations are represented as local domain state with a stable Current location entry and
+stable generated IDs for manual locations. The store resolves the active location to coordinates
+before provider calls, and provider modules receive only coordinates plus requested variable
+options. Switching the active location clears or replaces presentation data with a matching
+coordinate cache, starts a refresh, updates nearby vegetation for the active coordinates, scopes
+notification transition state by active location ID and coordinates, and regenerates the local
+widget snapshot. Persisted saved-location state is treated defensively: duplicate or otherwise
+corrupt manual location IDs fall back to the stable Current location instead of being rendered as
+ambiguous UI rows.
 
 Activity logic is configuration-driven. Each Activity definition declares required and optional
 environmental variables, Open-Meteo request variables, suitability rules, and detail rows. Activity
@@ -594,6 +615,10 @@ this milestone.
   guarantee safe or symptom-free conditions.
 - Manual map zoom uses on-screen controls in the current MVP; pinch-to-zoom is not implemented yet.
 - Reverse geocoding is best-effort and may be unavailable.
+- Saved manual locations are local to the device. There is no account sync, shared location list,
+  or server-side backup.
+- The current capability limit is eight saved manual locations plus the stable Current location
+  entry.
 - Transition notifications are evaluated only when the app refreshes environmental data. They are
   not background alerts while the app is closed.
 - Activity measurements depend on the selected Open-Meteo model, geography, forecast horizon, and

@@ -9,11 +9,19 @@ import {
 import type {
   CachedEnvironment,
   CurrentEnvironmentalReadings,
+  Coordinates,
   ExtendedAirQualityReadings,
   ExtendedEnvironmentalReadings,
   ExtendedWeatherReadings,
   HourlyEnvironmentalReading,
 } from '../models/environment';
+import {
+  CURRENT_LOCATION_ID,
+  LEGACY_MANUAL_LOCATION_ID,
+  currentLocationEntry,
+  type ManualSavedLocation,
+  type SavedLocation,
+} from '../models/location';
 import type { CachedDataDetailTimeline, DataDetailTimeline } from '../models/dataDetail';
 import type { RiskNotificationTransitionState } from '../models/notifications';
 import type {
@@ -36,7 +44,7 @@ import {
   type PersonalAllergyProfile,
   type ProfileFactorId,
 } from '../models/profile';
-import { isFiniteNumber } from '../utils/number';
+import { coordinateNumber, isFiniteNumber } from '../utils/number';
 import { ACTIVITY_IDS, DEFAULT_ACTIVITY_SETTINGS } from '../core/activityDefinitions';
 import type { ActivitySettings } from '../models/activities';
 import { vegetationCacheKey } from '../services/vegetationCache';
@@ -76,6 +84,12 @@ const cachedEnvironmentEnvelopeSchema = z
     data: z.unknown(),
   })
   .passthrough();
+const cachedEnvironmentCollectionSchema = z
+  .object({
+    version: z.literal(2),
+    entries: z.array(z.unknown()),
+  })
+  .passthrough();
 const vegetationCacheEnvelopeSchema = z
   .object({
     version: z.literal(VEGETATION_CACHE_SCHEMA_VERSION),
@@ -113,10 +127,6 @@ function booleanRecord(value: unknown): Record<string, boolean> {
       (entry): entry is [string, boolean] => entry[1] === true || entry[1] === false,
     ),
   );
-}
-
-function validLocationMode(value: unknown): AppSettings['locationMode'] {
-  return value === 'manual' || value === 'automatic' ? value : DEFAULT_SETTINGS.locationMode;
 }
 
 function validScorePreference(
@@ -177,8 +187,147 @@ function knownProviderVariables(value: unknown): string[] {
   ).sort();
 }
 
-function stringOrDefault(value: unknown, fallback: string): string {
-  return typeof value === 'string' ? value : fallback;
+function coordinatesFromObject(value: unknown): Coordinates | null {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+  const object = value as Record<string, unknown>;
+  const latitude = coordinateNumber(object.latitude);
+  const longitude = coordinateNumber(object.longitude);
+
+  if (latitude === null || longitude === null) return null;
+  if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return null;
+
+  return { latitude, longitude };
+}
+
+function legacyManualCoordinates(object: Record<string, unknown>): Coordinates | null {
+  if (
+    (typeof object.manualLatitude !== 'number' && typeof object.manualLatitude !== 'string') ||
+    (typeof object.manualLongitude !== 'number' && typeof object.manualLongitude !== 'string') ||
+    object.manualLatitude === '' ||
+    object.manualLongitude === ''
+  ) {
+    return null;
+  }
+
+  const latitude = Number(object.manualLatitude);
+  const longitude = Number(object.manualLongitude);
+
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return null;
+
+  return { latitude, longitude };
+}
+
+function stringOrNull(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function timestampOrNow(value: unknown): number {
+  return isFiniteNumber(value) && value >= 0 ? value : Date.now();
+}
+
+function manualLocationFromObject(value: unknown): ManualSavedLocation | null {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+  const object = value as Record<string, unknown>;
+  if (object.type !== 'manual') return null;
+
+  const id = stringOrNull(object.id);
+  const name = stringOrNull(object.name);
+  const coordinates = coordinatesFromObject(object);
+  if (!id || !name || !coordinates || id === CURRENT_LOCATION_ID) return null;
+
+  return {
+    id,
+    type: 'manual',
+    name,
+    latitude: coordinates.latitude,
+    longitude: coordinates.longitude,
+    placeName: stringOrNull(object.placeName),
+    createdAt: timestampOrNow(object.createdAt),
+    updatedAt: timestampOrNow(object.updatedAt),
+  };
+}
+
+function hasDuplicateLocationIds(locations: readonly ManualSavedLocation[]): boolean {
+  const ids = new Set<string>();
+
+  for (const location of locations) {
+    if (ids.has(location.id)) return true;
+    ids.add(location.id);
+  }
+
+  return false;
+}
+
+function locationStateFromObject(
+  object: Record<string, unknown>,
+): Pick<AppSettings, 'locations' | 'activeLocationId'> {
+  const currentSource = Array.isArray(object.locations)
+    ? object.locations.find(
+        (location) =>
+          location !== null &&
+          typeof location === 'object' &&
+          !Array.isArray(location) &&
+          (location as Record<string, unknown>).id === CURRENT_LOCATION_ID,
+      )
+    : null;
+  const currentCoordinates = coordinatesFromObject(currentSource);
+  const current = currentLocationEntry({
+    coordinates: currentCoordinates,
+    placeName:
+      currentSource !== null && typeof currentSource === 'object'
+        ? stringOrNull((currentSource as Record<string, unknown>).placeName)
+        : null,
+    updatedAt:
+      currentSource !== null && typeof currentSource === 'object'
+        ? timestampOrNow((currentSource as Record<string, unknown>).updatedAt)
+        : null,
+  });
+  const manualLocations = Array.isArray(object.locations)
+    ? object.locations
+        .map(manualLocationFromObject)
+        .filter((location): location is ManualSavedLocation => location !== null)
+    : [];
+  if (hasDuplicateLocationIds(manualLocations)) {
+    return {
+      locations: [current],
+      activeLocationId: CURRENT_LOCATION_ID,
+    };
+  }
+  const legacyCoordinates = legacyManualCoordinates(object);
+  const legacyLocation =
+    manualLocations.length === 0 && legacyCoordinates
+      ? {
+          id: LEGACY_MANUAL_LOCATION_ID,
+          type: 'manual' as const,
+          name: stringOrNull(object.manualPlaceName) ?? 'Saved location',
+          latitude: legacyCoordinates.latitude,
+          longitude: legacyCoordinates.longitude,
+          placeName: stringOrNull(object.manualPlaceName),
+          createdAt: 0,
+          updatedAt: 0,
+        }
+      : null;
+  const locations: SavedLocation[] = [
+    current,
+    ...(legacyLocation ? [legacyLocation] : manualLocations),
+  ];
+  const activeLocationId = stringOrNull(object.activeLocationId);
+  const legacyActiveLocationId =
+    object.locationMode === 'manual' && legacyLocation
+      ? LEGACY_MANUAL_LOCATION_ID
+      : CURRENT_LOCATION_ID;
+  const candidateActiveLocationId = activeLocationId ?? legacyActiveLocationId;
+  const validActiveLocationId = locations.some(
+    (location) => location.id === candidateActiveLocationId,
+  )
+    ? candidateActiveLocationId
+    : CURRENT_LOCATION_ID;
+
+  return {
+    locations,
+    activeLocationId: validActiveLocationId,
+  };
 }
 
 function knownProfileFactors(value: unknown): PersonalAllergyProfile['factors'] {
@@ -208,6 +357,32 @@ function isValidCachedEnvironment(value: unknown): value is CachedEnvironment['d
     Array.isArray(object.forecastDays) &&
     metadata !== undefined &&
     typeof metadata === 'object'
+  );
+}
+
+function environmentCacheKey(coordinates: Coordinates): string {
+  return `${coordinates.latitude.toFixed(5)},${coordinates.longitude.toFixed(5)}`;
+}
+
+function cachedEnvironmentFromObject(value: unknown): CachedEnvironment | null {
+  const parsed = cachedEnvironmentEnvelopeSchema.safeParse(value);
+  if (!parsed.success || !isValidCachedEnvironment(parsed.data.data)) return null;
+
+  return {
+    metadata: {
+      version: CACHE_SCHEMA_VERSION,
+      savedAt: parsed.data.metadata.savedAt,
+      stale: parsed.data.metadata.stale === true,
+    },
+    data: normalizedCachedEnvironment(parsed.data.data),
+  };
+}
+
+function newestEnvironmentCache(caches: CachedEnvironment[]): CachedEnvironment | null {
+  return (
+    [...caches].sort(
+      (left, right) => Date.parse(right.metadata.savedAt) - Date.parse(left.metadata.savedAt),
+    )[0] ?? null
   );
 }
 
@@ -259,6 +434,7 @@ function isWidgetSnapshot(value: unknown): value is WidgetSnapshot {
     typeof object.compactAvailable === 'boolean' &&
     typeof object.advancedAvailable === 'boolean' &&
     isFiniteNumber(object.forecastDayLimit) &&
+    (typeof object.activeLocationName === 'string' || object.activeLocationName === null) &&
     (typeof object.placeName === 'string' || object.placeName === null) &&
     typeof object.showPlaceName === 'boolean' &&
     typeof object.stale === 'boolean' &&
@@ -482,11 +658,10 @@ export async function loadSettings(): Promise<AppSettings> {
   const object =
     persistedSettingsSchema.safeParse(readObject(await AsyncStorage.getItem(SETTINGS_KEY))).data ??
     {};
+  const locationState = locationStateFromObject(object);
 
   return {
-    locationMode: validLocationMode(object?.locationMode),
-    manualLatitude: stringOrDefault(object?.manualLatitude, DEFAULT_SETTINGS.manualLatitude),
-    manualLongitude: stringOrDefault(object?.manualLongitude, DEFAULT_SETTINGS.manualLongitude),
+    ...locationState,
     summaryScore: validScorePreference(object?.summaryScore, DEFAULT_SETTINGS.summaryScore),
     summaryLocation: validSummaryLocation(object?.summaryLocation),
     riskTransitionNotificationsEnabled: object?.riskTransitionNotificationsEnabled === true,
@@ -508,7 +683,7 @@ export async function loadProfile(): Promise<PersonalAllergyProfile> {
     persistedProfileSchema.safeParse(readObject(await AsyncStorage.getItem(PROFILE_KEY))).data ??
     {};
   return {
-    enabled: object?.enabled === true,
+    enabled: typeof object?.enabled === 'boolean' ? object.enabled : DEFAULT_PROFILE.enabled,
     factors: knownProfileFactors(object?.factors),
   };
 }
@@ -517,28 +692,51 @@ export async function saveProfile(profile: PersonalAllergyProfile): Promise<void
   await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
 }
 
-export async function loadEnvironmentCache(): Promise<CachedEnvironment | null> {
-  const parsed = cachedEnvironmentEnvelopeSchema.safeParse(
-    readObject(await AsyncStorage.getItem(ENVIRONMENT_CACHE_KEY)),
-  );
-  if (!parsed.success) return null;
+async function loadEnvironmentCaches(): Promise<CachedEnvironment[]> {
+  const object = readObject(await AsyncStorage.getItem(ENVIRONMENT_CACHE_KEY));
+  const collection = cachedEnvironmentCollectionSchema.safeParse(object);
 
-  if (!isValidCachedEnvironment(parsed.data.data)) {
-    return null;
+  if (collection.success) {
+    return collection.data.entries
+      .map(cachedEnvironmentFromObject)
+      .filter((cache): cache is CachedEnvironment => cache !== null);
   }
 
-  return {
-    metadata: {
-      version: CACHE_SCHEMA_VERSION,
-      savedAt: parsed.data.metadata.savedAt,
-      stale: parsed.data.metadata.stale === true,
-    },
-    data: normalizedCachedEnvironment(parsed.data.data),
-  };
+  const legacyCache = cachedEnvironmentFromObject(object);
+  return legacyCache ? [legacyCache] : [];
+}
+
+export async function loadEnvironmentCache(): Promise<CachedEnvironment | null> {
+  return newestEnvironmentCache(await loadEnvironmentCaches());
+}
+
+export async function loadEnvironmentCacheForCoordinates(
+  coordinates: Coordinates | null,
+): Promise<CachedEnvironment | null> {
+  if (!coordinates) return null;
+  const key = environmentCacheKey(coordinates);
+  return (
+    (await loadEnvironmentCaches()).find(
+      (cache) => environmentCacheKey(cache.data.coordinates) === key,
+    ) ?? null
+  );
 }
 
 export async function saveEnvironmentCache(cache: CachedEnvironment): Promise<void> {
-  await AsyncStorage.setItem(ENVIRONMENT_CACHE_KEY, JSON.stringify(cache));
+  const key = environmentCacheKey(cache.data.coordinates);
+  const existing = await loadEnvironmentCaches();
+  const entries = [
+    cache,
+    ...existing.filter((item) => environmentCacheKey(item.data.coordinates) !== key),
+  ].slice(0, 12);
+
+  await AsyncStorage.setItem(
+    ENVIRONMENT_CACHE_KEY,
+    JSON.stringify({
+      version: 2,
+      entries,
+    }),
+  );
 }
 
 export async function loadRiskNotificationTransitionState(): Promise<RiskNotificationTransitionState | null> {

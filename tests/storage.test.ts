@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   loadEnvironmentCache,
+  loadEnvironmentCacheForCoordinates,
   loadBillingEntitlementCache,
   loadDataDetailCache,
   loadProfile,
@@ -9,15 +10,27 @@ import {
   loadWidgetSnapshot,
   saveRiskNotificationTransitionState,
   saveBillingEntitlementCache,
+  saveEnvironmentCache,
   saveSettings,
   saveWidgetSnapshot,
 } from '../src/storage/storage';
 import { PRO_LIFETIME_ENTITLEMENT } from '../src/capabilities/entitlements';
+import {
+  CURRENT_LOCATION_ID,
+  LEGACY_MANUAL_LOCATION_ID,
+  currentLocationEntry,
+} from '../src/models/location';
 import { DEFAULT_SETTINGS } from '../src/models/profile';
 
 describe('settings storage', () => {
   beforeEach(async () => {
     await AsyncStorage.clear();
+  });
+
+  it('uses the default profile when no profile has been persisted', async () => {
+    const profile = await loadProfile();
+
+    expect(profile.enabled).toBe(true);
   });
 
   it('persists collapsed Today section state', async () => {
@@ -35,6 +48,43 @@ describe('settings storage', () => {
     expect(settings.collapsedSections['today.regulatedPollution']).toBe(false);
   });
 
+  it('persists multiple saved locations and the active location id', async () => {
+    await saveSettings({
+      ...DEFAULT_SETTINGS,
+      locations: [
+        currentLocationEntry(),
+        {
+          id: 'manual-home',
+          type: 'manual',
+          name: 'Home',
+          latitude: 50.0755,
+          longitude: 14.4378,
+          placeName: 'Prague',
+          createdAt: 1,
+          updatedAt: 2,
+        },
+        {
+          id: 'manual-work',
+          type: 'manual',
+          name: 'Work',
+          latitude: 49.1951,
+          longitude: 16.6068,
+          placeName: 'Brno',
+          createdAt: 3,
+          updatedAt: 4,
+        },
+      ],
+      activeLocationId: 'manual-work',
+    });
+
+    const settings = await loadSettings();
+
+    expect(settings.activeLocationId).toBe('manual-work');
+    expect(settings.locations).toHaveLength(3);
+    expect(settings.locations[1]).toMatchObject({ id: 'manual-home', name: 'Home' });
+    expect(settings.locations[2]).toMatchObject({ id: 'manual-work', name: 'Work' });
+  });
+
   it('migrates older settings without collapse state', async () => {
     await AsyncStorage.setItem(
       'airaware.settings.v1',
@@ -47,7 +97,18 @@ describe('settings storage', () => {
 
     const settings = await loadSettings();
 
-    expect(settings.locationMode).toBe('manual');
+    expect(settings.activeLocationId).toBe(LEGACY_MANUAL_LOCATION_ID);
+    expect(settings.locations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: CURRENT_LOCATION_ID, type: 'current' }),
+        expect.objectContaining({
+          id: LEGACY_MANUAL_LOCATION_ID,
+          type: 'manual',
+          latitude: 50,
+          longitude: 14,
+        }),
+      ]),
+    );
     expect(settings.collapsedSections).toEqual({});
     expect(settings.locationOnboardingComplete).toBe(false);
   });
@@ -98,7 +159,7 @@ describe('settings storage', () => {
 
     const settings = await loadSettings();
 
-    expect(settings.locationMode).toBe(DEFAULT_SETTINGS.locationMode);
+    expect(settings.activeLocationId).toBe(CURRENT_LOCATION_ID);
     expect('refreshIntervalMinutes' in settings).toBe(false);
     expect('nearbyVegetationRadiusMeters' in settings).toBe(false);
     expect('outdoorWindowDurationHours' in settings).toBe(false);
@@ -108,9 +169,63 @@ describe('settings storage', () => {
     expect(settings.riskTransitionNotificationsEnabled).toBe(false);
     expect(settings.riskTransitionNotificationThreshold).toBe('highAndVeryHigh');
     expect(settings.locationOnboardingComplete).toBe(true);
-    expect(settings.manualLatitude).toBe('');
-    expect(settings.manualLongitude).toBe('');
+    expect(settings.locations).toEqual([expect.objectContaining({ id: CURRENT_LOCATION_ID })]);
     expect(settings.collapsedSections).toEqual({ 'today.pollen': true });
+  });
+
+  it('falls back to Current location when persisted saved-location state is corrupt', async () => {
+    await AsyncStorage.setItem(
+      'airaware.settings.v1',
+      JSON.stringify({
+        locations: [
+          { id: 'current', type: 'current', name: 'Current location' },
+          {
+            id: 'manual-broken',
+            type: 'manual',
+            name: 'Broken',
+            latitude: '50.0755',
+            longitude: 14.4378,
+          },
+        ],
+        activeLocationId: 'manual-broken',
+      }),
+    );
+
+    const settings = await loadSettings();
+
+    expect(settings.activeLocationId).toBe(CURRENT_LOCATION_ID);
+    expect(settings.locations).toEqual([expect.objectContaining({ id: CURRENT_LOCATION_ID })]);
+  });
+
+  it('falls back to Current location when persisted manual location ids are duplicated', async () => {
+    await AsyncStorage.setItem(
+      'airaware.settings.v1',
+      JSON.stringify({
+        locations: [
+          { id: 'current', type: 'current', name: 'Current location' },
+          {
+            id: 'manual-duplicate',
+            type: 'manual',
+            name: 'Home',
+            latitude: 50.0755,
+            longitude: 14.4378,
+          },
+          {
+            id: 'manual-duplicate',
+            type: 'manual',
+            name: 'Work',
+            latitude: 49.1951,
+            longitude: 16.6068,
+          },
+        ],
+        activeLocationId: 'manual-duplicate',
+      }),
+    );
+
+    const settings = await loadSettings();
+
+    expect(settings.activeLocationId).toBe(CURRENT_LOCATION_ID);
+    expect(settings.locations).toEqual([expect.objectContaining({ id: CURRENT_LOCATION_ID })]);
   });
 
   it('ignores unknown profile factors from storage', async () => {
@@ -250,6 +365,43 @@ describe('settings storage', () => {
     expect(cache?.data.current.extended?.weather.pressureMsl).toBeNull();
   });
 
+  it('stores environment caches independently by coordinates', async () => {
+    const first = await loadEnvironmentCache();
+    expect(first).toBeNull();
+    const pragueCache = {
+      metadata: { version: 1, savedAt: '2026-08-01T12:00:00Z', stale: false },
+      data: {
+        provider: 'open-meteo' as const,
+        coordinates: { latitude: 50.0755, longitude: 14.4378 },
+        placeName: 'Prague',
+        fetchedAt: '2026-08-01T12:00:00Z',
+        current: {} as never,
+        hourly: [],
+        forecastDays: [],
+        metadata: {} as never,
+      },
+    };
+    const brnoCache = {
+      ...pragueCache,
+      metadata: { version: 1, savedAt: '2026-08-01T13:00:00Z', stale: false },
+      data: {
+        ...pragueCache.data,
+        coordinates: { latitude: 49.1951, longitude: 16.6068 },
+        placeName: 'Brno',
+      },
+    };
+
+    await saveEnvironmentCache(pragueCache);
+    await saveEnvironmentCache(brnoCache);
+
+    await expect(
+      loadEnvironmentCacheForCoordinates({ latitude: 50.0755, longitude: 14.4378 }),
+    ).resolves.toMatchObject({ data: { placeName: 'Prague' } });
+    await expect(
+      loadEnvironmentCacheForCoordinates({ latitude: 49.1951, longitude: 16.6068 }),
+    ).resolves.toMatchObject({ data: { placeName: 'Brno' } });
+  });
+
   it('persists risk notification transition baseline state', async () => {
     await saveRiskNotificationTransitionState({
       version: 1,
@@ -311,6 +463,7 @@ describe('settings storage', () => {
       compactAvailable: true,
       advancedAvailable: false,
       forecastDayLimit: 3,
+      activeLocationName: 'Home',
       placeName: 'Prague',
       showPlaceName: true,
       stale: false,
@@ -360,6 +513,7 @@ describe('settings storage', () => {
           compactAvailable: true,
           advancedAvailable: false,
           forecastDayLimit: 3,
+          activeLocationName: 'Home',
           placeName: { raw: 'Prague' },
           showPlaceName: true,
           stale: false,

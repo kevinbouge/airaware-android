@@ -26,8 +26,8 @@ const BASE_CAPABILITIES = {
   },
   locations: {
     automaticLocation: true,
-    manualLocation: true,
-    maxSavedLocations: 1,
+    savedManualLocations: true,
+    maxSavedLocations: 8,
   },
   history: {
     retentionDays: 0,

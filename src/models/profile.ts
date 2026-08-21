@@ -1,5 +1,6 @@
 import { DEFAULT_ACTIVITY_SETTINGS } from '../core/activityDefinitions';
 import type { ActivitySettings } from './activities';
+import { CURRENT_LOCATION_ID, currentLocationEntry, type SavedLocation } from './location';
 
 type PollenFactorId =
   | 'pollen_alder'
@@ -47,9 +48,8 @@ export const DEFAULT_PROFILE: PersonalAllergyProfile = {
 };
 
 export interface AppSettings {
-  locationMode: 'automatic' | 'manual';
-  manualLatitude: string;
-  manualLongitude: string;
+  locations: SavedLocation[];
+  activeLocationId: string;
   summaryScore: 'environmental' | 'personalized';
   summaryLocation: 'place' | 'hidden';
   riskTransitionNotificationsEnabled: boolean;
@@ -60,9 +60,8 @@ export interface AppSettings {
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  locationMode: 'automatic',
-  manualLatitude: '',
-  manualLongitude: '',
+  locations: [currentLocationEntry()],
+  activeLocationId: CURRENT_LOCATION_ID,
   summaryScore: 'personalized',
   summaryLocation: 'place',
   riskTransitionNotificationsEnabled: false,

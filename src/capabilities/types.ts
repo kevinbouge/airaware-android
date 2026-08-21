@@ -103,7 +103,7 @@ interface NotificationCapability {
 
 interface LocationCapability {
   automaticLocation: boolean;
-  manualLocation: boolean;
+  savedManualLocations: boolean;
   maxSavedLocations: number;
 }
 

@@ -1,6 +1,14 @@
 import * as Location from 'expo-location';
 import { Platform } from 'react-native';
 import type { Coordinates, LocationInfo } from '../models/environment';
+import {
+  CURRENT_LOCATION_ID,
+  CURRENT_LOCATION_NAME,
+  activeSavedLocation,
+  coordinatesForSavedLocation,
+  locationDisplayName,
+  type SavedLocationState,
+} from '../models/location';
 import type { AppSettings } from '../models/profile';
 
 type PermissionStatus = 'granted' | 'denied' | 'unknown';
@@ -21,7 +29,13 @@ export interface LocationDependencies {
   reverseGeocode: (coordinates: Coordinates) => Promise<ReverseGeocodeResult[]>;
 }
 
-export function parseManualCoordinates(settings: AppSettings): Coordinates | null {
+interface LegacyLocationSettings {
+  locationMode?: unknown;
+  manualLatitude?: unknown;
+  manualLongitude?: unknown;
+}
+
+export function parseManualCoordinates(settings: LegacyLocationSettings): Coordinates | null {
   const latitude = Number(settings.manualLatitude);
   const longitude = Number(settings.manualLongitude);
 
@@ -70,9 +84,9 @@ function placeNameFromReverseGeocode(results: ReverseGeocodeResult[]): string | 
   );
 }
 
-async function reverseGeocode(
+export async function reverseGeocodePlaceName(
   coordinates: Coordinates,
-  dependencies: LocationDependencies,
+  dependencies: LocationDependencies = defaultDependencies(),
 ): Promise<string | null> {
   if (dependencies.platform === 'web') {
     return null;
@@ -87,7 +101,7 @@ async function reverseGeocode(
 }
 
 async function manualLocation(
-  settings: AppSettings,
+  settings: LegacyLocationSettings,
   dependencies: LocationDependencies,
   permissionStatus: LocationInfo['permissionStatus'],
   mode: LocationInfo['mode'],
@@ -95,30 +109,47 @@ async function manualLocation(
   const coordinates = parseManualCoordinates(settings);
 
   return {
+    activeLocationId: 'manual',
+    activeLocationName: 'Saved location',
     coordinates,
-    placeName: coordinates ? await reverseGeocode(coordinates, dependencies) : null,
+    placeName: coordinates ? await reverseGeocodePlaceName(coordinates, dependencies) : null,
     mode,
     permissionStatus,
+  };
+}
+
+function automaticLocationInfo(input: {
+  coordinates: Coordinates | null;
+  placeName: string | null;
+  permissionStatus: LocationInfo['permissionStatus'];
+}): LocationInfo {
+  return {
+    activeLocationId: CURRENT_LOCATION_ID,
+    activeLocationName: CURRENT_LOCATION_NAME,
+    coordinates: input.coordinates,
+    placeName: input.placeName,
+    mode: 'automatic',
+    permissionStatus: input.permissionStatus,
   };
 }
 
 function unavailableAutomaticLocation(
   permissionStatus: Extract<LocationInfo['permissionStatus'], 'denied' | 'unavailable'>,
 ): LocationInfo {
-  return {
+  return automaticLocationInfo({
     coordinates: null,
     placeName: null,
-    mode: 'automatic',
     permissionStatus,
-  };
+  });
 }
 
 export async function resolveLocation(
-  settings: AppSettings,
+  settings: LegacyLocationSettings | AppSettings,
   dependencies: LocationDependencies = defaultDependencies(),
 ): Promise<LocationInfo> {
-  if (settings.locationMode === 'manual') {
-    return manualLocation(settings, dependencies, 'unknown', 'manual');
+  const legacySettings = settings as LegacyLocationSettings;
+  if (legacySettings.locationMode === 'manual') {
+    return manualLocation(legacySettings, dependencies, 'unknown', 'manual');
   }
 
   try {
@@ -131,16 +162,44 @@ export async function resolveLocation(
     }
 
     const coordinates = await dependencies.getCurrentCoordinates();
-    const placeName = await reverseGeocode(coordinates, dependencies);
+    const placeName = await reverseGeocodePlaceName(coordinates, dependencies);
 
-    return {
+    return automaticLocationInfo({
       coordinates,
       placeName,
-      mode: 'automatic',
       permissionStatus: 'granted',
-    };
+    });
   } catch (error) {
     console.warn('AirAware: location lookup failed', error);
     return unavailableAutomaticLocation('unavailable');
   }
+}
+
+export async function resolveActiveLocation(
+  settings: SavedLocationState,
+  dependencies: LocationDependencies = defaultDependencies(),
+): Promise<LocationInfo> {
+  const activeLocation = activeSavedLocation(settings);
+
+  if (activeLocation.type === 'current') {
+    const resolved = await resolveLocation({ locationMode: 'automatic' }, dependencies);
+
+    return {
+      ...resolved,
+      activeLocationId: CURRENT_LOCATION_ID,
+      activeLocationName: CURRENT_LOCATION_NAME,
+    };
+  }
+
+  const coordinates = coordinatesForSavedLocation(activeLocation);
+  const fallbackPlaceName = activeLocation.placeName ?? null;
+
+  return {
+    activeLocationId: activeLocation.id,
+    activeLocationName: locationDisplayName(activeLocation),
+    coordinates,
+    placeName: locationDisplayName(activeLocation) || fallbackPlaceName,
+    mode: 'manual',
+    permissionStatus: 'unknown',
+  };
 }

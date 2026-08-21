@@ -8,6 +8,7 @@ const snapshot: WidgetSnapshot = {
   compactAvailable: true,
   advancedAvailable: false,
   forecastDayLimit: 3,
+  activeLocationName: 'Current location',
   placeName: null,
   showPlaceName: true,
   stale: false,

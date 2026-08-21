@@ -27,6 +27,7 @@ interface EvaluateRiskTransitionInput {
   environmentalScore: EnvironmentalScoreResult | null;
   personalizedScore: PersonalizedScoreResult;
   previousState: RiskNotificationTransitionState | null;
+  locationId?: string | undefined;
   coordinates: Coordinates;
   placeName: string | null;
   profile: PersonalAllergyProfile;
@@ -83,8 +84,11 @@ function categoryRank(category: Exclude<RiskCategoryId, 'unavailable'>): number 
   }
 }
 
-export function riskNotificationLocationKey(coordinates: Coordinates): string {
-  return `${coordinates.latitude.toFixed(3)},${coordinates.longitude.toFixed(3)}`;
+export function riskNotificationLocationKey(
+  coordinates: Coordinates,
+  locationId = 'current',
+): string {
+  return `${locationId}|${coordinates.latitude.toFixed(3)},${coordinates.longitude.toFixed(3)}`;
 }
 
 export function riskNotificationObservationKey(input: {
@@ -115,11 +119,12 @@ export function personalAllergyProfileFingerprint(profile: PersonalAllergyProfil
 
 function transitionContext(input: {
   scoreType: HeadlineScoreType;
+  locationId: string;
   coordinates: Coordinates;
   profile: PersonalAllergyProfile;
 }): TransitionContext {
   return {
-    locationKey: riskNotificationLocationKey(input.coordinates),
+    locationKey: riskNotificationLocationKey(input.coordinates, input.locationId),
     profileFingerprint:
       input.scoreType === 'personalized' ? personalAllergyProfileFingerprint(input.profile) : null,
   };
@@ -179,6 +184,7 @@ export function evaluateRiskTransition(
 
   const context = transitionContext({
     scoreType: active.scoreType,
+    locationId: input.locationId ?? 'current',
     coordinates: input.coordinates,
     profile: input.profile,
   });

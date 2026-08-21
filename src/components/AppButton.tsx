@@ -6,7 +6,7 @@ interface AppButtonProps {
   onPress: () => void;
   disabled?: boolean;
   selected?: boolean;
-  rightLabel?: string;
+  rightLabel?: string | undefined;
   fullWidth?: boolean;
 }
 

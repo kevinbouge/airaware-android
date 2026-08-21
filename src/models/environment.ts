@@ -8,6 +8,8 @@ export interface Coordinates {
 }
 
 export interface LocationInfo {
+  activeLocationId: string;
+  activeLocationName: string;
   coordinates: Coordinates | null;
   placeName: string | null;
   mode: 'automatic' | 'manual';
