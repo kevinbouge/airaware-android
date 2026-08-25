@@ -22,7 +22,11 @@ jest.mock('../src/services/environmentProviders', () => ({
 
 jest.mock('../src/services/locationService', () => ({
   resolveActiveLocation: (...args: unknown[]) => mockResolveLocation(...args),
-  reverseGeocodePlaceName: (...args: unknown[]) => mockReverseGeocodePlaceName(...args),
+  reverseGeocodeLocationMetadata: async (...args: unknown[]) => ({
+    placeName: await mockReverseGeocodePlaceName(...args),
+    countryCode: null,
+    countryName: null,
+  }),
 }));
 
 jest.mock('../src/api/openStreetMapVegetation', () => ({
@@ -45,6 +49,7 @@ import {
 } from '../src/api/openMeteoAirQuality';
 import { type NormalizedWeather, weatherVariableCoverageFor } from '../src/api/openMeteoWeather';
 import { riskNotificationLocationKey } from '../src/core/riskTransitionNotifications';
+import { setAppLanguagePreference } from '../src/i18n';
 import { assembleEnvironment } from '../src/services/environmentAssembler';
 import { useAppStore } from '../src/state/useAppStore';
 import { loadWidgetSnapshot } from '../src/storage/storage';
@@ -312,6 +317,7 @@ describe('app store refresh orchestration', () => {
   beforeEach(async () => {
     await AsyncStorage.clear();
     jest.clearAllMocks();
+    setAppLanguagePreference('en');
     mockReverseGeocodePlaceName.mockResolvedValue('Prague');
     mockFetchAirQuality.mockResolvedValue(airQuality());
     mockFetchWeather.mockResolvedValue(weather());
@@ -493,6 +499,30 @@ describe('app store refresh orchestration', () => {
       data: {
         stale: true,
         placeName: 'Prague',
+      },
+    });
+  });
+
+  it('regenerates widget snapshots in the selected language immediately', async () => {
+    const cachedEnvironment = assembleEnvironment({
+      coordinates,
+      placeName: 'Prague',
+      airQuality: airQuality(),
+      weather: weather(),
+      requestedActivityDomains: [],
+      requestedAirQualityVariables: airQualityVariableCoverageFor([]),
+      requestedWeatherVariables: weatherVariableCoverageFor([]),
+    });
+    useAppStore.setState({ environment: cachedEnvironment });
+
+    await useAppStore.getState().updateSettings({ languagePreference: 'fr' });
+
+    await expect(loadWidgetSnapshot()).resolves.toMatchObject({
+      data: {
+        headlineScore: expect.objectContaining({
+          label: 'Risque personnalisé',
+          categoryLabel: 'Faible',
+        }),
       },
     });
   });
@@ -740,6 +770,47 @@ describe('app store refresh orchestration', () => {
       longitude: brnoCoordinates.longitude,
       placeName: 'Brno',
     });
+  });
+
+  it('clears health signals when active manual coordinates are edited', async () => {
+    useAppStore.setState({
+      healthSignals: {
+        geography: {
+          level: 'country',
+          code: 'CZ',
+          name: 'Czechia',
+          countryCode: 'CZ',
+          countryName: 'Czechia',
+        },
+        signals: [
+          {
+            id: 'influenza:CZ:2026-W33',
+            domain: 'biological',
+            type: 'influenza',
+            geography: {
+              level: 'country',
+              code: 'CZ',
+              name: 'Czechia',
+              countryCode: 'CZ',
+              countryName: 'Czechia',
+            },
+            updatedAt: timestamp,
+            category: 'unknown',
+            trend: 'stable',
+            source: { provider: 'WHO GISRS / FluNet' },
+            freshness: { status: 'fresh' },
+          },
+        ],
+        loading: false,
+        error: null,
+        updatedAt: timestamp,
+      },
+    });
+
+    await useAppStore.getState().updateSavedLocationCoordinates('manual-prague', brnoCoordinates);
+
+    expect(useAppStore.getState().healthSignals.signals).toEqual([]);
+    expect(useAppStore.getState().healthSignals.geography).toBeNull();
   });
 
   it('does not add saved locations past the capability limit', async () => {
@@ -1031,5 +1102,34 @@ describe('app store refresh orchestration', () => {
     expect(useAppStore.getState().environment?.placeName).toBe('Brno');
     expect(useAppStore.getState().environmentalEvents).toEqual([]);
     expect(mockDeliverRiskTransitionNotification).not.toHaveBeenCalled();
+  });
+
+  it('does not let a refresh for old coordinates overwrite an edited active saved location', async () => {
+    const firstAirQuality = deferred<NormalizedAirQuality>();
+    const firstWeather = deferred<NormalizedWeather>();
+    mockFetchAirQuality
+      .mockReturnValueOnce(firstAirQuality.promise)
+      .mockResolvedValue(airQuality(timestamp, brnoCoordinates));
+    mockFetchWeather
+      .mockReturnValueOnce(firstWeather.promise)
+      .mockResolvedValue(weather(timestamp, brnoCoordinates));
+    mockResolveLocation.mockImplementation(resolveLocationFromSettings);
+    mockReverseGeocodePlaceName.mockResolvedValue('Brno');
+
+    const firstRefresh = useAppStore.getState().refresh({ force: true });
+    await flushMicrotasks();
+    await useAppStore.getState().updateSavedLocationCoordinates('manual-prague', brnoCoordinates);
+
+    firstAirQuality.resolve(dustEventAirQuality(coordinates));
+    firstWeather.resolve(weather(timestamp, coordinates));
+    await firstRefresh;
+    for (let attempt = 0; attempt < 10 && !useAppStore.getState().environment; attempt += 1) {
+      await flushMicrotasks();
+    }
+
+    expect(useAppStore.getState().settings.activeLocationId).toBe('manual-prague');
+    expect(useAppStore.getState().location.coordinates).toEqual(brnoCoordinates);
+    expect(useAppStore.getState().environment?.coordinates).toEqual(brnoCoordinates);
+    expect(useAppStore.getState().environmentalEvents).toEqual([]);
   });
 });

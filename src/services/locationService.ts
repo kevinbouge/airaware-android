@@ -19,6 +19,7 @@ interface ReverseGeocodeResult {
   subregion?: string | null;
   region?: string | null;
   country?: string | null;
+  isoCountryCode?: string | null;
 }
 
 export interface LocationDependencies {
@@ -174,20 +175,43 @@ function placeNameFromReverseGeocode(results: ReverseGeocodeResult[]): string | 
   );
 }
 
+function countryCodeFromReverseGeocode(results: ReverseGeocodeResult[]): string | null {
+  const code = results[0]?.isoCountryCode?.trim().toUpperCase();
+  return code && /^[A-Z]{2}$/.test(code) ? code : null;
+}
+
+export interface ReverseGeocodedLocationMetadata {
+  placeName: string | null;
+  countryCode: string | null;
+  countryName: string | null;
+}
+
+export async function reverseGeocodeLocationMetadata(
+  coordinates: Coordinates,
+  dependencies: LocationDependencies = defaultDependencies(),
+): Promise<ReverseGeocodedLocationMetadata> {
+  if (dependencies.platform === 'web') {
+    return { placeName: null, countryCode: null, countryName: null };
+  }
+
+  try {
+    const results = await dependencies.reverseGeocode(coordinates);
+    return {
+      placeName: placeNameFromReverseGeocode(results),
+      countryCode: countryCodeFromReverseGeocode(results),
+      countryName: results[0]?.country ?? null,
+    };
+  } catch (error) {
+    console.warn('AirAware: reverse geocoding failed', error);
+    return { placeName: null, countryCode: null, countryName: null };
+  }
+}
+
 export async function reverseGeocodePlaceName(
   coordinates: Coordinates,
   dependencies: LocationDependencies = defaultDependencies(),
 ): Promise<string | null> {
-  if (dependencies.platform === 'web') {
-    return null;
-  }
-
-  try {
-    return placeNameFromReverseGeocode(await dependencies.reverseGeocode(coordinates));
-  } catch (error) {
-    console.warn('AirAware: reverse geocoding failed', error);
-    return null;
-  }
+  return (await reverseGeocodeLocationMetadata(coordinates, dependencies)).placeName;
 }
 
 async function manualLocation(
@@ -203,6 +227,8 @@ async function manualLocation(
     activeLocationName: 'Saved location',
     coordinates,
     placeName: coordinates ? await reverseGeocodePlaceName(coordinates, dependencies) : null,
+    countryCode: null,
+    countryName: null,
     mode,
     permissionStatus,
   };
@@ -258,13 +284,25 @@ export async function resolveLocation(
       console.warn('AirAware: last-known location lookup failed', error);
     }
     const coordinates = lastKnownCoordinates ?? (await dependencies.getCurrentCoordinates());
-    const placeName = await reverseGeocodePlaceName(coordinates, dependencies);
+    let reverseGeocodeResults: ReverseGeocodeResult[] = [];
+    try {
+      reverseGeocodeResults = await dependencies.reverseGeocode(coordinates);
+    } catch (error) {
+      console.warn('AirAware: reverse geocoding failed', error);
+    }
+    const placeName = placeNameFromReverseGeocode(reverseGeocodeResults);
+    const countryCode = countryCodeFromReverseGeocode(reverseGeocodeResults);
+    const countryName = reverseGeocodeResults[0]?.country ?? null;
 
-    return automaticLocationInfo({
-      coordinates,
-      placeName,
-      permissionStatus: 'granted',
-    });
+    return {
+      ...automaticLocationInfo({
+        coordinates,
+        placeName,
+        permissionStatus: 'granted',
+      }),
+      countryCode,
+      countryName,
+    };
   } catch (error) {
     console.warn('AirAware: location lookup failed', error);
     return unavailableAutomaticLocation('unavailable');
@@ -287,6 +325,8 @@ export async function resolveActiveLocation(
       activeLocationName: CURRENT_LOCATION_NAME,
       coordinates: resolved.coordinates ?? storedCoordinates,
       placeName: resolved.placeName ?? activeLocation.placeName ?? null,
+      countryCode: resolved.countryCode ?? null,
+      countryName: resolved.countryName ?? null,
     };
   }
 
@@ -298,6 +338,8 @@ export async function resolveActiveLocation(
     activeLocationName: locationDisplayName(activeLocation),
     coordinates,
     placeName: locationDisplayName(activeLocation) || fallbackPlaceName,
+    countryCode: activeLocation.countryCode ?? null,
+    countryName: activeLocation.countryName ?? null,
     mode: 'manual',
     permissionStatus: 'unknown',
   };

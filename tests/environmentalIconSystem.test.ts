@@ -1,5 +1,9 @@
 import fs from 'fs';
 import {
+  ENVIRONMENTAL_ICON_SIZES,
+  type EnvironmentalIconSize,
+} from '../src/components/icons/environmentalIconTypes';
+import {
   getEventIconDefinition,
   getProfileFactorIconDefinition,
   getVegetationCategoryIconDefinition,
@@ -172,15 +176,18 @@ describe('environmental icon system', () => {
   });
 
   it('keeps environmental icon sizes large enough to remain visible on Android screens', () => {
-    const iconComponent = fs.readFileSync('src/components/icons/EnvironmentalIcon.tsx', 'utf8');
     const today = fs.readFileSync('src/screens/TodayScreen.tsx', 'utf8');
+    const expectedSizes: Record<EnvironmentalIconSize, number> = {
+      inline: 18,
+      measurement: 22,
+      event: 36,
+      card: 36,
+      hero: 44,
+    };
 
-    expect(iconComponent).toContain('measurement: 24');
-    expect(iconComponent).toContain('event: 44');
-    expect(iconComponent).toContain('card: 48');
-    expect(iconComponent).toContain('hero: 58');
-    expect(today).toContain('height: 56');
-    expect(today).toContain('width: 56');
+    expect(ENVIRONMENTAL_ICON_SIZES).toEqual(expectedSizes);
+    expect(today).toContain('height: ENVIRONMENTAL_ICON_SIZES.event + spacing.md');
+    expect(today).toContain('width: ENVIRONMENTAL_ICON_SIZES.event + spacing.md');
   });
 
   it('wires Today environmental events to semantic icons instead of emoji', () => {

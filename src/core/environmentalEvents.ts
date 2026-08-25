@@ -23,8 +23,10 @@ import type {
   EnvironmentalEventType,
 } from '../models/environmentalEvents';
 import type { AppSettings, PersonalAllergyProfile } from '../models/profile';
+import { translate } from '../i18n';
 import { formatShortTime, formatTimeRangeWithTomorrow } from '../utils/format';
 import { isFiniteNumber, normalizeByThresholds } from '../utils/number';
+import { irritantLabel, pollenLabel, pollutantLabel } from '../utils/readingLabels';
 
 const DETECTION_HORIZON_HOURS = 24;
 const MAX_EPISODE_GAP_MS = 90 * 60 * 1000;
@@ -122,6 +124,11 @@ function severityFromCategory(category: RiskCategoryId): EnvironmentalEventSever
 
 function eventCategoryLabel(severity: EnvironmentalEventSeverity): string {
   if (severity === 'very-high') return 'Very High';
+  return categoryLabel(severity);
+}
+
+function localizedEventCategoryLabel(severity: EnvironmentalEventSeverity): string {
+  if (severity === 'very-high') return translate('risk.categories.veryHigh');
   return categoryLabel(severity);
 }
 
@@ -236,10 +243,148 @@ function firstMeaningfulEpisode(points: EpisodePoint[]): Episode | null {
 
 function timePhrase(event: EnvironmentalEvent, referenceTime: string | null): string {
   if (event.startTime === event.endTime || !event.endTime) {
-    return `around ${formatShortTime(event.peakTime ?? event.startTime)}`;
+    return translate('events.body.expectedAround', {
+      time: formatShortTime(event.peakTime ?? event.startTime),
+    });
   }
 
-  return formatTimeRangeWithTomorrow(event.startTime, event.endTime, referenceTime);
+  return translate('events.body.expectedRange', {
+    range: formatTimeRangeWithTomorrow(event.startTime, event.endTime, referenceTime),
+  });
+}
+
+function pollenFactorLabel(factor: string | undefined): string {
+  switch (factor) {
+    case 'alder':
+    case 'birch':
+    case 'grass':
+    case 'mugwort':
+    case 'olive':
+    case 'ragweed':
+      return pollenLabel(factor);
+    default:
+      return translate('environment.pollen.generic');
+  }
+}
+
+function pollutantFactorLabel(factor: string | undefined): string {
+  switch (factor) {
+    case 'pm25':
+    case 'pm10':
+    case 'nitrogenDioxide':
+    case 'ozone':
+    case 'sulphurDioxide':
+      return pollutantLabel(factor);
+    case 'carbonMonoxide':
+      return translate('environment.pollutants.carbonMonoxide');
+    default:
+      return translate('environment.pollutants.regulated');
+  }
+}
+
+function headlineScoreTypeLabel(factor: string | undefined): string {
+  return factor === 'personalized'
+    ? translate('risk.personalizedRisk')
+    : translate('risk.environmentalBurden');
+}
+
+export function environmentalEventTitle(event: EnvironmentalEvent): string {
+  switch (event.type) {
+    case 'pollen':
+      return translate('events.titles.pollen', { factor: pollenFactorLabel(event.factor) });
+    case 'pollution':
+      return translate('events.titles.pollution', {
+        factor: pollutantFactorLabel(event.factor),
+      });
+    case 'saharan-dust':
+      return translate('events.titles.saharanDust');
+    case 'wildfire-pollution':
+      return translate('events.titles.wildfirePollution');
+    case 'aerosol':
+      return translate('events.titles.aerosol');
+    case 'uv':
+      return translate('events.titles.uv');
+    case 'mold':
+      return translate('events.titles.mold');
+    case 'headline-risk':
+      return translate('events.titles.headlineRisk', {
+        scoreType: headlineScoreTypeLabel(event.factor),
+      });
+  }
+}
+
+export function environmentalEventBody(
+  event: EnvironmentalEvent,
+  referenceTime: string | null = null,
+): string {
+  const severity = localizedEventCategoryLabel(event.severity);
+  const time = timePhrase(event, referenceTime);
+
+  switch (event.type) {
+    case 'pollen':
+      return translate('events.body.pollen', {
+        factor: pollenFactorLabel(event.factor),
+        severity,
+        time,
+      });
+    case 'pollution':
+      return translate('events.body.pollution', {
+        factor: pollutantFactorLabel(event.factor),
+        severity,
+        time,
+      });
+    case 'saharan-dust':
+      return translate('events.body.saharanDust', {
+        time: formatShortTime(event.peakTime ?? event.startTime),
+      });
+    case 'wildfire-pollution':
+      return translate('events.body.wildfirePollution', { time });
+    case 'aerosol':
+      return translate('events.body.aerosol', { time });
+    case 'uv':
+      return translate('events.body.uv', { severity, time });
+    case 'mold':
+      return translate('events.body.mold', { severity, time });
+    case 'headline-risk':
+      return translate('events.body.headlineRisk', {
+        scoreType: headlineScoreTypeLabel(event.factor),
+        severity,
+        time,
+      });
+  }
+}
+
+export function environmentalEventCategoryLabel(event: EnvironmentalEvent): string {
+  return localizedEventCategoryLabel(event.severity);
+}
+
+export function environmentalEventEvidenceLabel(variable: string): string {
+  switch (variable) {
+    case 'dust':
+      return irritantLabel('dust');
+    case 'pm10':
+      return pollutantLabel('pm10');
+    case 'pm2_5':
+      return 'PM2.5';
+    case 'pm10_wildfires':
+      return translate('environment.irritants.wildfirePm10');
+    case 'aerosol_optical_depth':
+      return translate('environment.irritants.aerosolOpticalDepth');
+    case 'pm2_5_total_organic_matter':
+      return translate('environment.irritants.pm25OrganicMatter');
+    case 'total_elementary_carbon':
+      return translate('environment.irritants.totalElementaryCarbon');
+    case 'uv_index':
+      return translate('environment.uvIndex');
+    case 'mold_potential':
+      return translate('environment.moldPotential');
+    case 'environmental_burden':
+      return translate('risk.environmentalBurden');
+    case 'personalized_risk':
+      return translate('risk.personalizedRisk');
+    default:
+      return variable.replaceAll('_', ' ');
+  }
 }
 
 function categoryForScore(score: number | null): RiskCategoryId {
@@ -1026,8 +1171,8 @@ export function formatEnvironmentalEventNotification(event: EnvironmentalEvent):
   body: string;
 } {
   return {
-    title: event.title,
-    body: event.body,
+    title: environmentalEventTitle(event),
+    body: environmentalEventBody(event),
   };
 }
 

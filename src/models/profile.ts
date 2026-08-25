@@ -1,6 +1,7 @@
 import { DEFAULT_ACTIVITY_SETTINGS } from '../core/activityDefinitions';
 import type { ActivitySettings } from './activities';
 import type { EnvironmentalEventNotificationSettings } from './environmentalEvents';
+import type { LanguagePreference } from '../i18n/types';
 import { CURRENT_LOCATION_ID, currentLocationEntry, type SavedLocation } from './location';
 
 type PollenFactorId =
@@ -59,6 +60,7 @@ export interface AppSettings {
   enabledActivities: ActivitySettings;
   collapsedSections: Record<string, boolean>;
   locationOnboardingComplete: boolean;
+  languagePreference: LanguagePreference;
 }
 
 export const DEFAULT_ENVIRONMENTAL_EVENT_NOTIFICATIONS: EnvironmentalEventNotificationSettings = {
@@ -82,4 +84,5 @@ export const DEFAULT_SETTINGS: AppSettings = {
   enabledActivities: DEFAULT_ACTIVITY_SETTINGS,
   collapsedSections: {},
   locationOnboardingComplete: false,
+  languagePreference: 'system',
 };

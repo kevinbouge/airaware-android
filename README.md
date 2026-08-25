@@ -1,10 +1,12 @@
 # AirAware Android
 
-AirAware is an Android application that reports environmental allergy burden from pollen, air
-pollution, weather-based mold potential, and optional UV context.
+AirAware is an Android application that helps users understand health-relevant external conditions
+around them. It combines local environmental conditions with a first health-signal architecture for
+public biological and population-health surveillance where suitable public data is available.
 
-AirAware reports environmental conditions only. It does not predict symptoms, diagnose allergies, or
-provide medical advice.
+AirAware reports external conditions and population-level surveillance only. It does not predict
+individual symptoms, estimate infection probability, diagnose illness or allergies, predict
+individual mortality risk, or provide medical advice.
 
 ## Technology
 
@@ -21,7 +23,7 @@ provide medical advice.
 
 - Functional React components
 - React Navigation bottom tabs for Today, Profile, Pro, and Settings, with stack drill-downs for
-  environmental, activity, and variable detail flows
+  environmental, activity, variable, and health-signal detail flows
 - Zustand for local app state and refresh orchestration
 - Capability-driven feature configuration for Free/Pro behavior
 - Pure TypeScript modules for environmental scoring, personalization, mold potential, forecast logic,
@@ -31,10 +33,11 @@ provide medical advice.
 
 - Open-Meteo Air Quality API and Weather Forecast API through isolated provider modules
 - OpenStreetMap Overpass API through an isolated nearby-vegetation provider
+- Eurostat REST Statistics API through an isolated population-health provider
 - Expo Location for foreground approximate location
 - AsyncStorage for local settings, saved locations, active location ID, profile selections, a small
-  entitlement presentation cache, development capability preview override, provider cache,
-  notification transition state, and widget snapshots
+  entitlement presentation cache, development capability preview override, provider caches,
+  geography-scoped health-signal caches, notification transition state, and widget snapshots
 - Android native share sheet for local plain-text daily summaries
 - Expo Notifications for local risk transition notifications
 - OpenStreetMap map tiles for manual coordinate selection
@@ -69,6 +72,12 @@ nvm use 22.13.1
 ## Features
 
 - Open-Meteo Air Quality and Weather Forecast data, no API key required
+- Health Signal domain model for environmental, biological, and population-health signals
+- Global country-level respiratory surveillance through WHO GISRS / FluNet public FluMart OData
+  where suitable influenza, COVID-19, and RSV data exists
+- Country-level population-health signal support for Eurostat excess mortality where Eurostat
+  publishes data for the active location's country
+- Explicit no-data respiratory states; missing surveillance is never interpreted as Low activity
 - Approximate foreground location plus multiple locally saved manual map locations
 - Location permission is requested only after the first-launch explanation is accepted
 - Current location uses Android coarse foreground permission, last-known device coordinates, and the
@@ -113,11 +122,47 @@ nvm use 22.13.1
 - AirAware Pro lifetime purchase entitlement managed through RevenueCat and Google Play when a
   public RevenueCat SDK key is configured
 
+## Localization
+
+AirAware ships with a local internationalization layer based on `expo-localization`, `i18next`, and
+`react-i18next`.
+
+Supported languages:
+
+- English
+- French
+
+Language selection is available in Settings:
+
+- System default
+- English
+- Français
+
+English is the canonical fallback locale. Regional variants such as `fr-FR`, `fr-CA`, and `fr-BE`
+resolve to French; unsupported device locales fall back to English.
+
+Translations are bundled with the application. AirAware does not contact a translation service,
+download locale files at runtime, or send the language preference to Open-Meteo, CAMS,
+OpenStreetMap, WHO, CDC, ECDC, Eurostat, RevenueCat, or any AirAware backend. The language
+preference stays in local AsyncStorage with the rest of the user settings.
+
+Locale affects presentation only: UI labels, Environmental Event copy, notification text, shared
+summaries, Android widget snapshot strings, dates, times, numbers, percentages, health-signal
+terminology, and accessible labels where applicable. Canonical domain identifiers, cache keys,
+notification fingerprints, provider parameters, scores, thresholds, and saved provider data remain
+language-neutral. Changing language does not invalidate Open-Meteo, vegetation, health-surveillance,
+or assembled-environment caches.
+
+Scientific identifiers and provider names remain standardized where appropriate, for example
+`PM2.5`, `PM10`, `NO₂`, `O₃`, `SO₂`, `CO`, `UV`, `COVID-19`, Open-Meteo, CAMS, OpenStreetMap,
+RevenueCat, CDC, ECDC, and Eurostat. In French presentation, WHO is shown as OMS where it is a
+source label.
+
 ## Screens
 
-- **Today**: headline scores, scrollable active location selector, Environmental Events, update
-  status, main factor, best outdoor window, refresh, share summary, and enabled Activity summary
-  cards
+- **Today**: headline scores, scrollable active location selector, Environmental Events, respiratory
+  surveillance availability, population-health signals, update status, main factor, best outdoor
+  window, refresh, share summary, and enabled Activity summary cards
 - **Context detail screens**: Environmental burden, Personalized risk, and Activity details with
   Daily forecast graphs, current-to-next-24-hour forecast graphs, and tappable environmental
   measurements. Detail headers are safe-area aware on Android devices with status bars or display
@@ -125,6 +170,8 @@ nvm use 22.13.1
 - **Environmental variable details**: shared 24-hour, week, month, and year timeline for individual
   variables. The 24-hour variable timeline is the history-aware view: past values appear above Now
   and forecast values appear below Now.
+- **Health signal details**: source, geography, reporting period, freshness, trend, provider
+  measure, and a population-level-not-individual-risk explanation.
 - **Profile**: local Personal Allergy Profile toggles, including Mold potential and UV index
 - **Pro**: AirAware Pro purchase/restore status, development capability preview, and Activity
   toggles
@@ -198,6 +245,11 @@ concentration.
 - Open-Meteo Weather Forecast API
 - OpenStreetMap Overpass API for nearby vegetation and land-use context
 - OpenStreetMap map tiles for manual location selection
+- WHO GISRS / FluNet public FluMart OData for global country-level respiratory surveillance
+- Eurostat REST Statistics API for official excess mortality by month (`demo_mexrt`)
+- CDC and ECDC/ERVISS are optional future enrichment providers only when stable documented
+  anonymous machine-readable sources are suitable; they are not required for global baseline
+  respiratory coverage
 
 Open-Meteo Air Quality data includes CAMS ENSEMBLE atmospheric forecasts where available.
 Availability varies by variable, region, model domain, and season.
@@ -206,6 +258,17 @@ Activities request only the additional Open-Meteo variables needed by enabled pr
 include visibility, cloud cover, wind gusts, precipitation probability, soil moisture, soil
 temperature, ET0, VPD, radiation, temperature, humidity, PM2.5, and ozone where supported. Missing
 values are omitted rather than treated as zero.
+
+Eurostat excess mortality data is substantially slower than Open-Meteo forecasts and is presented as
+latest available population context. AirAware requests only the country-level Eurostat code required
+for the active health geography. It does not send exact coordinates or saved-location names to
+Eurostat.
+
+WHO respiratory surveillance is delayed public-health surveillance, usually weekly. AirAware
+requests only the WHO country code derived from the active location's country and bounded history
+for that country. It does not send exact coordinates, saved-location names, Personal Allergy
+Profile selections, Activity settings, notification fingerprints, RevenueCat state, or personal
+medical data to WHO.
 
 ## Environmental Events
 
@@ -245,6 +308,45 @@ fire location or movement.
 Events use model forecasts, not local sensors, and do not predict medical symptoms. Advanced CAMS
 fields may be unavailable for some regions, model domains, or forecast hours. Missing optional event
 evidence is omitted rather than treated as zero.
+
+## Health Signals
+
+AirAware now has a provider-independent `HealthSignal` model for external health-relevant
+conditions. The model keeps domain, geography, reporting period, source, freshness, value, category,
+and trend separate so different sources are not forced into the environmental-burden score.
+
+Supported domains are:
+
+- **Environmental**: existing AirAware environmental readings and Environmental Events continue to
+  use the mature environmental models and are adapted into health-signal presentation only where
+  useful.
+- **Biological**: influenza, COVID-19, and RSV are represented as first-class signal types. WHO
+  GISRS / FluNet public FluMart OData is the canonical global baseline provider. Influenza and RSV
+  use country-level virological test positivity where the WHO feed reports comparable weekly
+  numerator and denominator data. COVID-19 is modeled as SARS-CoV-2 surveillance and remains an
+  explicit no-data signal unless supported SARS-CoV-2 country rows are present in the public WHO
+  feed. AirAware does not scrape dashboards or use private dashboard calls.
+- **Population health**: Eurostat excess mortality (`demo_mexrt`) is implemented as a
+  country-level population-health signal where Eurostat publishes the indicator for the active
+  location's country.
+
+Health signals preserve true geography. Country-level surveillance is displayed as country-level
+data, for example `Czechia`, not as a GPS-local reading for Prague or Brno. Health caches are keyed
+by reporting geography, and provider-level biological cache keys include provider, pathogen,
+geography, and measure. Saved locations in the same reporting country can reuse the same health
+data. Missing surveillance data is never converted to `Low`.
+
+Eurostat excess mortality uses the official monthly indicator: the percentage difference from
+Eurostat's provider-defined 2016-2019 monthly baseline. It is population context, not live risk
+monitoring and not an individual mortality-risk estimate. The latest available period may lag by
+months because Eurostat mortality data is released on a slower schedule than environmental data.
+
+Health-signal refresh runs independently from the environmental refresh path. A slow or failed WHO,
+CDC, ECDC, or Eurostat request must not block or invalidate Open-Meteo environmental data. If one
+health provider fails, AirAware can keep non-stale cached signals from that provider while using
+fresh signals from providers that succeeded; stale health signals are not presented as fresh
+surveillance. Biological and population-health sections use provider-specific freshness rules, not
+hourly environmental freshness.
 
 ## Environmental Visual System
 
@@ -312,6 +414,15 @@ Environmental Events are detected locally from already requested Open-Meteo/CAMS
 the active coordinates. AirAware does not send saved-location names, saved-location IDs, the saved
 location list, Personal Allergy Profile selections, event settings, detected events, notification
 fingerprints, widget snapshots, or RevenueCat state to Open-Meteo, Overpass, or unrelated services.
+
+Health-signal providers receive only the minimum reporting geography required by the source, such as
+a WHO country code for respiratory surveillance or a Eurostat country code for excess mortality.
+AirAware does not send precise coordinates, saved location names, saved location IDs, Personal
+Allergy Profile selections, Activity settings, notification preferences, notification fingerprints,
+RevenueCat state, infection history, diagnosis information, vaccination status, or medical profile
+data to WHO, CDC, ECDC, Eurostat, or unrelated services. Biological/population health processing
+uses public population-level data and local
+interpretation only.
 
 AirAware uses RevenueCat to manage AirAware Pro purchase entitlement. Google Play processes
 payments; AirAware does not directly handle card or payment information. RevenueCat may process
@@ -384,7 +495,8 @@ dependency is `react-native-purchases`; RevenueCat imports must stay isolated in
 AirAware's currently implemented core features remain free.
 
 Free includes Standard Environmental Data, which covers the core pollen, regulated-pollution,
-atmospheric-irritant, Mold potential, and UV readings.
+atmospheric-irritant, Mold potential, UV readings, available Health Signals, respiratory
+surveillance availability states, and Eurostat excess mortality where supported.
 
 AirAware Pro currently adds three modeled capabilities:
 
@@ -453,6 +565,9 @@ Notification capabilities are modeled separately:
 
 Environmental Events are visible on Today for Free and Pro users. Only the configurable event alert
 notifications are gated by the advanced environmental notification capability.
+
+Biological and population-health signal visibility is not Pro-gated in this milestone. AirAware does
+not add biological notifications by default, and it does not send excess-mortality notifications.
 
 Real purchase testing requires an Android development or release build. Expo Go cannot perform native
 RevenueCat purchases. RevenueCat Test Store can be used for development testing when configured, but
@@ -632,17 +747,20 @@ integrations.
 ## Architecture
 
 ```text
-src/api/          Open-Meteo and OpenStreetMap network providers and response normalization
+src/api/          Open-Meteo, OpenStreetMap, WHO respiratory surveillance, and Eurostat
+                  network providers and response normalization
 src/capabilities/ Static capability profiles, feature metadata, and availability selectors
 src/core/         Pure scoring, mold, Environmental Events, personalization, forecast, activity,
-                  and summary logic
+                  health-signal presentation, trend, and summary logic
 src/models/       Provider-independent TypeScript domain models
-src/services/     Location, billing gateway, notifications, widgets, and environment assembly
-src/storage/      AsyncStorage-backed settings and cache
+src/services/     Location, health geography, health-signal refresh, billing gateway,
+                  notifications, widgets, and environment assembly
+src/storage/      AsyncStorage-backed settings and coordinate/geography-scoped caches
 src/state/        Zustand app store and refresh orchestration
 src/components/   Reusable UI primitives, including semantic icon adapters
 src/screens/      Today, Profile, Pro, Settings, and stack detail screens
 src/navigation/   React Navigation setup
+src/i18n/         Locale detection, bundled translations, and locale-aware presentation helpers
 src/theme/        Shared colors and spacing
 src/utils/        Formatting and numeric helpers
 tests/            Deterministic unit tests
@@ -652,11 +770,40 @@ plugins/          Expo config plugin that generates Android widget native code
 Screens do not parse provider JSON and do not implement scoring formulas directly. Air-quality and
 weather provider responses are validated independently, so a partial provider failure can reuse the
 last valid cached data for the failed provider without discarding fresh data from the successful
-provider. Environmental Events are detected by a pure TypeScript engine from normalized
+provider. Slow health-surveillance providers follow the same best-effort principle at provider
+boundaries: successful providers update their signals, failed providers may retain non-stale cached
+signals, and stale cached signals are excluded from presentation. Environmental Events are detected
+by a pure TypeScript engine from normalized
 provider-independent models after environment assembly; React components and notification code do
-not parse provider JSON or implement event thresholds directly. Provider query keys and persisted
-environment/vegetation cache entries are isolated by coordinates, so Location A data is not
-presented as Location B data after switching active locations.
+not parse provider JSON or implement event thresholds directly. Health signals sit beside this path:
+slow biological/population providers normalize into provider-independent `HealthSignal` objects,
+with geography and freshness preserved. Provider query keys and persisted environment/vegetation
+cache entries are isolated by coordinates, while public-health caches are isolated by reporting
+geography. Refresh requests are scoped by active location and, for manual locations, by active
+coordinates so a stale request cannot overwrite presentation state after switching locations or
+editing the active saved location's coordinates.
+
+```text
+                    PROVIDERS
+
+ Open-Meteo/CAMS      WHO GISRS/FluNet        Eurostat
+       │                       │                  │
+       │                       ├── CDC enrichment (future, optional)
+       │                       └── ECDC enrichment (future, optional)
+       ↓                       ↓                  ↓
+
+ environmental        biological evidence     population-health
+ normalized                                      health signals
+ models
+                              ↓
+                         HealthSignal
+
+       └──────────────────┬───────────────────────┘
+                          ↓
+                     presentation
+                          ↓
+                  Today / detail screens
+```
 
 ## Capabilities
 
@@ -673,6 +820,8 @@ Capabilities describe stable application concepts:
 - Location support, currently automatic foreground Current location plus multiple saved manual
   locations for Free and Pro users
 - Provider availability, currently Open-Meteo
+- Health-signal availability, currently WHO respiratory surveillance plus geography-scoped Eurostat
+  excess mortality
 - Sharing support, currently local daily summary sharing through the Android share sheet
 - Notification capabilities, currently Free basic transition notifications and Pro advanced
   Environmental Event alerts
@@ -706,9 +855,10 @@ before provider calls, and provider modules receive only coordinates plus reques
 options. Switching the active location clears or replaces presentation data with a matching
 coordinate cache, starts a refresh, updates nearby vegetation for the active coordinates, scopes
 notification transition state by active location ID and coordinates, and regenerates the local
-widget snapshot. Persisted saved-location state is treated defensively: duplicate or otherwise
-corrupt manual location IDs fall back to the stable Current location instead of being rendered as
-ambiguous UI rows.
+widget snapshot. Editing the coordinates of the active saved manual location clears environmental,
+vegetation, event, and health-signal presentation state before forcing a fresh scoped refresh.
+Persisted saved-location state is treated defensively: duplicate or otherwise corrupt manual
+location IDs fall back to the stable Current location instead of being rendered as ambiguous UI rows.
 
 Activity logic is configuration-driven. Each Activity definition declares required and optional
 environmental variables, Open-Meteo request variables, suitability rules, and detail rows. Activity
@@ -752,6 +902,15 @@ checks in event detection.
   provider coverage. Missing variables are omitted rather than treated as zero.
 - Nearby vegetation depends on OpenStreetMap and Overpass coverage. Missing mapped features do not
   mean vegetation is absent.
+- Biological respiratory activity uses WHO GISRS / FluNet public FluMart OData as the global
+  country-level baseline where suitable data is reported. COVID-19 remains explicit no-data when
+  the public WHO feed does not expose SARS-CoV-2 country rows for the selected geography. CDC and
+  ECDC/ERVISS enrichment is not implemented in this milestone because it is optional and must use
+  stable documented anonymous machine-readable sources.
+- Eurostat excess mortality is a delayed country-level population statistic. It is not live
+  monitoring and is not an individual mortality-risk prediction.
+- Health signals do not produce a cross-domain health score and are not added to Environmental
+  burden or Personalized risk.
 - Widgets update when the app writes a fresh local widget snapshot. They do not perform aggressive
   independent polling, background location, independent provider requests, or React Native SVG
   rendering inside native `RemoteViews`.

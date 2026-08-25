@@ -1,5 +1,13 @@
 export type EnvironmentalIconSize = 'inline' | 'measurement' | 'event' | 'card' | 'hero';
 
+export const ENVIRONMENTAL_ICON_SIZES: Record<EnvironmentalIconSize, number> = {
+  inline: 18,
+  measurement: 22,
+  event: 36,
+  card: 36,
+  hero: 44,
+};
+
 type EnvironmentalIconStyle = 'meteocons-monochrome';
 
 export type EnvironmentalIconName =

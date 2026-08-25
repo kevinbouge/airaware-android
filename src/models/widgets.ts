@@ -7,7 +7,7 @@ type WidgetDestination = 'today' | 'forecast' | 'settings';
 
 export interface WidgetScoreSnapshot {
   type: 'environmental' | 'personalized';
-  label: 'Environmental burden' | 'Personalized risk';
+  label: string;
   category: RiskCategoryId;
   categoryLabel: string;
   score: number;

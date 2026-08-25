@@ -1,6 +1,7 @@
 import { AppIcon } from './AppIcon';
-import { GasMaskIcon } from './GasMaskIcon';
+import { APP_ICON_SIZES } from './appIconTypes';
 import type { AppIconName } from './appIconTypes';
+import { GasMaskIcon } from './GasMaskIcon';
 
 export type TabIconName =
   'today' | 'data' | 'activities' | 'forecast' | 'profile' | 'pro' | 'settings';
@@ -11,15 +12,9 @@ interface TabIconProps {
   color: string;
 }
 
-export function TabIcon({ name, size = 24, color }: TabIconProps) {
+export function TabIcon({ name, color }: TabIconProps) {
   if (name === 'today') {
-    return (
-      <GasMaskIcon
-        size={Math.round(size * 1.15)}
-        color={color}
-        style={{ transform: [{ translateY: 3 }] }}
-      />
-    );
+    return <GasMaskIcon size={APP_ICON_SIZES.tabBrand} color={color} />;
   }
 
   return <AppIcon name={name as AppIconName} size="navigation" color={color} />;

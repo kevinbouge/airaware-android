@@ -321,8 +321,8 @@ describe('risk transition notifications', () => {
       locationLabel: 'Prague',
     });
 
-    expect(message.title).toBe('AirAware risk is now High');
-    expect(message.body).toBe('Environmental burden reached 68% in Prague.');
+    expect(message.title).toBe('Environmental burden is High');
+    expect(message.body).toBe('AirAware score is 68% in Prague.');
     expect(message.body).not.toContain('50.0755');
     expect(message.body).not.toMatch(/symptom|diagnos|medical/i);
   });

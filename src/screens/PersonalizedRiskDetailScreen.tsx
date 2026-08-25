@@ -1,5 +1,6 @@
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useTranslation } from 'react-i18next';
 import {
   ContextForecastScore,
   DailyForecastSection,
@@ -57,6 +58,7 @@ const PROFILE_VARIABLES: Record<ProfileFactorId, EnvironmentalVariableId> = {
 
 export function PersonalizedRiskDetailScreen() {
   const navigation = useNavigation<DetailNavigation>();
+  const { t } = useTranslation();
   const environment = useAppStore((state) => state.environment);
   const profile = useAppStore((state) => state.profile);
   const capabilities = useCapabilities();
@@ -72,8 +74,8 @@ export function PersonalizedRiskDetailScreen() {
   if (!environment || !effectiveProfile.enabled || !personalizedScore.available) {
     return (
       <DetailStateView
-        title="Personalized risk"
-        message="Personalized risk data is unavailable."
+        title={t('risk.personalizedRisk')}
+        message={t('detail.personalizedRiskUnavailable')}
         onBack={handleBack}
       />
     );
@@ -125,47 +127,49 @@ export function PersonalizedRiskDetailScreen() {
           personalizedBestOutdoorWindow.endTime,
           environment.current.timestamp ?? environment.fetchedAt,
         )
-      : 'Unavailable';
+      : t('common.unavailable');
 
   return (
     <View style={styles.screen}>
-      <DetailHeader title="Personalized risk" onBack={handleBack} />
+      <DetailHeader title={t('risk.personalizedRisk')} onBack={handleBack} />
       <ScrollView style={styles.scroller} contentContainerStyle={styles.content}>
         <SectionCard>
           <SummaryMetricGrid
             metrics={[
               {
-                label: 'Score',
+                label: t('detail.score'),
                 value: `${categoryLabel(personalizedScore.category)} · ${formatScore(
                   personalizedScore.score,
                 )}`,
                 accent: riskColor(personalizedScore.category),
               },
               {
-                label: 'Best window',
+                label: t('today.bestWindow'),
                 value: bestWindowValue,
                 compact: true,
               },
             ]}
           />
-          <Text style={styles.body}>Main factor: {contributor.label ?? 'Unavailable'}</Text>
+          <Text style={styles.body}>
+            {t('today.mainFactor')}: {contributor.label ?? t('common.unavailable')}
+          </Text>
         </SectionCard>
 
         <DailyForecastSection
-          title="Daily forecast"
+          title={t('detail.dailyForecast')}
           days={environment.forecastDays}
           capabilities={capabilities}
           scoreForDate={dailyScore}
         />
         <RiskTimelineSection
-          title="24-hour forecast"
+          title={t('detail.hourlyForecast')}
           current={currentTimelinePoint}
           hourly={hourlyTimelinePoints}
           bestWindow={personalizedBestOutdoorWindow}
-          unavailableLabel="Personalized forecast is unavailable."
+          unavailableLabel={t('detail.personalizedForecastUnavailable')}
         />
 
-        <SectionCard title="Your factors">
+        <SectionCard title={t('detail.yourFactors')}>
           {selectedRows.length > 0 ? (
             selectedRows.map((row) => (
               <ReadingRow
@@ -177,7 +181,7 @@ export function PersonalizedRiskDetailScreen() {
               />
             ))
           ) : (
-            <Text style={styles.muted}>No selected factors are currently available.</Text>
+            <Text style={styles.muted}>{t('detail.noSelectedFactors')}</Text>
           )}
         </SectionCard>
       </ScrollView>

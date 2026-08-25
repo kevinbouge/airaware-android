@@ -10,14 +10,13 @@ import {
   View,
 } from 'react-native';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { isFeatureAvailable } from '../capabilities/features';
 import { AppButton } from '../components/AppButton';
 import { LocationMapPicker } from '../components/LocationMapPicker';
 import { OptionButton } from '../components/OptionButton';
 import { SectionCard } from '../components/SectionCard';
 import { AppIcon } from '../components/icons/AppIcon';
-import { appDisclaimerText } from '../core/appDisclaimers';
-import { googlePlayPrivacyDisclosureText } from '../core/googlePlayCompliance';
 import { useCapabilities } from '../hooks/useCapabilities';
 import type { EnvironmentalEventNotificationSettings } from '../models/environmentalEvents';
 import {
@@ -28,6 +27,7 @@ import {
 import { useAppStore } from '../state/useAppStore';
 import { colors, spacing } from '../theme/theme';
 import { formatMapCoordinate } from '../utils/mapTiles';
+import type { LanguagePreference } from '../i18n/types';
 
 const DEFAULT_MAP_COORDINATES = {
   latitude: 50.0755,
@@ -36,16 +36,27 @@ const DEFAULT_MAP_COORDINATES = {
 
 const ENVIRONMENTAL_ALERT_OPTIONS: {
   id: keyof EnvironmentalEventNotificationSettings;
-  label: string;
+  labelKey: string;
 }[] = [
-  { id: 'pollen', label: 'Pollen' },
-  { id: 'airPollution', label: 'Air pollution' },
-  { id: 'saharanDust', label: 'Saharan dust' },
-  { id: 'wildfirePollution', label: 'Wildfire-related pollution' },
-  { id: 'uv', label: 'UV' },
-  { id: 'mold', label: 'Mold potential' },
-  { id: 'headlineRisk', label: 'Overall environmental risk' },
+  { id: 'pollen', labelKey: 'environment.pollen.generic' },
+  { id: 'airPollution', labelKey: 'environment.pollutants.regulated' },
+  { id: 'saharanDust', labelKey: 'environment.irritants.dust' },
+  { id: 'wildfirePollution', labelKey: 'events.titles.wildfirePollution' },
+  { id: 'uv', labelKey: 'environment.uvIndex' },
+  { id: 'mold', labelKey: 'environment.moldPotential' },
+  { id: 'headlineRisk', labelKey: 'risk.environmentalBurden' },
 ];
+
+const LANGUAGE_OPTIONS: { id: LanguagePreference; labelKey: string }[] = [
+  { id: 'system', labelKey: 'language.system' },
+  { id: 'en', labelKey: 'language.english' },
+  { id: 'fr', labelKey: 'language.french' },
+];
+
+function savedLocationLabel(location: SavedLocation, t: (key: string) => string): string {
+  if (location.id === CURRENT_LOCATION_ID) return t('settings.locations.currentLocation');
+  return location.name;
+}
 
 interface SettingsSwitchRowProps {
   label: string;
@@ -86,6 +97,7 @@ function isManualLocation(location: SavedLocation): location is ManualSavedLocat
 }
 
 export function SettingsScreen() {
+  const { t } = useTranslation();
   const [mapPickerVisible, setMapPickerVisible] = useState(false);
   const [managedLocationId, setManagedLocationId] = useState<string | null>(null);
   const [mapPickerMode, setMapPickerMode] = useState<
@@ -173,12 +185,12 @@ export function SettingsScreen() {
 
   const requestDeleteLocation = (savedLocation: ManualSavedLocation) => {
     Alert.alert(
-      'Delete saved location?',
-      `Remove ${savedLocation.name} from AirAware saved locations?`,
+      t('settings.locations.deleteTitle'),
+      t('settings.locations.deleteBody', { name: savedLocation.name }),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Delete',
+          text: t('common.delete'),
           style: 'destructive',
           onPress: () => {
             void deleteSavedLocation(savedLocation.id);
@@ -192,7 +204,26 @@ export function SettingsScreen() {
   return (
     <>
       <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-        <SectionCard title="Locations" subtitle="Choose the active location for AirAware data.">
+        <SectionCard
+          title={t('settings.language.title')}
+          subtitle={t('settings.language.subtitle')}
+        >
+          <View style={styles.buttonRow}>
+            {LANGUAGE_OPTIONS.map((option) => (
+              <OptionButton
+                key={option.id}
+                label={t(option.labelKey)}
+                selected={settings.languagePreference === option.id}
+                onPress={() => updateSettings({ languagePreference: option.id })}
+              />
+            ))}
+          </View>
+        </SectionCard>
+
+        <SectionCard
+          title={t('settings.locations.title')}
+          subtitle={t('settings.locations.subtitle')}
+        >
           {settings.locations.map((savedLocation) => {
             const selected = savedLocation.id === settings.activeLocationId;
 
@@ -206,22 +237,28 @@ export function SettingsScreen() {
                         size="inline"
                         color={colors.primary}
                       />
-                      <Text style={styles.locationName}>{savedLocation.name}</Text>
+                      <Text style={styles.locationName}>
+                        {savedLocationLabel(savedLocation, t)}
+                      </Text>
                     </View>
                     <Text style={styles.notice}>
                       {savedLocation.type === 'current'
-                        ? 'Uses approximate foreground location'
+                        ? t('settings.locations.approximate')
                         : `${formatMapCoordinate(savedLocation.latitude)}, ${formatMapCoordinate(
                             savedLocation.longitude,
                           )}`}
                     </Text>
                   </View>
                   <Text style={[styles.locationStatus, selected ? styles.activeStatus : null]}>
-                    {selected ? 'Active' : 'Saved'}
+                    {selected ? t('common.active') : t('common.saved')}
                   </Text>
                 </View>
                 <AppButton
-                  title={selected ? 'Active location' : 'Use this location'}
+                  title={
+                    selected
+                      ? t('settings.locations.activeLocation')
+                      : t('settings.locations.useLocation')
+                  }
                   iconName={savedLocation.type === 'current' ? 'current-location' : 'location'}
                   selected={selected}
                   disabled={
@@ -233,7 +270,7 @@ export function SettingsScreen() {
                 />
                 {savedLocation.type === 'manual' ? (
                   <AppButton
-                    title="Manage location"
+                    title={t('settings.locations.manage')}
                     iconName="settings"
                     fullWidth
                     disabled={loading}
@@ -243,15 +280,17 @@ export function SettingsScreen() {
               </View>
             );
           })}
-          {loading ? <Text style={styles.notice}>Refreshing environmental data...</Text> : null}
+          {loading ? <Text style={styles.notice}>{t('settings.locations.refreshing')}</Text> : null}
           {manualLocationLimitReached ? (
             <Text style={styles.notice}>
-              Saved location limit reached ({capabilities.locations.maxSavedLocations}).
+              {t('settings.locations.limitReached', {
+                count: capabilities.locations.maxSavedLocations,
+              })}
             </Text>
           ) : null}
           {manualLocationAvailable ? (
             <AppButton
-              title="Add saved location"
+              title={t('settings.locations.add')}
               iconName="add"
               fullWidth
               onPress={openAddLocationPicker}
@@ -261,15 +300,12 @@ export function SettingsScreen() {
         </SectionCard>
 
         <SectionCard
-          title="Notifications"
-          subtitle="Risk transition notifications are evaluated during app refreshes."
+          title={t('settings.notifications.title')}
+          subtitle={t('settings.notifications.subtitle')}
         >
-          <Text style={styles.body}>
-            AirAware can notify you when the active headline score enters a high category.
-            Personalized risk is used when available; otherwise Environmental burden is used.
-          </Text>
+          <Text style={styles.body}>{t('settings.notifications.body')}</Text>
           <SettingsSwitchRow
-            label="Risk transition notifications"
+            label={t('settings.notifications.riskTransitions')}
             value={settings.riskTransitionNotificationsEnabled}
             onValueChange={(enabled) =>
               updateSettings({ riskTransitionNotificationsEnabled: enabled })
@@ -277,7 +313,7 @@ export function SettingsScreen() {
           />
           <View style={styles.twoButtonRow}>
             <OptionButton
-              label="High + Very High"
+              label={t('settings.notifications.highAndVeryHigh')}
               selected={settings.riskTransitionNotificationThreshold === 'highAndVeryHigh'}
               disabled={!settings.riskTransitionNotificationsEnabled}
               grow
@@ -286,7 +322,7 @@ export function SettingsScreen() {
               }
             />
             <OptionButton
-              label="Very High only"
+              label={t('settings.notifications.veryHighOnly')}
               selected={settings.riskTransitionNotificationThreshold === 'veryHighOnly'}
               disabled={!settings.riskTransitionNotificationsEnabled}
               grow
@@ -297,10 +333,10 @@ export function SettingsScreen() {
           </View>
           {notificationMessage ? <Text style={styles.notice}>{notificationMessage}</Text> : null}
           {notificationPermissionStatus === 'granted' && notificationsEnabled ? (
-            <Text style={styles.notice}>Notification permission is enabled.</Text>
+            <Text style={styles.notice}>{t('settings.notifications.permissionEnabled')}</Text>
           ) : null}
           <AppButton
-            title="Send test notification"
+            title={t('settings.notifications.test')}
             iconName="notifications"
             fullWidth
             onPress={sendTestRiskNotification}
@@ -310,7 +346,7 @@ export function SettingsScreen() {
             {notificationPermissionStatus === 'denied' ||
             (notificationsEnabled && notificationPermissionStatus !== 'granted') ? (
               <OptionButton
-                label="Open Android settings"
+                label={t('settings.notifications.openAndroidSettings')}
                 iconName="settings"
                 selected={false}
                 onPress={openNotificationSettings}
@@ -318,21 +354,16 @@ export function SettingsScreen() {
             ) : null}
           </View>
           <View style={styles.notificationDivider} />
-          <Text style={styles.sectionLabel}>Environmental alerts</Text>
-          <Text style={styles.notice}>
-            Event alerts are evaluated during normal app refreshes for the active location only.
-          </Text>
+          <Text style={styles.sectionLabel}>{t('settings.notifications.environmentalAlerts')}</Text>
+          <Text style={styles.notice}>{t('settings.notifications.environmentalAlertsBody')}</Text>
           {!advancedEnvironmentalAlertsAvailable ? (
-            <Text style={styles.notice}>
-              Environmental alert notifications are available with AirAware Pro. Events still appear
-              on Today.
-            </Text>
+            <Text style={styles.notice}>{t('settings.notifications.environmentalAlertsPro')}</Text>
           ) : null}
           <View style={styles.buttonRow}>
             {ENVIRONMENTAL_ALERT_OPTIONS.map((option) => (
               <SettingsSwitchRow
                 key={option.id}
-                label={option.label}
+                label={t(option.labelKey)}
                 value={
                   advancedEnvironmentalAlertsAvailable &&
                   settings.environmentalEventNotifications[option.id]
@@ -344,17 +375,17 @@ export function SettingsScreen() {
           </View>
         </SectionCard>
 
-        <SectionCard title="Daily summary">
+        <SectionCard title={t('settings.summary.title')}>
           <View style={styles.twoButtonRow}>
             <OptionButton
-              label="Environmental"
+              label={t('settings.summary.environmental')}
               iconName="generic"
               selected={settings.summaryScore === 'environmental'}
               grow
               onPress={() => updateSettings({ summaryScore: 'environmental' })}
             />
             <OptionButton
-              label="Personalized"
+              label={t('settings.summary.personalized')}
               iconName="profile"
               selected={settings.summaryScore === 'personalized'}
               disabled={!profileEnabled}
@@ -364,14 +395,14 @@ export function SettingsScreen() {
           </View>
           <View style={styles.twoButtonRow}>
             <OptionButton
-              label="Place name"
+              label={t('settings.summary.placeName')}
               iconName="location"
               selected={settings.summaryLocation === 'place'}
               grow
               onPress={() => updateSettings({ summaryLocation: 'place' })}
             />
             <OptionButton
-              label="Hide location"
+              label={t('settings.summary.hideLocation')}
               iconName="privacy"
               selected={settings.summaryLocation === 'hidden'}
               grow
@@ -380,12 +411,12 @@ export function SettingsScreen() {
           </View>
         </SectionCard>
 
-        <SectionCard title="Disclaimers">
-          <Text style={styles.body}>{appDisclaimerText()}</Text>
+        <SectionCard title={t('settings.disclaimers')}>
+          <Text style={styles.body}>{t('settings.disclaimerText')}</Text>
         </SectionCard>
 
-        <SectionCard title="Privacy">
-          <Text style={styles.body}>{googlePlayPrivacyDisclosureText()}</Text>
+        <SectionCard title={t('settings.privacy')}>
+          <Text style={styles.body}>{t('settings.privacyText')}</Text>
         </SectionCard>
       </ScrollView>
 
@@ -398,7 +429,9 @@ export function SettingsScreen() {
           <View style={styles.mapModalHeader}>
             <View style={styles.mapModalTitleGroup}>
               <Text style={styles.mapModalTitle}>
-                {mapPickerMode.type === 'add' ? 'Add saved location' : 'Edit saved location'}
+                {mapPickerMode.type === 'add'
+                  ? t('settings.locations.addTitle')
+                  : t('settings.locations.editTitle')}
               </Text>
               <Text style={styles.mapModalCoordinates}>
                 {formatMapCoordinate(mapPickerCoordinates.latitude)},{' '}
@@ -409,10 +442,10 @@ export function SettingsScreen() {
           <View style={styles.mapModalBody}>
             {mapPickerMode.type === 'add' ? (
               <TextInput
-                accessibilityLabel="Saved location name"
+                accessibilityLabel={t('settings.locations.nameLabel')}
                 autoCapitalize="words"
                 onChangeText={setNewLocationName}
-                placeholder="Name, such as Home or Work"
+                placeholder={t('settings.locations.namePlaceholder')}
                 placeholderTextColor={colors.muted}
                 style={styles.input}
                 value={newLocationName}
@@ -425,14 +458,14 @@ export function SettingsScreen() {
           </View>
           <View style={styles.mapModalActions}>
             <OptionButton
-              label="Cancel"
+              label={t('common.cancel')}
               iconName="close"
               selected={false}
               grow
               onPress={closeManualLocationPicker}
             />
             <OptionButton
-              label="Use this location"
+              label={t('settings.locations.useLocation')}
               iconName="location"
               selected={false}
               grow
@@ -459,19 +492,21 @@ export function SettingsScreen() {
                   </Text>
                 </View>
                 <TextInput
-                  accessibilityLabel={`Rename ${managedLocation.name}`}
+                  accessibilityLabel={t('settings.locations.renameLabel', {
+                    name: managedLocation.name,
+                  })}
                   autoCapitalize="words"
                   onChangeText={(value) =>
                     setDraftNames((current) => ({ ...current, [managedLocation.id]: value }))
                   }
-                  placeholder="Location name"
+                  placeholder={t('settings.locations.renamePlaceholder')}
                   placeholderTextColor={colors.muted}
                   style={styles.input}
                   value={draftNames[managedLocation.id] ?? managedLocation.name}
                 />
                 <View style={styles.twoButtonRow}>
                   <OptionButton
-                    label="Rename"
+                    label={t('settings.locations.rename')}
                     iconName="edit"
                     selected={false}
                     disabled={
@@ -487,7 +522,7 @@ export function SettingsScreen() {
                     }
                   />
                   <OptionButton
-                    label="Edit map"
+                    label={t('settings.locations.editMap')}
                     iconName="location-management"
                     selected={false}
                     disabled={loading}
@@ -501,7 +536,7 @@ export function SettingsScreen() {
                   />
                 </View>
                 <AppButton
-                  title="Delete location"
+                  title={t('settings.locations.delete')}
                   iconName="delete"
                   disabled={loading}
                   fullWidth
@@ -510,7 +545,7 @@ export function SettingsScreen() {
               </>
             ) : null}
             <AppButton
-              title="Close"
+              title={t('common.close')}
               iconName="close"
               fullWidth
               onPress={() => setManagedLocationId(null)}

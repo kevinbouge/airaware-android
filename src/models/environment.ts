@@ -14,6 +14,8 @@ export interface LocationInfo {
   activeLocationName: string;
   coordinates: Coordinates | null;
   placeName: string | null;
+  countryCode?: string | null | undefined;
+  countryName?: string | null | undefined;
   mode: 'automatic' | 'manual';
   permissionStatus: 'unknown' | 'granted' | 'denied' | 'unavailable';
 }
@@ -245,7 +247,7 @@ export interface DailySummary {
   title: string;
   dateLabel: string;
   referenceTime: string;
-  scoreLabel: 'Environmental burden' | 'Personalized risk';
+  scoreLabel: string;
   score: EnvironmentalScoreResult | PersonalizedScoreResult;
   mainFactorLabel: string | null;
   mainFactorGroup: 'pollen' | 'pollution' | 'mold' | 'uv' | 'unknown';

@@ -1,5 +1,6 @@
 import { categoryLabel } from './categories';
 import { calculateEnvironmentalScore } from './scoring';
+import { translate } from '../i18n';
 import type {
   DailySummary,
   EnvironmentalScoreResult,
@@ -23,14 +24,14 @@ function scoreChoice(input: {
   personalizedScore: PersonalizedScoreResult;
   settings: AppSettings;
 }): {
-  label: DailySummary['scoreLabel'];
+  label: string;
   score: EnvironmentalScoreResult | PersonalizedScoreResult;
 } {
   if (input.settings.summaryScore === 'personalized' && input.personalizedScore.available) {
-    return { label: 'Personalized risk', score: input.personalizedScore };
+    return { label: translate('risk.personalizedRisk'), score: input.personalizedScore };
   }
 
-  return { label: 'Environmental burden', score: input.environmentalScore };
+  return { label: translate('risk.environmentalBurden'), score: input.environmentalScore };
 }
 
 function mainFactor(
@@ -154,13 +155,17 @@ export function formatDailySummary(summary: DailySummary): string {
   ];
 
   if (summary.mainFactorLabel) {
-    lines.push('', `${factorEmoji(summary.mainFactorGroup)} Main factor`, summary.mainFactorLabel);
+    lines.push(
+      '',
+      `${factorEmoji(summary.mainFactorGroup)} ${translate('sharing.mainFactor')}`,
+      summary.mainFactorLabel,
+    );
   }
 
   if (summary.bestOutdoorWindow?.available) {
     lines.push(
       '',
-      '🌤️ Best outdoor window',
+      `🌤️ ${translate('sharing.bestOutdoorWindow')}`,
       formatTimeRangeWithTomorrow(
         summary.bestOutdoorWindow.startTime,
         summary.bestOutdoorWindow.endTime,
@@ -172,17 +177,20 @@ export function formatDailySummary(summary: DailySummary): string {
   if (summary.uvPeak) {
     lines.push(
       '',
-      '☀️ UV peak',
-      `${categoryLabel(summary.uvPeak.category)} at ${summary.uvPeak.timeLabel}`,
+      `☀️ ${translate('sharing.uvPeak')}`,
+      translate('sharing.uvPeakAt', {
+        category: categoryLabel(summary.uvPeak.category),
+        time: summary.uvPeak.timeLabel,
+      }),
     );
   }
 
   if (summary.stale) {
-    lines.push('', '💾 Cached data');
+    lines.push('', `💾 ${translate('sharing.cachedData')}`);
   }
 
-  lines.push('', 'ℹ️ Environmental conditions only — not medical advice.');
-  lines.push(`📡 Data: ${summary.attribution.join(', ')}`);
+  lines.push('', `ℹ️ ${translate('sharing.disclaimer')}`);
+  lines.push(`📡 ${translate('sharing.data', { sources: summary.attribution.join(', ') })}`);
 
   return lines.join('\n').trim();
 }

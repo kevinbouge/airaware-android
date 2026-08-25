@@ -1,6 +1,7 @@
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useMemo } from 'react';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { useTranslation } from 'react-i18next';
 import type { RouteProp } from '@react-navigation/native';
 import { DetailHeader } from '../components/DetailHeader';
 import { DetailStateView } from '../components/DetailStateView';
@@ -17,6 +18,7 @@ import { forecastDaysForCapabilities } from '../capabilities/forecast';
 import { useCapabilities } from '../hooks/useCapabilities';
 import { useAppStore } from '../state/useAppStore';
 import { colors, spacing } from '../theme/theme';
+import { formatScore } from '../utils/format';
 import type { ActivitySemanticType, ActivitySuitabilityCategory } from '../models/activities';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrToday, type DetailBackNavigation } from '../navigation/detailNavigation';
@@ -69,6 +71,7 @@ function activityColor(
 
 export function ActivityDomainDetailScreen() {
   const navigation = useNavigation<ActivityDomainDetailNavigation>();
+  const { t } = useTranslation();
   const route = useRoute<ActivityDomainDetailRoute>();
   const environment = useAppStore((state) => state.environment);
   const loading = useAppStore((state) => state.loading);
@@ -100,22 +103,22 @@ export function ActivityDomainDetailScreen() {
   if (!capabilities.activities.available) {
     return (
       <DetailStateView
-        title={domain?.label ?? 'Activities'}
-        message="Activities require AirAware Pro."
+        title={domain?.label ?? t('today.activities')}
+        message={t('activities.requirePro')}
         onBack={handleBack}
       />
     );
   }
 
   if (!domain) {
-    return <DetailStateView message="Activity data is unavailable." onBack={handleBack} />;
+    return <DetailStateView message={t('activities.unavailable')} onBack={handleBack} />;
   }
 
   if (!domainEnabled) {
     return (
       <DetailStateView
         title={domain.label}
-        message="Enable this activity domain in Settings to view details."
+        message={t('activities.enableDomainInSettings')}
         onBack={handleBack}
       />
     );
@@ -126,7 +129,7 @@ export function ActivityDomainDetailScreen() {
       <DetailStateView
         title={domain.label}
         loading
-        message="Updating activity data..."
+        message={t('activities.updating')}
         onBack={handleBack}
       />
     );
@@ -141,7 +144,7 @@ export function ActivityDomainDetailScreen() {
         onBack={handleBack}
       />
       <ScrollView style={styles.scroller} contentContainerStyle={styles.content}>
-        <Text style={styles.sectionTitle}>Professional profiles</Text>
+        <Text style={styles.sectionTitle}>{t('activities.professionalProfiles')}</Text>
         {profileEvaluations.length > 0 ? (
           profileEvaluations.map((profile) => {
             const category = profile.current?.category ?? 'insufficientData';
@@ -152,7 +155,9 @@ export function ActivityDomainDetailScreen() {
               profile.minimumUsefulWindowDuration,
             );
             const windowLabel =
-              profile.semanticType === 'risk' ? 'Peak risk window' : 'Best window';
+              profile.semanticType === 'risk'
+                ? t('activities.peakRiskWindow')
+                : t('activities.bestWindow');
 
             return (
               <InsightCard
@@ -163,14 +168,17 @@ export function ActivityDomainDetailScreen() {
                 primary={activityCategoryLabel(category, profile.semanticType)}
                 secondary={
                   profile.current?.available && profile.current.displayScore !== null
-                    ? `${profile.current.displayScore}%`
+                    ? formatScore(profile.current.displayScore)
                     : undefined
                 }
                 compact
                 details={[
                   `${windowLabel}: ${formatActivityWindow(displayWindow, nowTimestamp)}`,
                   profile.dataCompleteness.status === 'reduced'
-                    ? `Reduced data: ${profile.dataCompleteness.availableFactors} / ${profile.dataCompleteness.expectedFactors} factors`
+                    ? t('activities.reducedData', {
+                        available: profile.dataCompleteness.availableFactors,
+                        expected: profile.dataCompleteness.expectedFactors,
+                      })
                     : null,
                 ].filter((item): item is string => item !== null)}
                 onPress={() =>
@@ -183,7 +191,7 @@ export function ActivityDomainDetailScreen() {
             );
           })
         ) : (
-          <Text style={styles.notice}>Activity profiles are unavailable.</Text>
+          <Text style={styles.notice}>{t('activities.profilesUnavailable')}</Text>
         )}
       </ScrollView>
     </View>

@@ -25,6 +25,13 @@ describe('app icon system', () => {
     expect(getAppIconDefinition('refresh')).toMatchObject({ libraryName: 'RefreshCw' });
     expect(getAppIconDefinition('edit')).toMatchObject({ libraryName: 'Pencil' });
     expect(getAppIconDefinition('delete')).toMatchObject({ libraryName: 'Trash2' });
+    expect(getAppIconDefinition('respiratory')).toMatchObject({ libraryName: 'HeartPulse' });
+    expect(getAppIconDefinition('population-health')).toMatchObject({ libraryName: 'UsersRound' });
+    expect(getAppIconDefinition('trend-rising')).toMatchObject({ libraryName: 'TrendingUp' });
+    expect(getAppIconDefinition('trend-falling')).toMatchObject({ libraryName: 'TrendingDown' });
+    expect(getAppIconDefinition('trend-stable')).toMatchObject({
+      libraryName: 'TrendingUpDown',
+    });
   });
 
   it('keeps unknown generic icon names from crashing the app', () => {
@@ -34,13 +41,14 @@ describe('app icon system', () => {
   it('centralizes Lucide sizing and stroke weight', () => {
     expect(APP_ICON_SIZES).toMatchObject({
       inline: 18,
-      navigation: 21,
+      navigation: 20,
+      tabBrand: 22,
       action: 20,
-      activity: 28,
-      card: 34,
-      hero: 44,
+      activity: 24,
+      card: 28,
+      hero: 36,
     });
-    expect(APP_ICON_STROKE_WIDTH).toBeCloseTo(2.25);
+    expect(APP_ICON_STROKE_WIDTH).toBeCloseTo(2.1);
   });
 
   it('keeps the Today tab and Today header on the gas-mask brand icon', () => {

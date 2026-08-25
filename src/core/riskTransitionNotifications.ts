@@ -13,6 +13,8 @@ import type {
   RiskTransition,
 } from '../models/notifications';
 import type { AppSettings, PersonalAllergyProfile } from '../models/profile';
+import { translate } from '../i18n';
+import { formatMeasurement } from '../utils/format';
 import { displayScore, isFiniteNumber } from '../utils/number';
 
 interface TransitionContext {
@@ -255,19 +257,18 @@ export function formatRiskTransitionNotification(
   transition: RiskTransition,
 ): RiskNotificationContent {
   const category = categoryLabel(transition.currentCategory);
-  const score = displayScore(transition.currentScore);
-  const locationSuffix = transition.locationLabel ? ` in ${transition.locationLabel}` : '';
-
-  if (transition.scoreType === 'personalized') {
-    return {
-      title: `Personalized risk is now ${category}`,
-      body: `Personalized environmental risk reached ${score}%${locationSuffix}.`,
-    };
-  }
+  const score = formatMeasurement(displayScore(transition.currentScore), '%');
+  const location = transition.locationLabel
+    ? translate('notifications.locationSuffix', { location: transition.locationLabel })
+    : '';
+  const scoreType =
+    transition.scoreType === 'personalized'
+      ? translate('risk.personalizedRisk')
+      : translate('risk.environmentalBurden');
 
   return {
-    title: `AirAware risk is now ${category}`,
-    body: `Environmental burden reached ${score}%${locationSuffix}.`,
+    title: translate('notifications.riskTitle', { scoreType, category }),
+    body: translate('notifications.riskBody', { score, location }),
   };
 }
 

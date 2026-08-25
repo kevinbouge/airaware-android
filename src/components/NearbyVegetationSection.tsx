@@ -1,4 +1,5 @@
 import { StyleSheet, Text } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { ReadingRow } from './ReadingRow';
 import { SectionCard } from './SectionCard';
 import {
@@ -13,6 +14,7 @@ import type {
 } from '../models/vegetation';
 import { colors } from '../theme/theme';
 import { formatDistanceMeters } from '../utils/format';
+import { translate } from '../i18n';
 
 interface NearbyVegetationSectionProps {
   vegetation: NormalizedVegetationContext | null;
@@ -30,20 +32,20 @@ interface VegetationRow {
   iconName: EnvironmentalIconName;
 }
 
-const CATEGORY_LABELS: Record<VegetationCategoryId, string> = {
-  woodland: 'Woodland',
-  grassland: 'Grassland',
-  meadow: 'Meadow',
-  orchard: 'Orchard',
-  scrub: 'Scrub',
-  parkland: 'Parkland',
-  farmland: 'Farmland',
+const CATEGORY_LABEL_KEYS: Record<VegetationCategoryId, string> = {
+  woodland: 'environment.vegetation.woodland',
+  grassland: 'environment.vegetation.grassland',
+  meadow: 'environment.vegetation.meadow',
+  orchard: 'environment.vegetation.orchard',
+  scrub: 'environment.vegetation.scrub',
+  parkland: 'environment.vegetation.parkland',
+  farmland: 'environment.vegetation.farmland',
 };
 
-const TAXON_LABELS: Record<VegetationTaxonId, string> = {
-  birch: 'Mapped birch',
-  alder: 'Mapped alder',
-  olive: 'Mapped olive',
+const TAXON_LABEL_KEYS: Record<VegetationTaxonId, string> = {
+  birch: 'environment.vegetation.mappedBirch',
+  alder: 'environment.vegetation.mappedAlder',
+  olive: 'environment.vegetation.mappedOlive',
 };
 
 export const NEARBY_VEGETATION_SECTION_ID = 'data.nearbyVegetation';
@@ -53,7 +55,7 @@ export function nearbyVegetationRows(
 ): VegetationRow[] {
   if (!vegetation) return [];
 
-  const categoryRows = Object.entries(CATEGORY_LABELS).flatMap(([id, label]) => {
+  const categoryRows = Object.entries(CATEGORY_LABEL_KEYS).flatMap(([id, labelKey]) => {
     const category = vegetation.categories[id as VegetationCategoryId];
     if (!category.present || category.nearestMeters === null) return [];
 
@@ -61,12 +63,12 @@ export function nearbyVegetationRows(
       {
         id,
         iconName: getVegetationCategoryIconName(id as VegetationCategoryId),
-        label,
+        label: translate(labelKey),
         value: formatDistanceMeters(category.nearestMeters),
       },
     ];
   });
-  const taxonRows = Object.entries(TAXON_LABELS).flatMap(([id, label]) => {
+  const taxonRows = Object.entries(TAXON_LABEL_KEYS).flatMap(([id, labelKey]) => {
     const taxon = vegetation.mappedTaxa[id as VegetationTaxonId];
     if (taxon.featureCount <= 0) return [];
 
@@ -74,11 +76,14 @@ export function nearbyVegetationRows(
       {
         id: `taxon.${id}`,
         iconName: getVegetationTaxonIconName(id as VegetationTaxonId),
-        label,
+        label: translate(labelKey),
         value:
           taxon.nearestMeters === null
             ? String(taxon.featureCount)
-            : `${taxon.featureCount} · nearest ${formatDistanceMeters(taxon.nearestMeters)}`,
+            : translate('environment.vegetation.featureCountWithNearest', {
+                count: taxon.featureCount,
+                distance: formatDistanceMeters(taxon.nearestMeters),
+              }),
       },
     ];
   });
@@ -94,12 +99,13 @@ export function NearbyVegetationSection({
   collapsed,
   onToggle,
 }: NearbyVegetationSectionProps) {
+  const { t } = useTranslation();
   const rows = nearbyVegetationRows(vegetation);
 
   return (
     <SectionCard
-      title="Nearby vegetation"
-      subtitle={stale ? 'Cached data' : undefined}
+      title={t('features.nearbyVegetation')}
+      subtitle={stale ? t('today.cachedData') : undefined}
       collapsible
       collapsed={collapsed}
       onToggle={onToggle}
@@ -110,9 +116,7 @@ export function NearbyVegetationSection({
         ))
       ) : (
         <Text style={styles.empty}>
-          {loading
-            ? 'Loading nearby vegetation...'
-            : 'No nearby vegetation features were found in OpenStreetMap.'}
+          {loading ? t('environment.vegetation.loading') : t('environment.vegetation.empty')}
         </Text>
       )}
       {error && rows.length === 0 ? <Text style={styles.notice}>{error}</Text> : null}

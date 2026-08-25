@@ -10,6 +10,7 @@ import type {
 } from '../models/environment';
 import type {
   DataAggregationStrategy,
+  DataDetailRangeId,
   DataDetailRangeDefinition,
   DataDetailVariableDefinition,
 } from '../models/dataDetail';
@@ -19,6 +20,8 @@ import {
   formatNumber,
   formatVisibilityMeters,
 } from '../utils/format';
+import { translate } from '../i18n';
+import { irritantLabel, pollenLabel, pollutantLabel } from '../utils/readingLabels';
 import { POLLEN_THRESHOLDS, RAW_POLLUTANT_THRESHOLDS } from './constants';
 import { categoryFromScore } from './categories';
 import { calculateUvBurden } from './profileScoring';
@@ -167,6 +170,72 @@ const DETAIL_POLLUTANT_THRESHOLD_KEYS: Partial<
   wildfirePm10: 'wildfirePm10',
 };
 
+const DATA_DETAIL_POLLEN_LABELS: Partial<Record<EnvironmentalVariableId, keyof PollenReadings>> = {
+  pollen_alder: 'alder',
+  pollen_birch: 'birch',
+  pollen_grass: 'grass',
+  pollen_mugwort: 'mugwort',
+  pollen_olive: 'olive',
+  pollen_ragweed: 'ragweed',
+};
+
+const DATA_DETAIL_POLLUTANT_LABELS: Partial<
+  Record<EnvironmentalVariableId, keyof RegulatedPollutants>
+> = {
+  pm25: 'pm25',
+  pm10: 'pm10',
+  nitrogenDioxide: 'nitrogenDioxide',
+  ozone: 'ozone',
+  sulphurDioxide: 'sulphurDioxide',
+};
+
+const DATA_DETAIL_IRRITANT_LABELS: Partial<
+  Record<EnvironmentalVariableId, keyof AtmosphericIrritants>
+> = {
+  carbonMonoxide: 'carbonMonoxide',
+};
+
+const DATA_DETAIL_TRANSLATION_KEYS: Partial<Record<EnvironmentalVariableId, string>> = {
+  aerosolOpticalDepth: 'profile.atmosphericHaze',
+  dust: 'profile.atmosphericDust',
+  wildfirePm10: 'profile.smokeParticulateContext',
+  moldPotential: 'environment.moldPotential',
+  uvIndex: 'environment.uvIndex',
+  temperature: 'environment.weather.temperature',
+  apparentTemperature: 'environment.weather.apparentTemperature',
+  relativeHumidity: 'environment.weather.humidity',
+  dewPoint: 'environment.weather.dewPoint',
+  precipitation: 'environment.weather.precipitation',
+  precipitationProbability: 'environment.weather.precipitationProbability',
+  windSpeed: 'environment.weather.wind',
+  windGusts: 'environment.weather.windGusts',
+  pressureMsl: 'environment.weather.pressureMsl',
+  surfacePressure: 'environment.weather.surfacePressure',
+  extendedVisibility: 'environment.weather.visibility',
+  cloudCover: 'environment.weather.cloudCover',
+  cloudCoverLow: 'environment.weather.lowCloudCover',
+  cloudCoverMid: 'environment.weather.midCloudCover',
+  cloudCoverHigh: 'environment.weather.highCloudCover',
+  extendedDewPoint: 'environment.weather.dewPoint',
+  wetBulbTemperature: 'environment.weather.wetBulbTemperature',
+  extendedWindGusts: 'environment.weather.windGusts',
+  shortwaveRadiation: 'environment.weather.solarRadiation',
+  directNormalIrradiance: 'environment.weather.directNormalIrradiance',
+  diffuseRadiation: 'environment.weather.diffuseRadiation',
+  sunshineDuration: 'environment.weather.sunshineDuration',
+  cape: 'environment.weather.cape',
+  soilMoisture0To1cm: 'environment.weather.soilMoisture',
+  soilTemperature0cm: 'environment.weather.soilTemperature',
+  et0FaoEvapotranspiration: 'environment.weather.evapotranspiration',
+  vapourPressureDeficit: 'environment.weather.vapourPressureDeficit',
+  carbonDioxide: 'environment.extendedAirQuality.carbonDioxide',
+  ammonia: 'environment.extendedAirQuality.ammonia',
+  methane: 'environment.extendedAirQuality.methane',
+  nitrogenMonoxide: 'environment.extendedAirQuality.nitrogenMonoxide',
+  formaldehyde: 'environment.extendedAirQuality.formaldehyde',
+  nonMethaneVolatileOrganicCompounds: 'environment.extendedAirQuality.nmvoc',
+};
+
 function airQualityDefinition(
   id: EnvironmentalVariableId,
   label: string,
@@ -251,13 +320,36 @@ const VARIABLE_DEFINITIONS: readonly DataDetailVariableDefinition[] = [
 ] as const;
 
 export function dataDetailRange(id: string | undefined): DataDetailRangeDefinition {
-  return DATA_DETAIL_RANGES.find((range) => range.id === id) ?? DATA_DETAIL_RANGES[0]!;
+  const range = DATA_DETAIL_RANGES.find((item) => item.id === id) ?? DATA_DETAIL_RANGES[0]!;
+  const labelByRange: Record<DataDetailRangeId, string> = {
+    '24h': translate('detail.ranges.day'),
+    week: translate('detail.ranges.week'),
+    month: translate('detail.ranges.month'),
+    year: translate('detail.ranges.year'),
+  };
+  return { ...range, label: labelByRange[range.id] };
 }
 
 export function dataDetailVariable(
   id: EnvironmentalVariableId,
 ): DataDetailVariableDefinition | null {
-  return VARIABLE_DEFINITIONS.find((variable) => variable.id === id) ?? null;
+  const variable = VARIABLE_DEFINITIONS.find((item) => item.id === id);
+  if (!variable) return null;
+  return { ...variable, label: localizedDataDetailVariableLabel(variable.id, variable.label) };
+}
+
+function localizedDataDetailVariableLabel(id: EnvironmentalVariableId, fallback: string): string {
+  const pollen = DATA_DETAIL_POLLEN_LABELS[id];
+  if (pollen) return pollenLabel(pollen);
+
+  const pollutant = DATA_DETAIL_POLLUTANT_LABELS[id];
+  if (pollutant) return pollutantLabel(pollutant);
+
+  const irritant = DATA_DETAIL_IRRITANT_LABELS[id];
+  if (irritant) return irritantLabel(irritant);
+
+  const translationKey = DATA_DETAIL_TRANSLATION_KEYS[id];
+  return translationKey ? translate(translationKey) : fallback;
 }
 
 export function formatDataDetailValue(

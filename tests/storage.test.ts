@@ -70,6 +70,36 @@ describe('settings storage', () => {
     expect(settings.environmentalEventNotifications).not.toHaveProperty('aod');
   });
 
+  it('persists the language preference', async () => {
+    await saveSettings({
+      ...DEFAULT_SETTINGS,
+      languagePreference: 'fr',
+    });
+
+    const settings = await loadSettings();
+
+    expect(settings.languagePreference).toBe('fr');
+  });
+
+  it('migrates older settings without a language preference to system default', async () => {
+    await AsyncStorage.setItem('airaware.settings.v1', JSON.stringify({}));
+
+    const settings = await loadSettings();
+
+    expect(settings.languagePreference).toBe('system');
+  });
+
+  it('falls back safely for invalid persisted language preferences', async () => {
+    await AsyncStorage.setItem(
+      'airaware.settings.v1',
+      JSON.stringify({ languagePreference: 'es' }),
+    );
+
+    const settings = await loadSettings();
+
+    expect(settings.languagePreference).toBe('system');
+  });
+
   it('persists multiple saved locations and the active location id', async () => {
     await saveSettings({
       ...DEFAULT_SETTINGS,
@@ -82,6 +112,8 @@ describe('settings storage', () => {
           latitude: 50.0755,
           longitude: 14.4378,
           placeName: 'Prague',
+          countryCode: 'CZ',
+          countryName: 'Czechia',
           createdAt: 1,
           updatedAt: 2,
         },
@@ -103,7 +135,12 @@ describe('settings storage', () => {
 
     expect(settings.activeLocationId).toBe('manual-work');
     expect(settings.locations).toHaveLength(3);
-    expect(settings.locations[1]).toMatchObject({ id: 'manual-home', name: 'Home' });
+    expect(settings.locations[1]).toMatchObject({
+      id: 'manual-home',
+      name: 'Home',
+      countryCode: 'CZ',
+      countryName: 'Czechia',
+    });
     expect(settings.locations[2]).toMatchObject({ id: 'manual-work', name: 'Work' });
   });
 

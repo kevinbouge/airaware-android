@@ -17,10 +17,11 @@ import type {
 } from '../models/widgets';
 import type { EntitlementState } from '../capabilities/entitlements';
 import type { DerivedEnvironmentState } from '../state/derivedEnvironment';
+import { translate } from '../i18n';
 import { contributorFromScore } from '../utils/contributorLabels';
 import { formatScore, formatTimeRangeWithTomorrow } from '../utils/format';
 import { isFiniteNumber } from '../utils/number';
-import { locationDisplayNameById } from '../models/location';
+import { CURRENT_LOCATION_ID, locationDisplayNameById } from '../models/location';
 
 const ADVANCED_WIDGET_FORECAST_DISPLAY_DAYS = 4;
 
@@ -40,14 +41,14 @@ function selectedHeadlineScore(input: {
   if (active.scoreType === 'personalized') {
     return {
       type: 'personalized',
-      label: 'Personalized risk',
+      label: translate('risk.personalizedRisk'),
       score: active.score,
     };
   }
 
   return {
     type: 'environmental',
-    label: 'Environmental burden',
+    label: translate('risk.environmentalBurden'),
     score: active.score,
   };
 }
@@ -91,11 +92,11 @@ function scoreSnapshot(
 
 function uvCategoryLabel(value: number | null): string | null {
   if (!isFiniteNumber(value) || value < 0) return null;
-  if (value <= 2) return 'Low';
-  if (value <= 5) return 'Moderate';
-  if (value <= 7) return 'High';
-  if (value <= 10) return 'Very High';
-  return 'Extreme';
+  if (value <= 2) return translate('risk.categories.low');
+  if (value <= 5) return translate('risk.categories.moderate');
+  if (value <= 7) return translate('risk.categories.high');
+  if (value <= 10) return translate('risk.categories.veryHigh');
+  return translate('risk.categories.extreme');
 }
 
 function bestOutdoorWindowLabel(
@@ -175,7 +176,10 @@ export function buildWidgetSnapshot(input: {
     compactAvailable,
     advancedAvailable,
     forecastDayLimit: forecastDayLimit(input.capabilities),
-    activeLocationName: locationDisplayNameById(input.settings, input.settings.activeLocationId),
+    activeLocationName:
+      input.settings.activeLocationId === CURRENT_LOCATION_ID
+        ? translate('settings.locations.currentLocation')
+        : locationDisplayNameById(input.settings, input.settings.activeLocationId),
     placeName: input.environment?.placeName ?? null,
     showPlaceName: input.settings.summaryLocation === 'place',
     stale: input.stale,
@@ -224,7 +228,7 @@ export function compactWidgetRenderModel(snapshot: WidgetSnapshot | null): Widge
       uvLine: null,
       bestWindowLine: null,
       forecastLines: [],
-      message: 'Open the app to finish setup',
+      message: translate('widget.setupRequired'),
       category: 'unavailable',
     };
   }
@@ -240,7 +244,7 @@ export function compactWidgetRenderModel(snapshot: WidgetSnapshot | null): Widge
       uvLine: null,
       bestWindowLine: null,
       forecastLines: [],
-      message: 'Open the app to load environmental data',
+      message: translate('widget.loadEnvironmentalData'),
       category: 'unavailable',
     };
   }
@@ -252,10 +256,12 @@ export function compactWidgetRenderModel(snapshot: WidgetSnapshot | null): Widge
     stale: snapshot.stale,
     scoreLine: `${snapshot.headlineScore.categoryLabel} · ${snapshot.headlineScore.scoreLabel}`,
     mainFactorLine: snapshot.mainFactorLabel,
-    uvLine: snapshot.uvCategoryLabel ? `UV ${snapshot.uvCategoryLabel}` : null,
+    uvLine: snapshot.uvCategoryLabel
+      ? translate('widget.uv', { category: snapshot.uvCategoryLabel })
+      : null,
     bestWindowLine: null,
     forecastLines: [],
-    message: snapshot.stale ? 'Cached data' : null,
+    message: snapshot.stale ? translate('today.cachedData') : null,
     category: snapshot.headlineScore.category,
   };
 }
@@ -272,7 +278,7 @@ export function advancedWidgetRenderModel(snapshot: WidgetSnapshot | null): Widg
       uvLine: null,
       bestWindowLine: null,
       forecastLines: [],
-      message: 'Extended home widget\nOpen AirAware to learn more',
+      message: translate('widget.extendedLocked'),
       category: 'unavailable',
     };
   }
@@ -288,7 +294,7 @@ export function advancedWidgetRenderModel(snapshot: WidgetSnapshot | null): Widg
       uvLine: null,
       bestWindowLine: null,
       forecastLines: [],
-      message: 'Open the app to load environmental data',
+      message: translate('widget.loadEnvironmentalData'),
       category: 'unavailable',
     };
   }
@@ -299,15 +305,17 @@ export function advancedWidgetRenderModel(snapshot: WidgetSnapshot | null): Widg
     locked: false,
     stale: snapshot.stale,
     scoreLine: `${snapshot.headlineScore.label}\n${snapshot.headlineScore.categoryLabel} · ${snapshot.headlineScore.scoreLabel}`,
-    mainFactorLine: snapshot.mainFactorLabel ? `Main factor\n${snapshot.mainFactorLabel}` : null,
+    mainFactorLine: snapshot.mainFactorLabel
+      ? `${translate('widget.mainFactor')}\n${snapshot.mainFactorLabel}`
+      : null,
     uvLine: null,
     bestWindowLine: snapshot.bestOutdoorWindowLabel
-      ? `Best outdoor window\n${snapshot.bestOutdoorWindowLabel}`
+      ? `${translate('widget.bestOutdoorWindow')}\n${snapshot.bestOutdoorWindowLabel}`
       : null,
     forecastLines: snapshot.forecastDays
       .slice(0, ADVANCED_WIDGET_FORECAST_DISPLAY_DAYS)
       .map((day) => `${day.label} ${day.categoryLabel} · ${day.scoreLabel}`),
-    message: snapshot.stale ? 'Cached data' : null,
+    message: snapshot.stale ? translate('today.cachedData') : null,
     category: snapshot.headlineScore.category,
   };
 }

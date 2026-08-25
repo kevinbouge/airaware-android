@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigation } from '@react-navigation/native';
 import { AppButton } from '../components/AppButton';
 import { InsightCard } from '../components/InsightCard';
@@ -17,9 +18,25 @@ import { SectionCard } from '../components/SectionCard';
 import { StateView } from '../components/StateView';
 import { ActivityIcon } from '../components/icons/ActivityIcon';
 import { AppIcon } from '../components/icons/AppIcon';
+import { APP_ICON_SIZES } from '../components/icons/appIconTypes';
 import { EnvironmentalIcon } from '../components/icons/EnvironmentalIcon';
+import { ENVIRONMENTAL_ICON_SIZES } from '../components/icons/environmentalIconTypes';
 import { GasMaskIcon } from '../components/icons/GasMaskIcon';
 import { getEventIconName } from '../components/icons/environmentalIconResolver';
+import {
+  environmentalEventBody,
+  environmentalEventCategoryLabel,
+  environmentalEventEvidenceLabel,
+  environmentalEventTitle,
+} from '../core/environmentalEvents';
+import {
+  healthSignalPeriodLabel,
+  healthSignalGeographyLabel,
+  healthSignalTrendLabel,
+  healthSignalTypeLabel,
+  healthSignalValueLabel,
+} from '../core/healthSignals';
+import { translate } from '../i18n';
 import { useCapabilities } from '../hooks/useCapabilities';
 import { useDerivedEnvironment } from '../hooks/useDerivedEnvironment';
 import {
@@ -39,8 +56,9 @@ import {
 import { contributorFromScore } from '../utils/contributorLabels';
 import type { ActivitySemanticType, ActivitySuitabilityCategory } from '../models/activities';
 import type { RootStackParamList } from '../navigation/AppNavigator';
-import { coordinatesForSavedLocation } from '../models/location';
+import { CURRENT_LOCATION_ID, coordinatesForSavedLocation } from '../models/location';
 import type { EnvironmentalEvent } from '../models/environmentalEvents';
+import type { HealthSignal } from '../models/healthSignals';
 
 interface TodayNavigation {
   navigate: <RouteName extends keyof RootStackParamList>(
@@ -58,19 +76,19 @@ function formatUpdateStatus(
   } | null,
 ): string {
   if (!stale) {
-    return `Updated ${formatTimestamp(fetchedAt)}`;
+    return translate('today.updatedAt', { time: formatTimestamp(fetchedAt) });
   }
 
   const cachedParts = [
-    metadata?.airQualitySource === 'cached' ? 'air quality' : null,
-    metadata?.weatherSource === 'cached' ? 'weather' : null,
+    metadata?.airQualitySource === 'cached' ? translate('today.airQuality') : null,
+    metadata?.weatherSource === 'cached' ? translate('today.weather') : null,
   ].filter((item): item is string => item !== null);
 
   if (cachedParts.length === 0 || cachedParts.length === 2) {
-    return 'Cached data';
+    return translate('today.cachedData');
   }
 
-  return `Cached ${cachedParts.join(', ')}`;
+  return translate('today.cachedSources', { sources: cachedParts.join(', ') });
 }
 
 function activityColor(
@@ -128,7 +146,7 @@ function locationSelectorRightLabel(input: {
   selected: boolean;
   coordinates: ReturnType<typeof coordinatesForSavedLocation>;
 }): string | undefined {
-  if (input.selected) return 'Active';
+  if (input.selected) return translate('common.active');
   if (!input.coordinates) return undefined;
   return formatCoordinates(input.coordinates) ?? undefined;
 }
@@ -142,7 +160,7 @@ function eventSeverityColor(event: EnvironmentalEvent): string {
 function eventTimingLabel(event: EnvironmentalEvent, referenceTime: string | null): string {
   if (!event.endTime || event.startTime === event.endTime) {
     return event.peakTime
-      ? `Peaks ${formatTimestamp(event.peakTime)}`
+      ? translate('today.eventPeak', { time: formatTimestamp(event.peakTime) })
       : formatTimestamp(event.startTime);
   }
 
@@ -150,21 +168,7 @@ function eventTimingLabel(event: EnvironmentalEvent, referenceTime: string | nul
 }
 
 function evidenceLabel(variable: string): string {
-  const labels: Record<string, string> = {
-    dust: 'Saharan dust',
-    pm10: 'PM10',
-    pm2_5: 'PM2.5',
-    pm10_wildfires: 'Wildfire-related PM10',
-    aerosol_optical_depth: 'Aerosol optical depth',
-    pm2_5_total_organic_matter: 'PM2.5 organic matter',
-    total_elementary_carbon: 'Total elementary carbon',
-    uv_index: 'UV index',
-    mold_potential: 'Mold potential',
-    environmental_burden: 'Environmental burden',
-    personalized_risk: 'Personalized risk',
-  };
-
-  return labels[variable] ?? variable.replaceAll('_', ' ');
+  return environmentalEventEvidenceLabel(variable);
 }
 
 function formatEvidenceValue(value: number | null | undefined, unit: string | undefined): string {
@@ -172,8 +176,56 @@ function formatEvidenceValue(value: number | null | undefined, unit: string | un
   return formatMeasurement(value ?? null, unit, unit === 'µg/m³' || unit === 'grains/m³' ? 0 : 1);
 }
 
+function healthSignalIcon(signal: HealthSignal): 'respiratory' | 'population-health' {
+  return signal.domain === 'population-health' ? 'population-health' : 'respiratory';
+}
+
+function healthTrendIcon(signal: HealthSignal): 'trend-rising' | 'trend-falling' | 'trend-stable' {
+  if (signal.trend === 'rising') return 'trend-rising';
+  if (signal.trend === 'falling') return 'trend-falling';
+  return 'trend-stable';
+}
+
+function HealthSignalRow({
+  signal,
+  onPress,
+}: {
+  signal: HealthSignal;
+  onPress: (signal: HealthSignal) => void;
+}) {
+  const label = healthSignalTypeLabel(signal.type);
+
+  return (
+    <Pressable
+      accessibilityLabel={translate('today.opensDetails', {
+        label: `${label}: ${healthSignalValueLabel(signal)}`,
+      })}
+      accessibilityRole="button"
+      onPress={() => onPress(signal)}
+      style={({ pressed }) => [styles.healthRow, pressed ? styles.pressed : null]}
+    >
+      <AppIcon name={healthSignalIcon(signal)} size="inline" color={colors.muted} />
+      <View style={styles.healthCopy}>
+        <Text style={styles.healthTitle}>{label}</Text>
+        <Text style={styles.healthMeta}>
+          {healthSignalGeographyLabel(signal)} · {healthSignalPeriodLabel(signal)}
+        </Text>
+      </View>
+      <View style={styles.healthValueBlock}>
+        <Text style={styles.healthValue}>{healthSignalValueLabel(signal)}</Text>
+        <View style={styles.healthTrend}>
+          <AppIcon name={healthTrendIcon(signal)} size={14} color={colors.muted} />
+          <Text style={styles.healthMeta}>{healthSignalTrendLabel(signal.trend)}</Text>
+        </View>
+      </View>
+      <AppIcon name="chevron-right" size="inline" color={colors.muted} />
+    </Pressable>
+  );
+}
+
 export function TodayScreen() {
   const navigation = useNavigation<TodayNavigation>();
+  const { t } = useTranslation();
   const [locationSelectorVisible, setLocationSelectorVisible] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<EnvironmentalEvent | null>(null);
   const hydrated = useAppStore((state) => state.hydrated);
@@ -185,6 +237,7 @@ export function TodayScreen() {
   const settings = useAppStore((state) => state.settings);
   const environment = useAppStore((state) => state.environment);
   const environmentalEvents = useAppStore((state) => state.environmentalEvents);
+  const healthSignals = useAppStore((state) => state.healthSignals);
   const refresh = useAppStore((state) => state.refresh);
   const updateSettings = useAppStore((state) => state.updateSettings);
   const setActiveLocation = useAppStore((state) => state.setActiveLocation);
@@ -214,17 +267,19 @@ export function TodayScreen() {
     await refresh({ force: true });
   };
 
-  if (!hydrated) return <StateView loading message="Loading AirAware..." />;
+  if (!hydrated) return <StateView loading message={t('common.loading')} />;
 
   const headlineCategory = personalizedScore.available
     ? personalizedScore.category
     : environmentalScore?.category;
   const locationLabel =
-    location.activeLocationName ??
+    (location.activeLocationId === CURRENT_LOCATION_ID
+      ? t('settings.locations.currentLocation')
+      : location.activeLocationName) ??
     environment?.placeName ??
     location.placeName ??
     formatCoordinates(environment?.coordinates ?? location.coordinates) ??
-    'Location not set';
+    t('today.locationNotSet');
   const locationDetail =
     environment?.placeName && environment.placeName !== locationLabel
       ? environment.placeName
@@ -238,17 +293,40 @@ export function TodayScreen() {
   );
   const referenceTime = environment?.current.timestamp ?? environment?.fetchedAt ?? null;
   const environmentalDetails = appendAvailableWindowDetail(
-    [`Main factor: ${environmentalMainFactor.label ?? 'Unavailable'}`],
-    'Best window',
+    [`${t('today.mainFactor')}: ${environmentalMainFactor.label ?? t('common.unavailable')}`],
+    t('today.bestWindow'),
     environmentalBestOutdoorWindow,
     referenceTime,
   );
   const personalizedDetails = appendAvailableWindowDetail(
-    [`Main factor: ${personalizedMainFactor.label ?? 'Unavailable'}`],
-    'Best window',
+    [`${t('today.mainFactor')}: ${personalizedMainFactor.label ?? t('common.unavailable')}`],
+    t('today.bestWindow'),
     personalizedBestOutdoorWindow,
     referenceTime,
   );
+  const biologicalSignals = healthSignals.signals.filter(
+    (signal) => signal.domain === 'biological',
+  );
+  const populationSignals = healthSignals.signals.filter(
+    (signal) => signal.domain === 'population-health',
+  );
+  const openHealthSignal = (signal: HealthSignal) => {
+    navigation.navigate('HealthSignalDetail', { signalId: signal.id });
+  };
+  let respiratoryContent = (
+    <Text style={styles.body}>{healthSignals.error ?? t('today.unavailableRespiratory')}</Text>
+  );
+  if (healthSignals.loading) {
+    respiratoryContent = <Text style={styles.body}>{t('today.loadingRespiratory')}</Text>;
+  } else if (biologicalSignals.length > 0) {
+    respiratoryContent = (
+      <>
+        {biologicalSignals.map((signal) => (
+          <HealthSignalRow key={signal.id} signal={signal} onPress={openHealthSignal} />
+        ))}
+      </>
+    );
+  }
 
   return (
     <>
@@ -262,7 +340,7 @@ export function TodayScreen() {
         <View style={styles.header}>
           <View style={styles.brandRow}>
             <GasMaskIcon
-              size={36}
+              size={APP_ICON_SIZES.hero}
               color={headlineCategory ? riskColor(headlineCategory) : colors.unavailable}
             />
             <Text style={styles.brand}>AirAware</Text>
@@ -285,7 +363,7 @@ export function TodayScreen() {
 
         {environmentalScore?.available ? (
           <ScoreCard
-            title="Environmental burden"
+            title={t('risk.environmentalBurden')}
             score={environmentalScore.score}
             category={environmentalScore.category}
             details={environmentalDetails}
@@ -296,7 +374,7 @@ export function TodayScreen() {
 
         {personalizedScore.available ? (
           <ScoreCard
-            title="Personalized risk"
+            title={t('risk.personalizedRisk')}
             score={personalizedScore.score}
             category={personalizedScore.category}
             details={personalizedDetails}
@@ -307,46 +385,79 @@ export function TodayScreen() {
 
         {environmentalEvents.length > 0 ? (
           <View style={styles.eventSection}>
-            <Text style={styles.sectionTitle}>Environmental events</Text>
-            {environmentalEvents.slice(0, 4).map((event) => (
-              <Pressable
-                key={event.id}
-                accessibilityRole="button"
-                onPress={() => setSelectedEvent(event)}
-                style={({ pressed }) => [styles.eventCard, pressed ? styles.pressed : null]}
-              >
-                <View style={styles.eventRow}>
-                  <View
-                    style={[styles.eventIconContainer, { borderColor: eventSeverityColor(event) }]}
-                  >
-                    <EnvironmentalIcon
-                      accessibilityLabel={`${event.title} environmental event icon`}
-                      color={eventSeverityColor(event)}
-                      name={getEventIconName(event.type)}
-                      size="event"
-                    />
-                  </View>
-                  <View style={styles.eventCopy}>
-                    <View style={styles.eventHeader}>
-                      <Text style={styles.eventTitle}>{event.title}</Text>
-                      <Text style={[styles.eventSeverity, { color: eventSeverityColor(event) }]}>
-                        {event.category ?? event.severity}
-                      </Text>
+            <Text style={styles.sectionTitle}>{t('today.environmentalEvents')}</Text>
+            {environmentalEvents.slice(0, 4).map((event) => {
+              const title = environmentalEventTitle(event);
+              const body = environmentalEventBody(event, referenceTime);
+              const category = environmentalEventCategoryLabel(event);
+
+              return (
+                <Pressable
+                  key={event.id}
+                  accessibilityRole="button"
+                  onPress={() => setSelectedEvent(event)}
+                  style={({ pressed }) => [styles.eventCard, pressed ? styles.pressed : null]}
+                >
+                  <View style={styles.eventRow}>
+                    <View
+                      style={[
+                        styles.eventIconContainer,
+                        { borderColor: eventSeverityColor(event) },
+                      ]}
+                    >
+                      <EnvironmentalIcon
+                        accessibilityLabel={t('today.eventIconLabel', { title })}
+                        color={eventSeverityColor(event)}
+                        name={getEventIconName(event.type)}
+                        size="event"
+                      />
                     </View>
-                    <Text style={styles.eventTiming}>{eventTimingLabel(event, referenceTime)}</Text>
-                    <Text style={styles.eventBody}>{event.body}</Text>
+                    <View style={styles.eventCopy}>
+                      <View style={styles.eventHeader}>
+                        <Text style={styles.eventTitle}>{title}</Text>
+                        <Text style={[styles.eventSeverity, { color: eventSeverityColor(event) }]}>
+                          {category}
+                        </Text>
+                      </View>
+                      <Text style={styles.eventTiming}>
+                        {eventTimingLabel(event, referenceTime)}
+                      </Text>
+                      <Text style={styles.eventBody}>{body}</Text>
+                    </View>
                   </View>
-                </View>
-              </Pressable>
-            ))}
+                </Pressable>
+              );
+            })}
           </View>
+        ) : null}
+
+        {environment ? (
+          <>
+            <SectionCard
+              title={t('today.respiratoryActivity')}
+              subtitle={healthSignals.geography?.name ?? t('today.latestSurveillance')}
+            >
+              {respiratoryContent}
+            </SectionCard>
+
+            {populationSignals.length > 0 ? (
+              <SectionCard
+                title={t('today.populationHealth')}
+                subtitle={healthSignals.geography?.name}
+              >
+                {populationSignals.map((signal) => (
+                  <HealthSignalRow key={signal.id} signal={signal} onPress={openHealthSignal} />
+                ))}
+              </SectionCard>
+            ) : null}
+          </>
         ) : null}
 
         {environment ? (
           <>
             {activityDomainEvaluations.length > 0 ? (
               <View style={styles.activitySection}>
-                <Text style={styles.sectionTitle}>Activities</Text>
+                <Text style={styles.sectionTitle}>{t('today.activities')}</Text>
                 {activityDomainEvaluations.map((domain) => {
                   const previewProfiles = domain.profiles.slice(0, 2);
                   const best = domain.bestOpportunity;
@@ -378,7 +489,7 @@ export function TodayScreen() {
                               primaryProfile.current.category,
                               primaryProfile.semanticType,
                             )
-                          : 'Unavailable'
+                          : t('common.unavailable')
                       }
                       compact
                       secondary={primaryProfile?.label}
@@ -389,16 +500,16 @@ export function TodayScreen() {
                                 profile.current.category,
                                 profile.semanticType,
                               )}`
-                            : `${profile.label}: Unavailable`,
+                            : `${profile.label}: ${t('common.unavailable')}`,
                         ),
                         best && displayWindow
-                          ? `Best opportunity: ${best.label} · ${formatActivityWindow(
+                          ? `${t('today.bestOpportunity')}: ${best.label} · ${formatActivityWindow(
                               displayWindow,
                               referenceTime,
                             )}`
-                          : 'Best opportunity: Unavailable',
+                          : `${t('today.bestOpportunity')}: ${t('common.unavailable')}`,
                       ]}
-                      accessibilityLabel={`${domain.label}. Opens professional profiles.`}
+                      accessibilityLabel={t('today.opensDetails', { label: domain.label })}
                       onPress={() =>
                         navigation.navigate('ActivityDomainDetail', { domainId: domain.id })
                       }
@@ -411,25 +522,21 @@ export function TodayScreen() {
             <View style={styles.actions}>
               {shareMessage ? <Text style={styles.shareMessage}>{shareMessage}</Text> : null}
               <AppButton
-                title={loading ? 'Refreshing...' : 'Refresh'}
+                title={loading ? t('today.refreshing') : t('today.refresh')}
                 iconName="refresh"
                 rightLabel={updateStatus}
                 fullWidth
                 onPress={() => refresh({ force: true })}
                 disabled={loading}
               />
-              <AppButton title="Share" iconName="share" onPress={shareDailySummary} />
+              <AppButton title={t('today.share')} iconName="share" onPress={shareDailySummary} />
             </View>
           </>
         ) : (
-          <SectionCard title="Location required">
-            <Text style={styles.body}>
-              AirAware needs Current location or a saved manual location to retrieve local
-              environmental conditions. Coordinates are sent only to environmental providers that
-              need them.
-            </Text>
+          <SectionCard title={t('today.locationRequired')}>
+            <Text style={styles.body}>{t('today.locationRequiredBody')}</Text>
             <AppButton
-              title="Continue and refresh"
+              title={t('today.continueAndRefresh')}
               iconName="current-location"
               onPress={startLocationRefresh}
               disabled={loading}
@@ -445,7 +552,7 @@ export function TodayScreen() {
       >
         <SafeAreaView style={styles.selectorOverlay}>
           <View style={styles.selectorPanel}>
-            <Text style={styles.selectorTitle}>Active location</Text>
+            <Text style={styles.selectorTitle}>{t('today.activeLocation')}</Text>
             <ScrollView
               style={styles.selectorList}
               contentContainerStyle={styles.selectorListContent}
@@ -457,7 +564,11 @@ export function TodayScreen() {
                 return (
                   <AppButton
                     key={savedLocation.id}
-                    title={savedLocation.name}
+                    title={
+                      savedLocation.id === CURRENT_LOCATION_ID
+                        ? t('settings.locations.currentLocation')
+                        : savedLocation.name
+                    }
                     iconName={savedLocation.type === 'current' ? 'current-location' : 'location'}
                     rightLabel={locationSelectorRightLabel({ selected, coordinates })}
                     selected={selected}
@@ -472,7 +583,7 @@ export function TodayScreen() {
               })}
             </ScrollView>
             <AppButton
-              title="Close"
+              title={t('common.close')}
               iconName="close"
               fullWidth
               onPress={() => setLocationSelectorVisible(false)}
@@ -492,22 +603,28 @@ export function TodayScreen() {
               <>
                 <View style={styles.eventDetailTitleRow}>
                   <EnvironmentalIcon
-                    accessibilityLabel={`${selectedEvent.title} environmental event icon`}
+                    accessibilityLabel={t('today.eventIconLabel', {
+                      title: environmentalEventTitle(selectedEvent),
+                    })}
                     color={eventSeverityColor(selectedEvent)}
                     name={getEventIconName(selectedEvent.type)}
                     size="event"
                   />
-                  <Text style={styles.selectorTitle}>{selectedEvent.title}</Text>
+                  <Text style={styles.selectorTitle}>{environmentalEventTitle(selectedEvent)}</Text>
                 </View>
                 <Text style={styles.eventTiming}>
-                  Expected: {eventTimingLabel(selectedEvent, referenceTime)}
+                  {t('today.eventExpected', {
+                    time: eventTimingLabel(selectedEvent, referenceTime),
+                  })}
                 </Text>
                 {selectedEvent.peakTime ? (
                   <Text style={styles.eventTiming}>
-                    Peak: {formatTimestamp(selectedEvent.peakTime)}
+                    {t('today.eventPeak', { time: formatTimestamp(selectedEvent.peakTime) })}
                   </Text>
                 ) : null}
-                <Text style={styles.body}>{selectedEvent.body}</Text>
+                <Text style={styles.body}>
+                  {environmentalEventBody(selectedEvent, referenceTime)}
+                </Text>
                 {selectedEvent.evidence.slice(0, 4).map((evidence) => (
                   <View key={`${evidence.variable}:${evidence.role}`} style={styles.evidenceRow}>
                     <Text style={styles.evidenceVariable}>{evidenceLabel(evidence.variable)}</Text>
@@ -516,14 +633,11 @@ export function TodayScreen() {
                     </Text>
                   </View>
                 ))}
-                <Text style={styles.notice}>
-                  Data: Open-Meteo Air Quality API using CAMS forecasts. Environmental conditions
-                  only, not medical advice.
-                </Text>
+                <Text style={styles.notice}>{t('today.eventDataAttribution')}</Text>
               </>
             ) : null}
             <AppButton
-              title="Close"
+              title={t('common.close')}
               iconName="close"
               fullWidth
               onPress={() => setSelectedEvent(null)}
@@ -591,9 +705,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.pressedSurface,
     borderRadius: 10,
     borderWidth: StyleSheet.hairlineWidth,
-    height: 56,
+    height: ENVIRONMENTAL_ICON_SIZES.event + spacing.md,
     justifyContent: 'center',
-    width: 56,
+    width: ENVIRONMENTAL_ICON_SIZES.event + spacing.md,
   },
   eventRow: {
     flexDirection: 'row',
@@ -639,6 +753,41 @@ const styles = StyleSheet.create({
   },
   header: {
     marginBottom: spacing.lg,
+  },
+  healthCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  healthMeta: {
+    color: colors.muted,
+    fontSize: 12,
+  },
+  healthRow: {
+    alignItems: 'center',
+    borderRadius: 8,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    minHeight: 52,
+  },
+  healthTitle: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  healthTrend: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
+    justifyContent: 'flex-end',
+  },
+  healthValue: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '800',
+    textAlign: 'right',
+  },
+  healthValueBlock: {
+    alignItems: 'flex-end',
   },
   notice: {
     backgroundColor: '#FFF3CD',

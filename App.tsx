@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import { AppState } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppNavigator } from './src/navigation/AppNavigator';
+import { refreshSystemLocale, setAppLanguagePreference } from './src/i18n';
 import { installQueryFocusListener, queryClient } from './src/services/queryClient';
 import { shouldRefreshAfterHydration } from './src/state/appLifecycle';
 import {
@@ -19,6 +20,7 @@ export default function App() {
   const locationOnboardingComplete = useAppStore(
     (state) => state.settings.locationOnboardingComplete,
   );
+  const languagePreference = useAppStore((state) => state.settings.languagePreference);
   const appState = useRef(AppState.currentState);
 
   useEffect(() => {
@@ -40,12 +42,17 @@ export default function App() {
       }
 
       if (nextState === 'active' && wasInactive && hydrated && locationOnboardingComplete) {
+        refreshSystemLocale();
         void refresh();
       }
     });
 
     return () => subscription.remove();
   }, [hydrated, locationOnboardingComplete, refresh]);
+
+  useEffect(() => {
+    setAppLanguagePreference(languagePreference);
+  }, [languagePreference]);
 
   useEffect(() => {
     if (

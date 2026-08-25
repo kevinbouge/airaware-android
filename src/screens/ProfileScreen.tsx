@@ -1,4 +1,5 @@
 import { ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { SectionCard } from '../components/SectionCard';
 import { EnvironmentalIcon } from '../components/icons/EnvironmentalIcon';
 import { getProfileFactorIconName } from '../components/icons/environmentalIconResolver';
@@ -31,6 +32,7 @@ function ToggleRow({
 }
 
 export function ProfileScreen() {
+  const { t } = useTranslation();
   const profile = useAppStore((state) => state.profile);
   const updateProfile = useAppStore((state) => state.updateProfile);
   const toggleProfileFactor = useAppStore((state) => state.toggleProfileFactor);
@@ -44,18 +46,15 @@ export function ProfileScreen() {
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <SectionCard
-        title="Personal Allergy Profile"
-        subtitle="Factors you want AirAware to emphasize."
-      >
+      <SectionCard title={t('profile.title')} subtitle={t('profile.subtitle')}>
         <ToggleRow
-          label="Enable personalized risk"
+          label={t('profile.enablePersonalizedRisk')}
           value={profile.enabled}
           onValueChange={() => updateProfile({ enabled: !profile.enabled })}
         />
       </SectionCard>
 
-      <SectionCard title="Pollen">
+      <SectionCard title={t('environment.sections.pollen')}>
         {pollenFactors.map(([factor, label]) => (
           <ToggleRow
             key={factor}
@@ -67,7 +66,7 @@ export function ProfileScreen() {
         ))}
       </SectionCard>
 
-      <SectionCard title="Regulated pollution">
+      <SectionCard title={t('profile.regulatedPollution')}>
         {regulatedPollutionFactors.map(([factor, label]) => (
           <ToggleRow
             key={factor}
@@ -79,7 +78,7 @@ export function ProfileScreen() {
         ))}
       </SectionCard>
 
-      <SectionCard title="Atmospheric irritants">
+      <SectionCard title={t('profile.atmosphericIrritants')}>
         {atmosphericIrritantFactors.map(([factor, label]) => (
           <ToggleRow
             key={factor}

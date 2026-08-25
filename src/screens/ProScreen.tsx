@@ -1,15 +1,17 @@
 import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { featureDefinitions } from '../capabilities/features';
 import { AppButton } from '../components/AppButton';
 import { OptionButton } from '../components/OptionButton';
 import { SectionCard } from '../components/SectionCard';
 import { ActivityIcon } from '../components/icons/ActivityIcon';
-import { ACTIVITY_DOMAINS } from '../core/activityDefinitions';
+import { activityDomains } from '../core/activityDefinitions';
 import { useCapabilities } from '../hooks/useCapabilities';
 import { useAppStore } from '../state/useAppStore';
 import { colors, spacing } from '../theme/theme';
 
 export function ProScreen() {
+  const { t } = useTranslation();
   const settings = useAppStore((state) => state.settings);
   const loading = useAppStore((state) => state.loading);
   const billingMessage = useAppStore((state) => state.billingMessage);
@@ -43,21 +45,18 @@ export function ProScreen() {
     !billingState.proActive;
   const billingBusy = billingState.purchaseInProgress || billingState.restoreInProgress;
   const unlockTitle = billingState.offering?.priceString
-    ? `Unlock AirAware Pro — ${billingState.offering.priceString}`
-    : 'Unlock AirAware Pro';
+    ? t('pro.unlockWithPrice', { price: billingState.offering.priceString })
+    : t('pro.unlock');
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <SectionCard title="AirAware Pro">
+      <SectionCard title={t('pro.title')}>
         {__DEV__ ? (
           <>
-            <Text style={styles.body}>
-              Development capability preview. This is ignored in production and does not change
-              RevenueCat entitlement.
-            </Text>
+            <Text style={styles.body}>{t('pro.developmentPreview')}</Text>
             <View style={styles.buttonRow}>
               <OptionButton
-                label="Use RevenueCat"
+                label={t('pro.useRevenueCat')}
                 iconName="restore"
                 selected={developmentEntitlementOverride === null}
                 onPress={() => setDevelopmentEntitlement(null)}
@@ -65,14 +64,14 @@ export function ProScreen() {
             </View>
             <View style={styles.twoButtonRow}>
               <OptionButton
-                label="Preview Free"
+                label={t('pro.previewFree')}
                 iconName="profile"
                 selected={developmentEntitlementOverride?.kind === 'free'}
                 grow
                 onPress={() => setDevelopmentEntitlement('free')}
               />
               <OptionButton
-                label="Preview Pro"
+                label={t('pro.previewPro')}
                 iconName="pro"
                 selected={developmentEntitlementOverride?.kind === 'pro_lifetime'}
                 grow
@@ -82,13 +81,9 @@ export function ProScreen() {
           </>
         ) : null}
         {billingState.proActive ? (
-          <Text style={styles.body}>
-            AirAware Pro active. Your lifetime Pro features are unlocked.
-          </Text>
+          <Text style={styles.body}>{t('pro.active')}</Text>
         ) : (
-          <Text style={styles.body}>
-            Unlock additional AirAware capabilities with one lifetime purchase.
-          </Text>
+          <Text style={styles.body}>{t('pro.unlockBody')}</Text>
         )}
         <View style={styles.featureList}>
           {proFeatures.map((feature) => (
@@ -97,19 +92,15 @@ export function ProScreen() {
             </Text>
           ))}
         </View>
-        <Text style={styles.notice}>One-time purchase. No subscription. No AirAware account.</Text>
+        <Text style={styles.notice}>{t('pro.oneTime')}</Text>
         {billingState.billingStatus === 'unconfigured' ? (
-          <Text style={styles.notice}>
-            AirAware Pro purchasing is not configured in this build.
-          </Text>
+          <Text style={styles.notice}>{t('pro.unconfigured')}</Text>
         ) : null}
         {billingState.billingStatus === 'unavailable' ? (
-          <Text style={styles.notice}>
-            AirAware Pro purchasing requires an Android development or release build.
-          </Text>
+          <Text style={styles.notice}>{t('pro.unavailable')}</Text>
         ) : null}
         {billingState.billingStatus === 'error' || billingState.billingStatus === 'offline' ? (
-          <Text style={styles.notice}>AirAware Pro purchasing is currently unavailable.</Text>
+          <Text style={styles.notice}>{t('pro.purchaseUnavailable')}</Text>
         ) : null}
         {billingState.billingStatus === 'ready' && !billingState.proActive ? (
           <AppButton
@@ -121,19 +112,14 @@ export function ProScreen() {
           />
         ) : null}
         <AppButton
-          title={billingState.restoreInProgress ? 'Restoring purchase...' : 'Restore purchase'}
+          title={billingState.restoreInProgress ? t('pro.restoring') : t('pro.restore')}
           iconName="restore"
           fullWidth
           disabled={billingState.billingStatus !== 'ready' || billingBusy}
           onPress={restorePurchases}
         />
         {billingState.billingStatus !== 'ready' ? (
-          <AppButton
-            title="Retry AirAware Pro"
-            iconName="refresh"
-            fullWidth
-            onPress={refreshBilling}
-          />
+          <AppButton title={t('pro.retry')} iconName="refresh" fullWidth onPress={refreshBilling} />
         ) : null}
         {billingMessage ? <Text style={styles.notice}>{billingMessage}</Text> : null}
         {!billingMessage && billingState.error ? (
@@ -141,20 +127,19 @@ export function ProScreen() {
         ) : null}
         {__DEV__ ? (
           <Text style={styles.notice}>
-            Effective entitlement: {entitlement.kind === 'pro_lifetime' ? 'Pro' : 'Free'} · source:{' '}
-            {billingState.entitlementSource}
+            {t('pro.effectiveEntitlement', {
+              kind: entitlement.kind === 'pro_lifetime' ? t('navigation.pro') : t('pro.free'),
+              source: billingState.entitlementSource,
+            })}
           </Text>
         ) : null}
       </SectionCard>
 
-      <SectionCard
-        title="Activities"
-        subtitle="Professional environmental tools for agriculture, drone operations, photography, astronomy, and outdoor work."
-      >
+      <SectionCard title={t('today.activities')} subtitle={t('pro.activitiesSubtitle')}>
         {!capabilities.activities.available ? (
-          <Text style={styles.notice}>Activities are available with AirAware Pro.</Text>
+          <Text style={styles.notice}>{t('pro.activitiesRequirePro')}</Text>
         ) : null}
-        {ACTIVITY_DOMAINS.map((activity) => {
+        {activityDomains().map((activity) => {
           const enabled = settings.enabledActivities[activity.id] === true;
           const disabled = !capabilities.activities.available || loading;
           const toggleActivity = () => {
@@ -171,7 +156,7 @@ export function ProScreen() {
           return (
             <Pressable
               key={activity.id}
-              accessibilityLabel={`${activity.label} activity`}
+              accessibilityLabel={t('activities.activityAccessibility', { label: activity.label })}
               accessibilityRole="switch"
               accessibilityState={{ checked: enabled, disabled }}
               disabled={disabled}
@@ -186,7 +171,9 @@ export function ProScreen() {
                 <ActivityIcon activity={activity.id} size="activity" color={colors.text} />
                 <View style={styles.activityText}>
                   <Text style={styles.activityLabel}>{activity.label}</Text>
-                  <Text style={styles.activityState}>{enabled ? 'Enabled' : 'Disabled'}</Text>
+                  <Text style={styles.activityState}>
+                    {enabled ? t('activities.enabled') : t('activities.disabled')}
+                  </Text>
                 </View>
               </View>
               <Switch

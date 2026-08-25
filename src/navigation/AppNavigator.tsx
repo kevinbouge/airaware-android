@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -12,6 +13,7 @@ import { ActivityDomainDetailScreen } from '../screens/ActivityDomainDetailScree
 import { ActivityDetailScreen } from '../screens/ActivityDetailScreen';
 import { EnvironmentalBurdenDetailScreen } from '../screens/EnvironmentalBurdenDetailScreen';
 import { PersonalizedRiskDetailScreen } from '../screens/PersonalizedRiskDetailScreen';
+import { HealthSignalDetailScreen } from '../screens/HealthSignalDetailScreen';
 import { TabIcon, type TabIconName } from '../components/icons/TabIcon';
 import type { EnvironmentalVariableId } from '../capabilities/types';
 import type { ActivityDomainId, ActivityProfileId } from '../models/activities';
@@ -37,6 +39,7 @@ export type RootStackParamList = {
   DataDetail: { variableId: EnvironmentalVariableId };
   ActivityDomainDetail: { domainId: ActivityDomainId };
   ActivityDetail: { profileId: ActivityProfileId; domainId?: ActivityDomainId };
+  HealthSignalDetail: { signalId: string };
 };
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
@@ -56,6 +59,7 @@ function iconNameForRoute(routeName: keyof RootTabParamList): TabIconName {
 }
 
 function MainTabs() {
+  const { t } = useTranslation();
   const environment = useAppStore((state) => state.environment);
   const profile = useAppStore((state) => state.profile);
   const capabilities = useCapabilities();
@@ -89,10 +93,18 @@ function MainTabs() {
         },
       })}
     >
-      <Tab.Screen name="Today" component={TodayScreen} />
-      <Tab.Screen name="Profile" component={ProfileScreen} />
-      <Tab.Screen name="Pro" component={ProScreen} />
-      <Tab.Screen name="Settings" component={SettingsScreen} />
+      <Tab.Screen name="Today" component={TodayScreen} options={{ title: t('navigation.today') }} />
+      <Tab.Screen
+        name="Profile"
+        component={ProfileScreen}
+        options={{ title: t('navigation.profile') }}
+      />
+      <Tab.Screen name="Pro" component={ProScreen} options={{ title: t('navigation.pro') }} />
+      <Tab.Screen
+        name="Settings"
+        component={SettingsScreen}
+        options={{ title: t('navigation.settings') }}
+      />
     </Tab.Navigator>
   );
 }
@@ -114,6 +126,7 @@ export function AppNavigator() {
         />
         <Stack.Screen name="ActivityDomainDetail" component={ActivityDomainDetailScreen} />
         <Stack.Screen name="ActivityDetail" component={ActivityDetailScreen} />
+        <Stack.Screen name="HealthSignalDetail" component={HealthSignalDetailScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

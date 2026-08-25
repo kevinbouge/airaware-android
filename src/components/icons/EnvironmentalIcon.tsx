@@ -2,15 +2,11 @@ import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { colors } from '../../theme/theme';
 import { environmentalIconAsset } from './environmentalIconMap';
-import type { EnvironmentalIconName, EnvironmentalIconSize } from './environmentalIconTypes';
-
-const ENVIRONMENTAL_ICON_SIZES: Record<EnvironmentalIconSize, number> = {
-  inline: 22,
-  measurement: 24,
-  event: 44,
-  card: 48,
-  hero: 58,
-};
+import {
+  ENVIRONMENTAL_ICON_SIZES,
+  type EnvironmentalIconName,
+  type EnvironmentalIconSize,
+} from './environmentalIconTypes';
 
 interface EnvironmentalIconProps {
   name: EnvironmentalIconName;

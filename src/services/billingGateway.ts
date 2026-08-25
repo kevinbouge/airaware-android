@@ -8,6 +8,7 @@ import {
 import type { BillingOperationResult, BillingState, ProOffering } from '../models/billing';
 import { UNCONFIGURED_BILLING_STATE } from '../models/billing';
 import { loadBillingEntitlementCache, saveBillingEntitlementCache } from '../storage/storage';
+import { translate } from '../i18n';
 
 const REVENUECAT_PRO_ENTITLEMENT_ID = 'pro';
 const REVENUECAT_LIFETIME_PACKAGE_ID = 'lifetime';
@@ -288,7 +289,7 @@ export function createBillingGateway(
           ...UNCONFIGURED_BILLING_STATE,
           billingStatus: 'unavailable',
           entitlementSource: 'unavailable',
-          error: 'RevenueCat billing is available only in Android development or release builds.',
+          error: translate('pro.billingAndroidOnly'),
         };
         notify();
         initialized = true;
@@ -298,7 +299,7 @@ export function createBillingGateway(
       if (!apiKey) {
         state = {
           ...UNCONFIGURED_BILLING_STATE,
-          error: 'RevenueCat API key is not configured.',
+          error: translate('pro.apiKeyMissing'),
         };
         if (isDevelopment) {
           console.warn('AirAware: EXPO_PUBLIC_REVENUECAT_API_KEY is not configured.');
@@ -355,7 +356,7 @@ export function createBillingGateway(
           entitlement: FREE_ENTITLEMENT,
           entitlementSource: 'unknown',
           proActive: false,
-          error: 'AirAware Pro purchasing is currently unavailable.',
+          error: translate('pro.purchaseUnavailable'),
         };
         await setCachedEntitlement();
         notify();
@@ -393,7 +394,7 @@ export function createBillingGateway(
       state = {
         ...state,
         offering: unavailableLifetimePackage(),
-        error: 'AirAware Pro purchase information is unavailable.',
+        error: translate('pro.purchaseInfoUnavailable'),
       };
       notify();
       return state.offering;
@@ -418,7 +419,7 @@ export function createBillingGateway(
       if (!purchases || state.billingStatus !== 'ready') {
         return {
           billingState: state,
-          message: 'AirAware Pro purchasing is currently unavailable.',
+          message: translate('pro.purchaseUnavailable'),
         };
       }
 
@@ -433,7 +434,7 @@ export function createBillingGateway(
       if (!lifetimePackage) {
         return {
           billingState: state,
-          message: 'AirAware Pro purchase information is unavailable.',
+          message: translate('pro.purchaseInfoUnavailable'),
         };
       }
 
@@ -452,12 +453,12 @@ export function createBillingGateway(
         notify();
 
         if (state.entitlement.kind === 'pro_lifetime') {
-          return { billingState: state, message: 'AirAware Pro unlocked.' };
+          return { billingState: state, message: translate('pro.unlocked') };
         }
 
         return {
           billingState: state,
-          message: 'AirAware Pro purchase is pending confirmation.',
+          message: translate('pro.purchasePending'),
         };
       } catch (error) {
         state = { ...state, purchaseInProgress: false };
@@ -469,12 +470,12 @@ export function createBillingGateway(
         if (isPendingPurchase(error)) {
           state = {
             ...state,
-            error: 'AirAware Pro purchase is pending confirmation.',
+            error: translate('pro.purchasePending'),
           };
           notify();
           return {
             billingState: state,
-            message: 'AirAware Pro purchase is pending confirmation.',
+            message: translate('pro.purchasePending'),
             pending: true,
           };
         }
@@ -482,12 +483,12 @@ export function createBillingGateway(
         console.warn('AirAware: RevenueCat purchase failed', error);
         state = {
           ...state,
-          error: 'AirAware Pro could not be unlocked. Please try again.',
+          error: translate('pro.unlockFailed'),
         };
         notify();
         return {
           billingState: state,
-          message: 'AirAware Pro could not be unlocked. Please try again.',
+          message: translate('pro.unlockFailed'),
         };
       }
     },
@@ -498,7 +499,7 @@ export function createBillingGateway(
       if (!purchases || state.billingStatus !== 'ready') {
         return {
           billingState: state,
-          message: 'AirAware Pro could not be restored. Please try again.',
+          message: translate('pro.restoreFailed'),
         };
       }
 
@@ -518,20 +519,20 @@ export function createBillingGateway(
           billingState: state,
           message:
             state.entitlement.kind === 'pro_lifetime'
-              ? 'AirAware Pro restored.'
-              : 'No AirAware Pro purchase was found for this Google Play account.',
+              ? translate('pro.restored')
+              : translate('pro.noPurchaseFound'),
         };
       } catch (error) {
         console.warn('AirAware: RevenueCat restore failed', error);
         state = {
           ...state,
           restoreInProgress: false,
-          error: 'AirAware Pro could not be restored. Please try again.',
+          error: translate('pro.restoreFailed'),
         };
         notify();
         return {
           billingState: state,
-          message: 'AirAware Pro could not be restored. Please try again.',
+          message: translate('pro.restoreFailed'),
         };
       }
     },
@@ -556,7 +557,7 @@ export function createBillingGateway(
           state = {
             ...state,
             billingStatus: userSafeError(error),
-            error: 'AirAware Pro entitlement refresh is currently unavailable.',
+            error: translate('pro.entitlementRefreshUnavailable'),
           };
           notify();
           return state;

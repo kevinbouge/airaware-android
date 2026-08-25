@@ -1,4 +1,5 @@
 import { SCORE_THRESHOLDS } from './constants';
+import { translate } from '../i18n';
 import type { RiskCategoryId } from '../models/environment';
 import { isFiniteNumber } from '../utils/number';
 
@@ -19,15 +20,15 @@ export function categoryFromScore(score: number | null): RiskCategoryId {
 export function categoryLabel(category: RiskCategoryId): string {
   switch (category) {
     case 'low':
-      return 'Low';
+      return translate('risk.categories.low');
     case 'moderate':
-      return 'Moderate';
+      return translate('risk.categories.moderate');
     case 'high':
-      return 'High';
+      return translate('risk.categories.high');
     case 'veryHigh':
-      return 'Very High';
+      return translate('risk.categories.veryHigh');
     case 'unavailable':
-      return 'Unavailable';
+      return translate('risk.categories.unavailable');
   }
 }
 

@@ -3,6 +3,7 @@ import {
   activityVariableValue,
   categoryForActivityScore,
   enabledActivityProfiles,
+  activityDomain,
   activityProfilesForDomain,
   type ActivityProfileDefinition,
   type ActivityRuleDefinition,
@@ -19,7 +20,8 @@ import type {
 import type { EnvironmentalVariableId } from '../capabilities/types';
 import type { HourlyEnvironmentalReading } from '../models/environment';
 import { isFiniteNumber } from '../utils/number';
-import { formatTimeRangeWithTomorrow } from '../utils/format';
+import { formatScore, formatTimeRangeWithTomorrow } from '../utils/format';
+import { translate } from '../i18n';
 
 export { activityCategoryLabel, activityVariableValue } from './activityDefinitions';
 
@@ -462,7 +464,7 @@ function reasonsFor(
   semanticType: ActivityProfileDefinition['semanticType'],
   limit = 4,
 ): string[] {
-  if (!current?.available) return ['Insufficient data'];
+  if (!current?.available) return [activityCategoryLabel('insufficientData', semanticType)];
 
   return current.factors
     .filter((factor) => factor.available && factor.explanation)
@@ -582,12 +584,12 @@ export function evaluateActivityDomains(
           return (right.bestWindow.averageScore ?? 0) - (left.bestWindow.averageScore ?? 0);
         })[0] ?? null;
 
-    const first = activityProfilesForDomain(domainId)[0];
+    const domain = activityDomain(domainId);
     return [
       {
         id: domainId,
-        label: first ? domainLabel(domainId) : domainId,
-        description: domainDescription(domainId),
+        label: domain?.label ?? domainId,
+        description: domain?.description ?? '',
         profiles,
         bestOpportunity,
       },
@@ -599,7 +601,8 @@ export function formatActivityWindow(
   window: ActivityWindowResult,
   referenceTime: string | null = null,
 ): string {
-  if (!window.available || !window.startTime || !window.endTime) return 'Unavailable';
+  if (!window.available || !window.startTime || !window.endTime)
+    return translate('common.unavailable');
   return formatTimeRangeWithTomorrow(window.startTime, window.endTime, referenceTime);
 }
 
@@ -608,35 +611,7 @@ export function formatActivityScore(result: ActivityEvaluationResult): string {
     return activityCategoryLabel('insufficientData', result.semanticType);
   }
 
-  return `${activityCategoryLabel(result.current.category, result.semanticType)} · ${result.current.displayScore}%`;
-}
-
-function domainLabel(domainId: ActivityDomainId): string {
-  switch (domainId) {
-    case 'agriculture':
-      return 'Agriculture';
-    case 'drone_operations':
-      return 'Drone Operations';
-    case 'photography':
-      return 'Photography';
-    case 'astronomy':
-      return 'Astronomy';
-    case 'outdoor_work':
-      return 'Outdoor Work';
-  }
-}
-
-function domainDescription(domainId: ActivityDomainId): string {
-  switch (domainId) {
-    case 'agriculture':
-      return 'Environmental tools for field operations and frost-risk context.';
-    case 'drone_operations':
-      return 'Environmental decision support for drone operation profiles.';
-    case 'photography':
-      return 'Outdoor photography weather and light profiles.';
-    case 'astronomy':
-      return 'Night-sky viewing and imaging condition profiles.';
-    case 'outdoor_work':
-      return 'Outdoor work environmental profiles.';
-  }
+  return `${activityCategoryLabel(result.current.category, result.semanticType)} · ${formatScore(
+    result.current.displayScore,
+  )}`;
 }

@@ -11,6 +11,7 @@ import type { Coordinates } from '../models/environment';
 import { fetchDataDetailSourceQuery } from './dataDetailQueries';
 import { loadDataDetailCache, saveDataDetailCache } from '../storage/storage';
 import { providerLocalDate } from '../utils/time';
+import { translate } from '../i18n';
 
 const TIMESTAMP_OFFSET_PATTERN = /(Z|[+-]\d{2}:\d{2})$/;
 
@@ -124,7 +125,7 @@ export async function loadDataDetailTimeline(input: {
     return buildDataDetailTimeline({
       variable: {
         id: input.variableId,
-        label: 'Unsupported variable',
+        label: translate('detail.unsupportedVariable'),
         provider: 'weather',
         openMeteoVariable: null,
         historyVariables: [],
@@ -142,8 +143,8 @@ export async function loadDataDetailTimeline(input: {
       now: input.now,
       history: [],
       forecast: [],
-      historyError: 'Unsupported historical variable.',
-      forecastError: 'Unsupported forecast variable.',
+      historyError: translate('detail.unsupportedHistoricalVariable'),
+      forecastError: translate('detail.unsupportedForecastVariable'),
     });
   }
 
@@ -176,8 +177,10 @@ export async function loadDataDetailTimeline(input: {
     now: input.now,
     history,
     forecast,
-    historyError: historyResult.status === 'rejected' ? 'Historical data is unavailable.' : null,
-    forecastError: forecastResult.status === 'rejected' ? 'Forecast data is unavailable.' : null,
+    historyError:
+      historyResult.status === 'rejected' ? translate('detail.historicalDataUnavailable') : null,
+    forecastError:
+      forecastResult.status === 'rejected' ? translate('activities.forecastUnavailable') : null,
   });
 
   if (timeline.points.length > 0) {

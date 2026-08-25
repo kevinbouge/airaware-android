@@ -11,8 +11,16 @@ import {
 import type { CurrentEnvironmentalReadings } from '../models/environment';
 import type { AppCapabilities, EnvironmentalVariableId } from '../capabilities/types';
 import { formatMeasurement, formatNumber } from '../utils/format';
-import { IRRITANT_LABELS, POLLEN_LABELS, POLLUTANT_LABELS } from '../utils/readingLabels';
+import {
+  IRRITANT_LABELS,
+  POLLEN_LABELS,
+  POLLUTANT_LABELS,
+  irritantLabel,
+  pollenLabel,
+  pollutantLabel,
+} from '../utils/readingLabels';
 import { colors } from '../theme/theme';
+import { translate } from '../i18n';
 
 const CURRENT_READING_SECTION_IDS = {
   pollen: 'today.pollen',
@@ -43,7 +51,7 @@ function isFiniteReading(value: number | null | undefined): value is number {
 }
 
 function NoDataMessage() {
-  return <Text style={styles.empty}>{NO_DATA_AVAILABLE_LABEL}</Text>;
+  return <Text style={styles.empty}>{translate('environment.sections.noData')}</Text>;
 }
 
 export function pollenReadingRows(
@@ -58,9 +66,9 @@ export function pollenReadingRows(
           pollenVariableId(key as keyof typeof current.pollen),
         ) && current.pollen[key as keyof typeof current.pollen] !== null,
     )
-    .map(([key, label]) => ({
+    .map(([key]) => ({
       id: pollenVariableId(key as keyof typeof current.pollen),
-      label,
+      label: pollenLabel(key as keyof typeof current.pollen),
       value: formatNumber(current.pollen[key as keyof typeof current.pollen], 'grains/m³'),
     }));
 }
@@ -77,14 +85,14 @@ function pollutantReadingRows(
           pollutantVariableId(key as keyof typeof current.regulatedPollutants),
         ) && current.regulatedPollutants[key as keyof typeof current.regulatedPollutants] !== null,
     )
-    .map(([key, label]) => {
+    .map(([key]) => {
       const detail =
         current.pollutantAqi[key as keyof typeof current.pollutantAqi] !== null
           ? `AQI ${formatNumber(current.pollutantAqi[key as keyof typeof current.pollutantAqi])}`
           : undefined;
       const row = {
         id: pollutantVariableId(key as keyof typeof current.regulatedPollutants),
-        label,
+        label: pollutantLabel(key as keyof typeof current.regulatedPollutants),
         value: formatNumber(
           current.regulatedPollutants[key as keyof typeof current.regulatedPollutants],
           'µg/m³',
@@ -108,9 +116,9 @@ function irritantReadingRows(
         ) &&
         current.atmosphericIrritants[key as keyof typeof current.atmosphericIrritants] !== null,
     )
-    .map(([key, label]) => ({
+    .map(([key]) => ({
       id: irritantVariableId(key as keyof typeof current.atmosphericIrritants),
-      label,
+      label: irritantLabel(key as keyof typeof current.atmosphericIrritants),
       value: formatNumber(
         current.atmosphericIrritants[key as keyof typeof current.atmosphericIrritants],
         key === 'aerosolOpticalDepth' ? '' : 'µg/m³',
@@ -140,7 +148,7 @@ function moldAndSunRows(
       ? [
           {
             id: 'moldPotential' as const,
-            label: 'Mold potential',
+            label: translate('environment.moldPotential'),
             value: formatMeasurement(current.moldPotential.score, '%'),
           },
         ]
@@ -150,7 +158,7 @@ function moldAndSunRows(
       ? [
           {
             id: 'uvIndex' as const,
-            label: 'UV index',
+            label: translate('environment.uvIndex'),
             value: formatNumber(current.uvIndex, '', 1),
           },
         ]
@@ -173,7 +181,7 @@ export function CurrentReadingsSections({
   return (
     <>
       <SectionCard
-        title="Pollen"
+        title={translate('environment.sections.pollen')}
         collapsible
         collapsed={collapsedSections[CURRENT_READING_SECTION_IDS.pollen] === true}
         onToggle={() => onToggleSection(CURRENT_READING_SECTION_IDS.pollen)}
@@ -194,7 +202,7 @@ export function CurrentReadingsSections({
       </SectionCard>
 
       <SectionCard
-        title="Air quality"
+        title={translate('environment.sections.airQuality')}
         subtitle={current.aqiLabel}
         collapsible
         collapsed={collapsedSections[CURRENT_READING_SECTION_IDS.airQuality] === true}
@@ -217,7 +225,7 @@ export function CurrentReadingsSections({
       </SectionCard>
 
       <SectionCard
-        title="Mold and UV"
+        title={translate('environment.sections.moldAndUv')}
         collapsible
         collapsed={collapsedSections[CURRENT_READING_SECTION_IDS.moldAndUv] === true}
         onToggle={() => onToggleSection(CURRENT_READING_SECTION_IDS.moldAndUv)}

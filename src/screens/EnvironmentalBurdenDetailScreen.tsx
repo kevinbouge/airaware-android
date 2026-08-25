@@ -1,5 +1,6 @@
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useTranslation } from 'react-i18next';
 import {
   ContextForecastScore,
   DailyForecastSection,
@@ -34,6 +35,7 @@ interface DetailNavigation extends DetailBackNavigation {
 
 export function EnvironmentalBurdenDetailScreen() {
   const navigation = useNavigation<DetailNavigation>();
+  const { t } = useTranslation();
   const environment = useAppStore((state) => state.environment);
   const settings = useAppStore((state) => state.settings);
   const vegetation = useAppStore((state) => state.vegetation);
@@ -56,8 +58,8 @@ export function EnvironmentalBurdenDetailScreen() {
   if (!environment || !environmentalScore?.available) {
     return (
       <DetailStateView
-        title="Environmental burden"
-        message="Environmental burden data is unavailable."
+        title={t('risk.environmentalBurden')}
+        message={t('detail.environmentalBurdenUnavailable')}
         onBack={handleBack}
       />
     );
@@ -91,44 +93,46 @@ export function EnvironmentalBurdenDetailScreen() {
           environmentalBestOutdoorWindow.endTime,
           environment.current.timestamp ?? environment.fetchedAt,
         )
-      : 'Unavailable';
+      : t('common.unavailable');
 
   return (
     <View style={styles.screen}>
-      <DetailHeader title="Environmental burden" onBack={handleBack} />
+      <DetailHeader title={t('risk.environmentalBurden')} onBack={handleBack} />
       <ScrollView style={styles.scroller} contentContainerStyle={styles.content}>
         <SectionCard>
           <SummaryMetricGrid
             metrics={[
               {
-                label: 'Score',
+                label: t('detail.score'),
                 value: `${categoryLabel(environmentalScore.category)} · ${formatScore(
                   environmentalScore.score,
                 )}`,
                 accent: riskColor(environmentalScore.category),
               },
               {
-                label: 'Best window',
+                label: t('today.bestWindow'),
                 value: bestWindowValue,
                 compact: true,
               },
             ]}
           />
-          <Text style={styles.body}>Main factor: {contributor.label ?? 'Unavailable'}</Text>
+          <Text style={styles.body}>
+            {t('today.mainFactor')}: {contributor.label ?? t('common.unavailable')}
+          </Text>
         </SectionCard>
 
         <DailyForecastSection
-          title="Daily forecast"
+          title={t('detail.dailyForecast')}
           days={environment.forecastDays}
           capabilities={capabilities}
           scoreForDate={dailyScore}
         />
         <RiskTimelineSection
-          title="24-hour forecast"
+          title={t('detail.hourlyForecast')}
           current={currentTimelinePoint}
           hourly={hourlyTimelinePoints}
           bestWindow={environmentalBestOutdoorWindow}
-          unavailableLabel="Environmental forecast is unavailable."
+          unavailableLabel={t('detail.environmentalForecastUnavailable')}
         />
 
         <CurrentReadingsSections

@@ -21,6 +21,8 @@ export interface ManualSavedLocation {
   latitude: number;
   longitude: number;
   placeName: string | null;
+  countryCode?: string | null | undefined;
+  countryName?: string | null | undefined;
   createdAt: number;
   updatedAt: number;
 }

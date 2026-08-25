@@ -2,6 +2,7 @@ import {
   parseManualCoordinates,
   resolveActiveLocation,
   resolveLocation,
+  reverseGeocodeLocationMetadata,
   reverseGeocodePlaceName,
 } from '../src/services/locationService';
 import { CURRENT_LOCATION_ID, currentLocationEntry } from '../src/models/location';
@@ -262,6 +263,8 @@ describe('location service', () => {
             latitude: 49.1951,
             longitude: 16.6068,
             placeName: 'Brno',
+            countryCode: 'CZ',
+            countryName: 'Czechia',
             createdAt: 0,
             updatedAt: 0,
           },
@@ -273,6 +276,8 @@ describe('location service', () => {
 
     expect(location.activeLocationName).toBe('Home');
     expect(location.coordinates).toEqual({ latitude: 49.1951, longitude: 16.6068 });
+    expect(location.countryCode).toBe('CZ');
+    expect(location.countryName).toBe('Czechia');
     expect(deps.getCurrentCoordinates).not.toHaveBeenCalled();
   });
 
@@ -288,6 +293,9 @@ describe('location service', () => {
       await expect(
         reverseGeocodePlaceName({ latitude: 50, longitude: 14 }, deps),
       ).resolves.toBeNull();
+      await expect(
+        reverseGeocodeLocationMetadata({ latitude: 50, longitude: 14 }, deps),
+      ).resolves.toEqual({ placeName: null, countryCode: null, countryName: null });
     } finally {
       warn.mockRestore();
     }

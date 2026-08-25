@@ -1,6 +1,11 @@
 import { availableProfileFactorOptions } from '../capabilities/variables';
 import type { AppCapabilities } from '../capabilities/types';
+import { translate } from '../i18n';
 import type { ProfileFactorId } from '../models/profile';
+import { pollenLabel, pollutantLabel } from '../utils/readingLabels';
+
+type PollenLabelKey = Parameters<typeof pollenLabel>[0];
+type PollutantLabelKey = Parameters<typeof pollutantLabel>[0];
 
 interface ProfileSectionRow {
   id: string;
@@ -14,43 +19,43 @@ interface ProfileSectionDefinition {
   rows: ProfileSectionRow[];
 }
 
-const POLLEN_FACTORS: [ProfileFactorId, string][] = [
-  ['pollen_alder', 'Alder pollen'],
-  ['pollen_birch', 'Birch pollen'],
-  ['pollen_grass', 'Grass pollen'],
-  ['pollen_mugwort', 'Mugwort pollen'],
-  ['pollen_olive', 'Olive pollen'],
-  ['pollen_ragweed', 'Ragweed pollen'],
+const POLLEN_FACTORS: [ProfileFactorId, PollenLabelKey][] = [
+  ['pollen_alder', 'alder'],
+  ['pollen_birch', 'birch'],
+  ['pollen_grass', 'grass'],
+  ['pollen_mugwort', 'mugwort'],
+  ['pollen_olive', 'olive'],
+  ['pollen_ragweed', 'ragweed'],
 ];
 
-const POLLUTION_FACTORS: [ProfileFactorId, string][] = [
-  ['pm25', 'PM2.5'],
-  ['pm10', 'PM10'],
-  ['nitrogen_dioxide', 'Nitrogen dioxide'],
-  ['ozone', 'Ozone'],
-  ['sulphur_dioxide', 'Sulphur dioxide'],
+const POLLUTION_FACTORS: [ProfileFactorId, PollutantLabelKey][] = [
+  ['pm25', 'pm25'],
+  ['pm10', 'pm10'],
+  ['nitrogen_dioxide', 'nitrogenDioxide'],
+  ['ozone', 'ozone'],
+  ['sulphur_dioxide', 'sulphurDioxide'],
 ];
 
 const ATMOSPHERIC_IRRITANT_FACTORS: [ProfileFactorId, string][] = [
-  ['carbon_monoxide', 'Carbon monoxide'],
-  ['aerosol_optical_depth', 'Atmospheric haze'],
-  ['dust', 'Atmospheric dust'],
-  ['wildfire_pm10', 'Smoke-related particulate context'],
+  ['carbon_monoxide', 'environment.irritants.carbonMonoxide'],
+  ['aerosol_optical_depth', 'profile.atmosphericHaze'],
+  ['dust', 'profile.atmosphericDust'],
+  ['wildfire_pm10', 'profile.smokeParticulateContext'],
 ];
 
 const ADDITIONAL_PROFILE_SECTIONS: ProfileSectionDefinition[] = [
   {
     id: 'profile.moldAndSun',
-    title: 'Mold and sun',
+    title: 'profile.moldAndSun',
     rows: [
-      { id: 'mold', label: 'Mold potential', profileFactorId: 'mold' },
-      { id: 'uv_index', label: 'UV index', profileFactorId: 'uv_index' },
+      { id: 'mold', label: 'environment.moldPotential', profileFactorId: 'mold' },
+      { id: 'uv_index', label: 'environment.uvIndex', profileFactorId: 'uv_index' },
     ],
   },
 ];
 
 export function profileFactorSections(capabilities: AppCapabilities) {
-  const profileFactors = (factors: [ProfileFactorId, string][]) =>
+  const profileFactors = <LabelKey extends string>(factors: [ProfileFactorId, LabelKey][]) =>
     factors.filter(([factor]) =>
       availableProfileFactorOptions(capabilities, [factor]).includes(factor),
     );
@@ -58,18 +63,27 @@ export function profileFactorSections(capabilities: AppCapabilities) {
     capabilities.environmentalVariables.availableGroups.includes('extended');
 
   return {
-    pollen: profileFactors(POLLEN_FACTORS),
-    regulatedPollution: profileFactors(POLLUTION_FACTORS),
-    atmosphericIrritants: profileFactors(ATMOSPHERIC_IRRITANT_FACTORS),
+    pollen: profileFactors(POLLEN_FACTORS).map(
+      ([factor, label]) => [factor, pollenLabel(label)] as [ProfileFactorId, string],
+    ),
+    regulatedPollution: profileFactors(POLLUTION_FACTORS).map(
+      ([factor, label]) => [factor, pollutantLabel(label)] as [ProfileFactorId, string],
+    ),
+    atmosphericIrritants: profileFactors(ATMOSPHERIC_IRRITANT_FACTORS).map(
+      ([factor, label]) => [factor, translate(label)] as [ProfileFactorId, string],
+    ),
     additionalSections: ADDITIONAL_PROFILE_SECTIONS.map((section) => ({
       ...section,
-      rows: section.rows.filter(
-        (row) =>
-          row.profileFactorId === undefined ||
-          availableProfileFactorOptions(capabilities, [row.profileFactorId]).includes(
-            row.profileFactorId,
-          ),
-      ),
+      title: translate(section.title),
+      rows: section.rows
+        .filter(
+          (row) =>
+            row.profileFactorId === undefined ||
+            availableProfileFactorOptions(capabilities, [row.profileFactorId]).includes(
+              row.profileFactorId,
+            ),
+        )
+        .map((row) => ({ ...row, label: translate(row.label) })),
     })).filter((section) => section.rows.length > 0),
     extendedAvailable,
   };

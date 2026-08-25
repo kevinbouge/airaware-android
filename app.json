@@ -43,7 +43,8 @@
         }
       ],
       "expo-system-ui",
-      "./plugins/withAirAwareAndroidWidgets"
+      "./plugins/withAirAwareAndroidWidgets",
+      "expo-localization"
     ]
   }
 }

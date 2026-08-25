@@ -1,6 +1,7 @@
 import { Linking, Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import type { RiskNotificationContent } from '../core/riskTransitionNotifications';
+import { translate } from '../i18n';
 import type { NotificationPermissionStatus } from '../models/notifications';
 
 export const RISK_NOTIFICATION_CHANNEL_ID = 'risk-changes';
@@ -49,8 +50,8 @@ export async function ensureRiskNotificationChannel(
   if (dependencies.platform !== 'android') return;
 
   await dependencies.setNotificationChannelAsync(RISK_NOTIFICATION_CHANNEL_ID, {
-    name: 'Risk changes',
-    description: 'AirAware headline risk category changes.',
+    name: translate('notifications.channelName'),
+    description: translate('notifications.channelDescription'),
     importance: dependencies.defaultImportance,
     sound: null,
     enableVibrate: false,
@@ -115,8 +116,8 @@ export async function deliverRiskTestNotification(
 ): Promise<boolean> {
   return deliverRiskTransitionNotification(
     {
-      title: 'AirAware test notification',
-      body: 'Risk transition notifications are working.',
+      title: translate('notifications.testTitle'),
+      body: translate('notifications.testBody'),
     },
     dependencies,
   );

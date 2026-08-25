@@ -1,6 +1,7 @@
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useMemo } from 'react';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { useTranslation } from 'react-i18next';
 import type { RouteProp } from '@react-navigation/native';
 import { ActivityForecastTimeline } from '../components/ActivityForecastTimeline';
 import { DetailHeader } from '../components/DetailHeader';
@@ -27,6 +28,7 @@ import { useCapabilities } from '../hooks/useCapabilities';
 import { useAppStore } from '../state/useAppStore';
 import { colors, spacing } from '../theme/theme';
 import { formatScore } from '../utils/format';
+import { translate } from '../i18n';
 import { displayScore } from '../utils/number';
 import type { EnvironmentalVariableId } from '../capabilities/types';
 import type { HourlyEnvironmentalReading } from '../models/environment';
@@ -35,6 +37,7 @@ import type {
   ActivitySuitabilityCategory,
   ActivityWindowResult,
 } from '../models/activities';
+import type { ActivityProfileDefinition } from '../core/activityDefinitions';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrToday, type DetailBackNavigation } from '../navigation/detailNavigation';
 
@@ -45,6 +48,12 @@ interface ActivityDetailNavigation extends DetailBackNavigation {
     routeName: RouteName,
     params: RootStackParamList[RouteName],
   ) => void;
+}
+
+interface ActivityConditionRow {
+  label: string;
+  value: string;
+  variableId: EnvironmentalVariableId;
 }
 
 function rowValue(
@@ -115,13 +124,14 @@ function buildActivityForecastRow({
   const available = window.available && typeof window.averageScore === 'number';
   const category = window.category;
   const accent = activityColor(category, semanticType);
-  const value = available ? formatScore(window.averageScore) : 'Unavailable';
+  const value = available ? formatScore(window.averageScore) : translate('common.unavailable');
   const displayValue = available
     ? `${activityCategoryLabel(category, semanticType)} · ${value}`
     : value;
   let markerLabel = '';
   if (best) {
-    markerLabel = semanticType === 'risk' ? 'Worst' : 'Best';
+    markerLabel =
+      semanticType === 'risk' ? translate('activities.worst') : translate('activities.best');
   }
 
   return {
@@ -160,8 +170,60 @@ function bestActivityForecastDates(
   );
 }
 
+function activityConditionRows(
+  definition: ActivityProfileDefinition | null,
+  detailReading: HourlyEnvironmentalReading | null,
+): ActivityConditionRow[] {
+  if (!definition || !detailReading) return [];
+
+  return definition.detailVariables.flatMap((variableId) => {
+    const detailDefinition = dataDetailVariable(variableId);
+    const value = rowValue(variableId, detailReading);
+    if (!detailDefinition || !value) return [];
+
+    return [
+      {
+        label: detailDefinition.label,
+        value,
+        variableId,
+      },
+    ];
+  });
+}
+
+function activityForecastRows(input: {
+  definition: ActivityProfileDefinition | null;
+  evaluation: ReturnType<typeof evaluateActivity> | null;
+  visibleForecastDays: { date: string; label: string }[];
+}): ForecastBarItem[] {
+  if (!input.definition || !input.evaluation) return [];
+
+  const forecastWindows = input.visibleForecastDays.map((day) => ({
+    date: day.date,
+    label: day.label,
+    window: bestActivityWindowForDate(
+      input.evaluation!.hours,
+      day.date,
+      input.definition!.minimumUsefulWindowDuration,
+    ),
+  }));
+  const bestDates = bestActivityForecastDates(forecastWindows);
+
+  return forecastWindows.map((day) =>
+    buildActivityForecastRow({
+      date: day.date,
+      label: day.label,
+      window: day.window,
+      best: bestDates.has(day.date),
+      reserveBestSpace: bestDates.size > 0,
+      semanticType: input.definition!.semanticType,
+    }),
+  );
+}
+
 export function ActivityDetailScreen() {
   const navigation = useNavigation<ActivityDetailNavigation>();
+  const { t } = useTranslation();
   const route = useRoute<ActivityDetailRoute>();
   const loading = useAppStore((state) => state.loading);
   const environment = useAppStore((state) => state.environment);
@@ -198,68 +260,28 @@ export function ActivityDetailScreen() {
       environment.hourly.find((hour) => hour.timestamp === evaluation.current?.timestamp) ?? null
     );
   }, [environment, evaluation]);
-  const conditionRows = useMemo(() => {
-    if (!definition || !detailReading) return [];
-
-    return definition.detailVariables.flatMap((variableId) => {
-      const detailDefinition = dataDetailVariable(variableId);
-      const value = rowValue(variableId, detailReading);
-      if (!detailDefinition || !value) return [];
-
-      return [
-        {
-          label: detailDefinition.label,
-          value,
-          variableId,
-        },
-      ];
-    });
-  }, [definition, detailReading]);
-  const forecastRows = useMemo(() => {
-    if (!definition || !evaluation) return [];
-
-    const windows = visibleForecastDays.map((day) => ({
-      date: day.date,
-      label: day.label,
-      window: bestActivityWindowForDate(
-        evaluation.hours,
-        day.date,
-        definition.minimumUsefulWindowDuration,
-      ),
-    }));
-    const bestDates = bestActivityForecastDates(windows);
-
-    return windows.map((day) =>
-      buildActivityForecastRow({
-        date: day.date,
-        label: day.label,
-        window: day.window,
-        best: bestDates.has(day.date),
-        reserveBestSpace: bestDates.size > 0,
-        semanticType: definition.semanticType,
-      }),
-    );
-  }, [definition, evaluation, visibleForecastDays]);
+  const conditionRows = activityConditionRows(definition, detailReading);
+  const forecastRows = activityForecastRows({ definition, evaluation, visibleForecastDays });
 
   if (!capabilities.activities.available) {
     return (
       <DetailStateView
-        title={definition?.label ?? 'Activities'}
-        message="Activities require AirAware Pro."
+        title={definition?.label ?? t('today.activities')}
+        message={t('activities.requirePro')}
         onBack={handleBack}
       />
     );
   }
 
   if (!definition) {
-    return <DetailStateView message="Activity data is unavailable." onBack={handleBack} />;
+    return <DetailStateView message={t('activities.unavailable')} onBack={handleBack} />;
   }
 
   if (!activityEnabled) {
     return (
       <DetailStateView
         title={definition.label}
-        message="Enable this activity in Settings to view details."
+        message={t('activities.enableInSettings')}
         onBack={handleBack}
       />
     );
@@ -270,7 +292,7 @@ export function ActivityDetailScreen() {
       <DetailStateView
         title={definition.label}
         loading
-        message="Updating activity data..."
+        message={t('activities.updating')}
         onBack={handleBack}
       />
     );
@@ -280,7 +302,7 @@ export function ActivityDetailScreen() {
     return (
       <DetailStateView
         title={definition.label}
-        message="Activity data is unavailable."
+        message={t('activities.unavailable')}
         onBack={handleBack}
       />
     );
@@ -294,13 +316,16 @@ export function ActivityDetailScreen() {
     24,
     definition.minimumUsefulWindowDuration,
   );
-  let dataCoverageLabel = 'Current data coverage';
+  let dataCoverageLabel = t('activities.currentDataCoverage');
   if (evaluation.dataCompleteness.status === 'reduced') {
-    dataCoverageLabel = 'Current reduced data';
+    dataCoverageLabel = t('activities.currentReducedData');
   } else if (evaluation.dataCompleteness.status === 'insufficient') {
-    dataCoverageLabel = 'Current insufficient data';
+    dataCoverageLabel = t('activities.currentInsufficientData');
   }
-  const dataCoverageValue = `${evaluation.dataCompleteness.availableFactors} / ${evaluation.dataCompleteness.expectedFactors} factors`;
+  const dataCoverageValue = t('activities.factorsCount', {
+    available: evaluation.dataCompleteness.availableFactors,
+    expected: evaluation.dataCompleteness.expectedFactors,
+  });
 
   return (
     <View style={styles.screen}>
@@ -319,12 +344,18 @@ export function ActivityDetailScreen() {
           <SummaryMetricGrid
             metrics={[
               {
-                label: definition.semanticType === 'risk' ? 'Risk' : 'Suitability',
+                label:
+                  definition.semanticType === 'risk'
+                    ? t('activities.risk')
+                    : t('activities.suitability'),
                 value: formatActivityScore(evaluation),
                 accent: currentAccent,
               },
               {
-                label: definition.semanticType === 'risk' ? 'Peak risk window' : 'Best window',
+                label:
+                  definition.semanticType === 'risk'
+                    ? t('activities.peakRiskWindow')
+                    : t('activities.bestWindow'),
                 value: formatActivityWindow(timelineBestWindow, nowTimestamp),
                 compact: true,
               },
@@ -342,7 +373,7 @@ export function ActivityDetailScreen() {
           ) : null}
         </SectionCard>
 
-        <SectionCard title="Why">
+        <SectionCard title={t('activities.why')}>
           {evaluation.reasons.map((reason) => (
             <Text key={reason} style={styles.reason}>
               - {reason}
@@ -351,22 +382,22 @@ export function ActivityDetailScreen() {
         </SectionCard>
 
         <ForecastBarSection
-          title="Daily forecast"
+          title={t('detail.dailyForecast')}
           rows={forecastRows}
-          emptyLabel="Forecast data is unavailable."
+          emptyLabel={t('activities.forecastUnavailable')}
         />
 
-        <SectionCard title="24-hour forecast" contentTopSpacing={spacing.lg}>
+        <SectionCard title={t('detail.hourlyForecast')} contentTopSpacing={spacing.lg}>
           <ActivityForecastTimeline
             hours={evaluation.hours}
             now={evaluation.current?.timestamp ?? nowTimestamp}
             bestWindow={timelineBestWindow}
-            unavailableLabel="Activity outlook is unavailable."
+            unavailableLabel={t('activities.outlookUnavailable')}
             semanticType={definition.semanticType}
           />
         </SectionCard>
 
-        <SectionCard title="Conditions">
+        <SectionCard title={t('activities.conditions')}>
           {conditionRows.length > 0 ? (
             conditionRows.map((row) => (
               <ReadingRow
@@ -380,7 +411,7 @@ export function ActivityDetailScreen() {
               />
             ))
           ) : (
-            <Text style={styles.notice}>Current activity measurements are unavailable.</Text>
+            <Text style={styles.notice}>{t('activities.measurementsUnavailable')}</Text>
           )}
         </SectionCard>
       </ScrollView>

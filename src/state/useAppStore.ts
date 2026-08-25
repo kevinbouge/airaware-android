@@ -27,6 +27,7 @@ import {
   riskTransitionStateAfterDeliveryAttempt,
 } from '../core/riskTransitionNotifications';
 import type { LocationInfo, NormalizedEnvironment } from '../models/environment';
+import type { HealthSignalsState } from '../models/healthSignals';
 import type { BillingState } from '../models/billing';
 import { UNCONFIGURED_BILLING_STATE } from '../models/billing';
 import type {
@@ -50,7 +51,7 @@ import {
   type ManualSavedLocation,
 } from '../models/location';
 import { deriveEnvironmentState } from './derivedEnvironment';
-import { resolveActiveLocation, reverseGeocodePlaceName } from '../services/locationService';
+import { resolveActiveLocation, reverseGeocodeLocationMetadata } from '../services/locationService';
 import { assembleEnvironment } from '../services/environmentAssembler';
 import { activeEnvironmentalProvider } from '../services/environmentProviders';
 import { environmentRefreshPolicy } from '../services/environmentRefreshPolicy';
@@ -97,6 +98,7 @@ import {
   saveVegetationCache,
 } from '../storage/storage';
 import { saveWidgetSnapshotToNative } from '../services/widgetNativeModule';
+import { refreshHealthSignalsForLocation } from '../services/healthSignalService';
 import {
   deliverRiskTransitionNotification,
   deliverRiskTestNotification,
@@ -106,6 +108,7 @@ import {
 } from '../services/notificationService';
 import { settingsForProfileState } from './settingsPolicy';
 import { enabledActivityIds } from '../core/activityDefinitions';
+import { setAppLanguagePreference, translate } from '../i18n';
 
 interface AppStore {
   hydrated: boolean;
@@ -131,8 +134,10 @@ interface AppStore {
   riskNotificationTransitionState: RiskNotificationTransitionState | null;
   environmentalEvents: EnvironmentalEvent[];
   environmentalEventNotificationState: EnvironmentalEventNotificationState | null;
+  healthSignals: HealthSignalsState;
   hydrate: () => Promise<void>;
   refresh: (options?: { force?: boolean }) => Promise<void>;
+  refreshHealthSignals: (options?: { force?: boolean }) => Promise<void>;
   updateSettings: (settings: Partial<AppSettings>) => Promise<void>;
   toggleCollapsedSection: (sectionId: string) => Promise<void>;
   setActiveLocation: (locationId: string) => Promise<void>;
@@ -167,10 +172,21 @@ const emptyLocation: LocationInfo = {
   permissionStatus: 'unknown',
 };
 
-const LOCAL_DATA_LOAD_FALLBACK_MESSAGE =
-  'Some locally saved AirAware data could not be loaded. Defaults were used where needed.';
-const SETTINGS_SAVE_FAILED_MESSAGE =
-  'Settings are applied for now, but AirAware could not save them to this device.';
+function localDataLoadFallbackMessage(): string {
+  return translate('errors.localDataLoadFallback');
+}
+
+function settingsSaveFailedMessage(): string {
+  return translate('errors.settingsSaveFailed');
+}
+
+const emptyHealthSignalsState: HealthSignalsState = {
+  geography: null,
+  signals: [],
+  loading: false,
+  error: null,
+  updatedAt: null,
+};
 
 function staleFrom(savedAt: string | null): boolean {
   if (!savedAt) return false;
@@ -278,13 +294,13 @@ function enqueueSettingsSave(settings: AppSettings): Promise<void> {
     .catch((error) => console.warn('AirAware: previous settings save failed', error))
     .then(() => saveSettings(settings))
     .then(() => {
-      if (useAppStore.getState().error === SETTINGS_SAVE_FAILED_MESSAGE) {
+      if (useAppStore.getState().error === settingsSaveFailedMessage()) {
         useAppStore.setState({ error: null });
       }
     })
     .catch((error) => {
       console.warn('AirAware: settings save failed', error);
-      useAppStore.setState({ error: SETTINGS_SAVE_FAILED_MESSAGE });
+      useAppStore.setState({ error: settingsSaveFailedMessage() });
     });
   return settingsSaveQueue;
 }
@@ -349,6 +365,8 @@ function locationInfoFromSettings(settings: AppSettings): LocationInfo {
     activeLocationName: locationDisplayName(location),
     coordinates,
     placeName: location.type === 'current' ? location.placeName : location.name,
+    countryCode: location.type === 'manual' ? (location.countryCode ?? null) : null,
+    countryName: location.type === 'manual' ? (location.countryName ?? null) : null,
     mode: location.type === 'current' ? 'automatic' : 'manual',
     permissionStatus: 'unknown',
   };
@@ -403,6 +421,14 @@ function isSilentQueryCancellation(error: unknown): boolean {
 
 function coordinateRequestKey(coordinates: NormalizedEnvironment['coordinates']): string {
   return `${coordinates.latitude.toFixed(5)},${coordinates.longitude.toFixed(5)}`;
+}
+
+function activeLocationRequestScope(settings: AppSettings): string {
+  const active = activeSavedLocation(settings);
+  const coordinates = coordinatesForSavedLocation(active);
+  if (active.type !== 'manual' || !coordinates) return active.id;
+
+  return `${active.id}|${coordinateRequestKey(coordinates)}`;
 }
 
 function activeVegetationCoordinatesKey(): string | null {
@@ -529,6 +555,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   riskNotificationTransitionState: null,
   environmentalEvents: [],
   environmentalEventNotificationState: null,
+  healthSignals: emptyHealthSignalsState,
 
   hydrate: async () => {
     let usedLocalDataFallback = false;
@@ -578,6 +605,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const billingState = effectiveBillingState(rawBillingState, developmentOverride);
     const entitlement = billingState.entitlement;
     let settings = settingsForProfileState(storedSettings, profile);
+    setAppLanguagePreference(settings.languagePreference);
     const activeCoordinates = activeCoordinatesFromSettings(settings);
     const activeCache =
       (await loadBestEffort(
@@ -644,7 +672,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         freshEnvironmentalEventNotificationState(eventNotificationState),
       stale: staleFrom(activeCache?.metadata.savedAt ?? null),
       location: hydratedLocation,
-      error: usedLocalDataFallback ? LOCAL_DATA_LOAD_FALLBACK_MESSAGE : get().error,
+      error: usedLocalDataFallback ? localDataLoadFallbackMessage() : get().error,
     });
 
     if (!unsubscribeBillingGateway) {
@@ -679,6 +707,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       });
       void get().refreshVegetation(false);
     }
+    void get().refreshHealthSignals();
   },
 
   refresh: async (options = {}) => {
@@ -699,6 +728,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
     const settings = get().settings;
     const requestActiveLocationId = settings.activeLocationId;
+    const requestActiveLocationScope = activeLocationRequestScope(settings);
     const cached = get().environment;
     const requestedActivityDomains = enabledProviderActivities(settings, get().entitlement);
     const requestedAirQualityVariables = airQualityVariableCoverageFor(requestedActivityDomains);
@@ -709,6 +739,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
       set({ loading: false });
       return runPendingRefresh();
     };
+    const refreshIsObsolete = () =>
+      activeLocationRequestScope(get().settings) !== requestActiveLocationScope;
 
     try {
       const freshCache = freshCachePreflight({
@@ -732,7 +764,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
           entitlement: get().entitlement,
           stale: false,
         });
-        if (get().settings.activeLocationId !== requestActiveLocationId) {
+        if (refreshIsObsolete()) {
           await finishObsoleteRefresh();
           return;
         }
@@ -746,6 +778,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
           environmentalEvents,
         });
         void get().refreshVegetation(false);
+        void get().refreshHealthSignals();
         await runPendingRefresh();
         return;
       }
@@ -754,7 +787,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       const location = await resolveActiveLocation(settings);
       resolvedLocation = location;
 
-      if (get().settings.activeLocationId !== requestActiveLocationId) {
+      if (refreshIsObsolete()) {
         await finishObsoleteRefresh();
         return;
       }
@@ -791,7 +824,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
           entitlement: get().entitlement,
           stale: false,
         });
-        if (get().settings.activeLocationId !== requestActiveLocationId) {
+        if (refreshIsObsolete()) {
           await finishObsoleteRefresh();
           return;
         }
@@ -805,6 +838,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
           environmentalEvents,
         });
         void get().refreshVegetation(false);
+        void get().refreshHealthSignals();
         await runPendingRefresh();
         return;
       }
@@ -834,7 +868,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       ]);
       const airQuality = airResult.status === 'fulfilled' ? airResult.value : null;
       const weather = weatherResult.status === 'fulfilled' ? weatherResult.value : null;
-      if (get().settings.activeLocationId !== requestActiveLocationId) {
+      if (refreshIsObsolete()) {
         await finishObsoleteRefresh();
         return;
       }
@@ -889,7 +923,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         (canNotifyEvents && environmentalEventNotificationsEnabled(resolvedSettings))
           ? await getRiskNotificationPermissionStatus()
           : get().notificationPermissionStatus;
-      if (get().settings.activeLocationId !== requestActiveLocationId) {
+      if (refreshIsObsolete()) {
         await finishObsoleteRefresh();
         return;
       }
@@ -917,15 +951,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
           : null;
 
       let delivered = false;
-      if (
-        transitionEvaluation?.transition &&
-        get().settings.activeLocationId === requestActiveLocationId
-      ) {
+      if (transitionEvaluation?.transition && !refreshIsObsolete()) {
         delivered = await deliverRiskTransitionNotification(
           formatRiskTransitionNotification(transitionEvaluation.transition),
         );
       }
-      if (get().settings.activeLocationId !== requestActiveLocationId) {
+      if (refreshIsObsolete()) {
         await finishObsoleteRefresh();
         return;
       }
@@ -938,7 +969,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
             previousState: get().environmentalEventNotificationState,
           })
         : get().environmentalEventNotificationState;
-      if (get().settings.activeLocationId !== requestActiveLocationId) {
+      if (refreshIsObsolete()) {
         await finishObsoleteRefresh();
         return;
       }
@@ -981,10 +1012,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
         environmentalEvents,
       });
       void get().refreshVegetation(false);
+      void get().refreshHealthSignals();
       await runPendingRefresh();
     } catch (error) {
       console.warn('AirAware: refresh failed', error);
-      if (get().settings.activeLocationId !== requestActiveLocationId) {
+      if (refreshIsObsolete()) {
         await finishObsoleteRefresh();
         return;
       }
@@ -1023,13 +1055,48 @@ export const useAppStore = create<AppStore>((set, get) => ({
         loading: false,
         stale: nextStale,
         error: environment
-          ? 'Showing cached environmental data.'
-          : 'No environmental data is available.',
+          ? translate('errors.showingCachedEnvironmentalData')
+          : translate('errors.noEnvironmentalData'),
         environment: environment ?? null,
         location: resolvedLocation ?? get().location,
         environmentalEvents,
       });
       await runPendingRefresh();
+    }
+  },
+
+  refreshHealthSignals: async (options = {}) => {
+    const requestActiveLocationScope = activeLocationRequestScope(get().settings);
+    set({
+      healthSignals: {
+        ...get().healthSignals,
+        loading: true,
+        error: null,
+      },
+    });
+
+    try {
+      const nextHealthSignals = await refreshHealthSignalsForLocation({
+        location: get().location,
+        environment: get().environment,
+        force: options.force,
+      });
+      if (activeLocationRequestScope(get().settings) !== requestActiveLocationScope) return;
+
+      set({
+        healthSignals: nextHealthSignals,
+      });
+    } catch (error) {
+      console.warn('AirAware: health surveillance refresh failed', error);
+      if (activeLocationRequestScope(get().settings) !== requestActiveLocationScope) return;
+
+      set({
+        healthSignals: {
+          ...get().healthSignals,
+          loading: false,
+          error: translate('errors.healthUnavailable'),
+        },
+      });
     }
   },
 
@@ -1056,7 +1123,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
             !isFeatureAvailable(capabilities, 'basic_transition_notifications')
           ) {
             normalizedPatch = { ...settingsPatch, riskTransitionNotificationsEnabled: false };
-            notificationMessage = 'Risk transition notifications are unavailable in this build.';
+            notificationMessage = translate('notifications.riskUnavailableInBuild');
           } else if (
             eventNotificationsRequested &&
             !isFeatureAvailable(capabilities, 'advanced_environment_notifications')
@@ -1065,7 +1132,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
               ...settingsPatch,
               environmentalEventNotifications: DEFAULT_SETTINGS.environmentalEventNotifications,
             };
-            notificationMessage = 'Environmental alerts are available with AirAware Pro.';
+            notificationMessage = translate('notifications.environmentalAlertsRequirePro');
           } else if (notificationPermissionStatus === 'denied') {
             notificationPermissionStatus = await getRiskNotificationPermissionStatus();
             if (notificationPermissionStatus !== 'granted') {
@@ -1081,8 +1148,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
                   environmentalEventNotifications: DEFAULT_SETTINGS.environmentalEventNotifications,
                 };
               }
-              notificationMessage =
-                'Notification permission is denied. Open Android settings to allow notifications.';
+              notificationMessage = translate('notifications.permissionDeniedOpenSettings');
             }
           } else {
             notificationPermissionStatus = await requestRiskNotificationPermission();
@@ -1102,8 +1168,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
               }
               notificationMessage =
                 notificationPermissionStatus === 'denied'
-                  ? 'Notification permission was denied. You can retry from Settings.'
-                  : 'Notifications are unavailable on this device.';
+                  ? translate('notifications.permissionDeniedRetry')
+                  : translate('notifications.unavailableOnDevice');
             }
           }
         }
@@ -1122,6 +1188,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
           { ...get().settings, ...normalizedPatch },
           get().profile,
         );
+        if (settingsPatch.languagePreference !== undefined) {
+          setAppLanguagePreference(settings.languagePreference);
+        }
         const environmentalEvents = get().environment
           ? detectEnvironmentalEvents(get().environment, {
               locationId: settings.activeLocationId,
@@ -1215,6 +1284,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
           vegetation: null,
           vegetationStale: false,
           vegetationError: null,
+          healthSignals: emptyHealthSignalsState,
         });
         scheduleSettingsSave(settings);
         await persistWidgetSnapshotFor({
@@ -1236,19 +1306,21 @@ export const useAppStore = create<AppStore>((set, get) => ({
       .then(async () => {
         const capabilities = capabilitiesForEntitlement(get().entitlement);
         if (manualSavedLocationCount(get().settings) >= capabilities.locations.maxSavedLocations) {
-          set({ error: 'Saved location limit reached.' });
+          set({ error: translate('errors.savedLocationLimitReached') });
           return;
         }
 
-        const placeName = await reverseGeocodePlaceName(coordinates);
+        const metadata = await reverseGeocodeLocationMetadata(coordinates);
         const now = Date.now();
         const location: ManualSavedLocation = {
           id: generatedManualLocationId(),
           type: 'manual',
-          name: manualLocationName(name?.trim() || placeName, coordinates),
+          name: manualLocationName(name?.trim() || metadata.placeName, coordinates),
           latitude: coordinates.latitude,
           longitude: coordinates.longitude,
-          placeName,
+          placeName: metadata.placeName,
+          countryCode: metadata.countryCode,
+          countryName: metadata.countryName,
           createdAt: now,
           updatedAt: now,
         };
@@ -1267,6 +1339,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
           vegetation: null,
           vegetationStale: false,
           vegetationError: null,
+          healthSignals: emptyHealthSignalsState,
         });
         scheduleSettingsSave(settings);
         await persistWidgetSnapshotFor({
@@ -1337,7 +1410,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     settingsUpdateQueue = settingsUpdateQueue
       .catch((error) => console.warn('AirAware: previous settings update failed', error))
       .then(async () => {
-        const placeName = await reverseGeocodePlaceName(coordinates);
+        const metadata = await reverseGeocodeLocationMetadata(coordinates);
         const settings = {
           ...get().settings,
           locations: get().settings.locations.map((location) =>
@@ -1346,7 +1419,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
                   ...location,
                   latitude: coordinates.latitude,
                   longitude: coordinates.longitude,
-                  placeName,
+                  placeName: metadata.placeName,
+                  countryCode: metadata.countryCode,
+                  countryName: metadata.countryName,
                   updatedAt: Date.now(),
                 }
               : location,
@@ -1363,6 +1438,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
           vegetation: active ? null : get().vegetation,
           vegetationStale: active ? false : get().vegetationStale,
           vegetationError: active ? null : get().vegetationError,
+          healthSignals: active ? emptyHealthSignalsState : get().healthSignals,
         });
         scheduleSettingsSave(settings);
         await persistWidgetSnapshotFor({
@@ -1412,6 +1488,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
           vegetation: activeDeleted ? null : get().vegetation,
           vegetationStale: activeDeleted ? false : get().vegetationStale,
           vegetationError: activeDeleted ? null : get().vegetationError,
+          healthSignals: activeDeleted ? emptyHealthSignalsState : get().healthSignals,
         });
         scheduleSettingsSave(settings);
         await persistWidgetSnapshotFor({
@@ -1485,7 +1562,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const capabilities = capabilitiesForEntitlement(get().entitlement);
 
     if (!isFeatureAvailable(capabilities, 'daily_summary')) {
-      set({ sharing: false, shareMessage: 'Daily summary sharing is unavailable.' });
+      set({ sharing: false, shareMessage: translate('sharing.unavailable') });
       return;
     }
 
@@ -1507,7 +1584,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     });
 
     if (!summary) {
-      set({ sharing: false, shareMessage: 'No environmental data is available to share.' });
+      set({ sharing: false, shareMessage: translate('sharing.noEnvironmentalData') });
       return;
     }
 
@@ -1516,7 +1593,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       set({ sharing: false, shareMessage: null });
     } catch (error) {
       console.warn('AirAware: native share failed', error);
-      set({ sharing: false, shareMessage: 'Could not open the share sheet.' });
+      set({ sharing: false, shareMessage: translate('sharing.openFailed') });
     }
   },
 
@@ -1528,8 +1605,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
       set({
         notificationMessage:
           permissionStatus === 'denied'
-            ? 'Notification permission is denied. Open Android settings to allow notifications.'
-            : 'Enable notification permission before sending a test notification.',
+            ? translate('notifications.permissionDeniedOpenSettings')
+            : translate('notifications.enablePermissionBeforeTest'),
       });
       return;
     }
@@ -1537,8 +1614,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const delivered = await deliverRiskTestNotification();
     set({
       notificationMessage: delivered
-        ? 'Test notification sent.'
-        : 'Could not send the test notification.',
+        ? translate('notifications.testSent')
+        : translate('notifications.testFailed'),
     });
   },
 
@@ -1546,8 +1623,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const opened = await openSystemNotificationSettings();
     set({
       notificationMessage: opened
-        ? 'Android notification settings opened.'
-        : 'Could not open Android notification settings.',
+        ? translate('notifications.androidSettingsOpened')
+        : translate('notifications.androidSettingsOpenFailed'),
     });
   },
 
@@ -1642,8 +1719,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
       developmentEntitlementOverride: developmentOverride,
       billingMessage:
         developmentOverride === null
-          ? 'RevenueCat entitlement is active.'
-          : 'Development capability preview updated.',
+          ? translate('pro.revenueCatEntitlementActive')
+          : translate('pro.developmentPreviewUpdated'),
     });
     await persistWidgetSnapshotFor({
       environment: get().environment,

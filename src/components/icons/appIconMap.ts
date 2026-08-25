@@ -12,6 +12,7 @@ import ExternalLink from 'lucide-react-native/icons/external-link';
 import Gauge from 'lucide-react-native/icons/gauge';
 import Gem from 'lucide-react-native/icons/gem';
 import HardHat from 'lucide-react-native/icons/hard-hat';
+import HeartPulse from 'lucide-react-native/icons/heart-pulse';
 import Info from 'lucide-react-native/icons/info';
 import LocateFixed from 'lucide-react-native/icons/locate-fixed';
 import MapPin from 'lucide-react-native/icons/map-pin';
@@ -27,7 +28,11 @@ import Shield from 'lucide-react-native/icons/shield';
 import Sprout from 'lucide-react-native/icons/sprout';
 import Telescope from 'lucide-react-native/icons/telescope';
 import Trash2 from 'lucide-react-native/icons/trash-2';
+import TrendingDown from 'lucide-react-native/icons/trending-down';
+import TrendingUp from 'lucide-react-native/icons/trending-up';
+import TrendingUpDown from 'lucide-react-native/icons/trending-up-down';
 import UserRound from 'lucide-react-native/icons/user-round';
+import UsersRound from 'lucide-react-native/icons/users-round';
 import X from 'lucide-react-native/icons/x';
 import type { LucideIcon } from 'lucide-react-native';
 import type { ActivityIconName, AppIconName } from './appIconTypes';
@@ -64,6 +69,11 @@ export const APP_ICON_MAP: Record<AppIconName, AppIconDefinition> = {
   calendar: { component: Calendar, libraryName: 'Calendar' },
   clock: { component: Clock, libraryName: 'Clock' },
   privacy: { component: Shield, libraryName: 'Shield' },
+  respiratory: { component: HeartPulse, libraryName: 'HeartPulse' },
+  'population-health': { component: UsersRound, libraryName: 'UsersRound' },
+  'trend-rising': { component: TrendingUp, libraryName: 'TrendingUp' },
+  'trend-falling': { component: TrendingDown, libraryName: 'TrendingDown' },
+  'trend-stable': { component: TrendingUpDown, libraryName: 'TrendingUpDown' },
   'external-link': { component: ExternalLink, libraryName: 'ExternalLink' },
   generic: { component: Info, libraryName: 'Info' },
 };

@@ -7,6 +7,7 @@ import type {
   ActivitySuitabilityCategory,
 } from '../models/activities';
 import type { HourlyEnvironmentalReading } from '../models/environment';
+import { translate } from '../i18n';
 import { isFiniteNumber } from '../utils/number';
 
 export const ACTIVITY_IDS: readonly ActivityDomainId[] = [
@@ -30,6 +31,7 @@ type ActivityRuleKind = 'highAtLeast' | 'lowAtMost' | 'range' | 'outsideDaylight
 export interface ActivityRuleDefinition {
   id: string;
   label: string;
+  labelKey?: string | undefined;
   variableId?: EnvironmentalVariableId;
   required?: boolean;
   weight: number;
@@ -41,7 +43,9 @@ export interface ActivityRuleDefinition {
   hardMaximum?: number;
   hardMinimum?: number;
   positiveText: string;
+  positiveTextKey?: string | undefined;
   negativeText: string;
+  negativeTextKey?: string | undefined;
 }
 
 export interface ActivityProfileDefinition {
@@ -1397,12 +1401,273 @@ export const ACTIVITY_DOMAINS: readonly ActivityDomainDefinition[] = [
   },
 ] as const;
 
+const ACTIVITY_DOMAIN_TRANSLATION_KEYS: Record<
+  ActivityDomainId,
+  { label: string; description: string }
+> = {
+  agriculture: {
+    label: 'activities.agriculture',
+    description: 'activities.descriptions.agriculture',
+  },
+  drone_operations: {
+    label: 'activities.droneOperations',
+    description: 'activities.descriptions.droneOperations',
+  },
+  photography: {
+    label: 'activities.photography',
+    description: 'activities.descriptions.photography',
+  },
+  astronomy: {
+    label: 'activities.astronomy',
+    description: 'activities.descriptions.astronomy',
+  },
+  outdoor_work: {
+    label: 'activities.outdoorWork',
+    description: 'activities.descriptions.outdoorWork',
+  },
+};
+
+const ACTIVITY_PROFILE_TRANSLATION_KEYS: Record<
+  ActivityProfileId,
+  { label: string; description: string }
+> = {
+  agriculture_spraying: {
+    label: 'activities.profiles.spraying',
+    description: 'activities.profileDescriptions.spraying',
+  },
+  agriculture_irrigation: {
+    label: 'activities.profiles.irrigation',
+    description: 'activities.profileDescriptions.irrigation',
+  },
+  agriculture_field_work: {
+    label: 'activities.profiles.fieldWork',
+    description: 'activities.profileDescriptions.fieldWork',
+  },
+  agriculture_harvesting: {
+    label: 'activities.profiles.harvesting',
+    description: 'activities.profileDescriptions.harvesting',
+  },
+  agriculture_frost_risk: {
+    label: 'activities.profiles.frostRisk',
+    description: 'activities.profileDescriptions.frostRisk',
+  },
+  drone_general_flight: {
+    label: 'activities.profiles.generalFlight',
+    description: 'activities.profileDescriptions.generalFlight',
+  },
+  drone_aerial_photography: {
+    label: 'activities.profiles.aerialPhotography',
+    description: 'activities.profileDescriptions.aerialPhotography',
+  },
+  drone_survey_mapping: {
+    label: 'activities.profiles.surveyMapping',
+    description: 'activities.profileDescriptions.surveyMapping',
+  },
+  photography_landscape: {
+    label: 'activities.profiles.landscape',
+    description: 'activities.profileDescriptions.landscape',
+  },
+  photography_golden_hour: {
+    label: 'activities.profiles.goldenHour',
+    description: 'activities.profileDescriptions.goldenHour',
+  },
+  photography_macro: {
+    label: 'activities.profiles.macro',
+    description: 'activities.profileDescriptions.macro',
+  },
+  astronomy_stargazing: {
+    label: 'activities.profiles.stargazing',
+    description: 'activities.profileDescriptions.stargazing',
+  },
+  astronomy_astrophotography: {
+    label: 'activities.profiles.astrophotography',
+    description: 'activities.profileDescriptions.astrophotography',
+  },
+  outdoor_work_construction: {
+    label: 'activities.profiles.construction',
+    description: 'activities.profileDescriptions.construction',
+  },
+  outdoor_work_at_height: {
+    label: 'activities.profiles.workAtHeight',
+    description: 'activities.profileDescriptions.workAtHeight',
+  },
+  outdoor_work_painting: {
+    label: 'activities.profiles.outdoorPainting',
+    description: 'activities.profileDescriptions.outdoorPainting',
+  },
+  outdoor_work_heat_exposure: {
+    label: 'activities.profiles.heatExposure',
+    description: 'activities.profileDescriptions.heatExposure',
+  },
+};
+
+const ACTIVITY_RULE_LABEL_KEYS: Partial<Record<string, string>> = {
+  'Apparent temperature': 'environment.weather.apparentTemperature',
+  'Cloud cover': 'environment.weather.cloudCover',
+  'Cloud structure': 'activities.ruleLabels.cloudStructure',
+  Darkness: 'activities.ruleLabels.darkness',
+  'Dew point': 'environment.weather.dewPoint',
+  ET0: 'environment.weather.evapotranspiration',
+  Humidity: 'environment.weather.humidity',
+  'Light window': 'activities.ruleLabels.lightWindow',
+  Rain: 'environment.weather.precipitation',
+  'Rain risk': 'environment.weather.precipitationProbability',
+  'Soil moisture': 'environment.weather.soilMoisture',
+  'Solar radiation': 'environment.weather.solarRadiation',
+  Temperature: 'environment.weather.temperature',
+  Visibility: 'environment.weather.visibility',
+  Wind: 'environment.weather.wind',
+  'Wind gusts': 'environment.weather.windGusts',
+};
+
+const ACTIVITY_RULE_COPY_KEYS: Partial<Record<string, string>> = {
+  'Apparent temperature is elevated': 'activities.ruleCopy.apparentTemperatureElevated',
+  'Apparent temperature is lower': 'activities.ruleCopy.apparentTemperatureLower',
+  'Clear sky': 'activities.ruleCopy.clearSky',
+  'Clearer sky increases frost context': 'activities.ruleCopy.clearerSkyIncreasesFrostContext',
+  'Cloud cover limits imaging': 'activities.ruleCopy.cloudCoverLimitsImaging',
+  'Cloud cover limits sky visibility': 'activities.ruleCopy.cloudCoverLimitsSkyVisibility',
+  'Cloud cover reduces frost context': 'activities.ruleCopy.cloudCoverReducesFrostContext',
+  'Daylight limits astronomy use': 'activities.ruleCopy.daylightLimitsAstronomyUse',
+  'Daylight limits astrophotography': 'activities.ruleCopy.daylightLimitsAstrophotography',
+  'Dew point less concerning': 'activities.ruleCopy.dewPointLessConcerning',
+  'Dew point supports frost context': 'activities.ruleCopy.dewPointSupportsFrostContext',
+  'Dew risk increases': 'activities.ruleCopy.dewRiskIncreases',
+  'Dry field-work window': 'activities.ruleCopy.dryFieldWorkWindow',
+  'Dry harvesting window': 'activities.ruleCopy.dryHarvestingWindow',
+  'Dry irrigation window': 'activities.ruleCopy.dryIrrigationWindow',
+  'Dry painting window': 'activities.ruleCopy.dryPaintingWindow',
+  'Dry work window': 'activities.ruleCopy.dryWorkWindow',
+  'Excellent visibility': 'activities.ruleCopy.excellentVisibility',
+  'Favorable outdoor light window': 'activities.ruleCopy.favorableOutdoorLightWindow',
+  'Golden-hour timing': 'activities.ruleCopy.goldenHourTiming',
+  'Good visibility': 'activities.ruleCopy.goodVisibility',
+  'Gusts may affect macro work': 'activities.ruleCopy.gustsMayAffectMacroWork',
+  'Gusts may affect repeatability': 'activities.ruleCopy.gustsMayAffectRepeatability',
+  'Gusts too strong': 'activities.ruleCopy.gustsTooStrong',
+  'High humidity': 'activities.ruleCopy.highHumidity',
+  'High wind': 'activities.ruleCopy.highWind',
+  'Higher evapotranspiration context': 'activities.ruleCopy.higherEvapotranspirationContext',
+  'Higher heat exposure': 'activities.ruleCopy.higherHeatExposure',
+  'Humidity in useful range': 'activities.ruleCopy.humidityInUsefulRange',
+  'Humidity increases heat burden': 'activities.ruleCopy.humidityIncreasesHeatBurden',
+  'Humidity less concerning': 'activities.ruleCopy.humidityLessConcerning',
+  'Humidity less favorable': 'activities.ruleCopy.humidityLessFavorable',
+  'Less favorable cloud cover': 'activities.ruleCopy.lessFavorableCloudCover',
+  'Less favorable light timing': 'activities.ruleCopy.lessFavorableLightTiming',
+  'Light wind': 'activities.ruleCopy.lightWind',
+  'Light wind supports frost context': 'activities.ruleCopy.lightWindSupportsFrostContext',
+  'Low evapotranspiration context': 'activities.ruleCopy.lowEvapotranspirationContext',
+  'Low gusts': 'activities.ruleCopy.lowGusts',
+  'Low rain risk': 'activities.ruleCopy.lowRainRisk',
+  'Low wind': 'activities.ruleCopy.lowWind',
+  'Lower heat exposure': 'activities.ruleCopy.lowerHeatExposure',
+  'Lower humidity': 'activities.ruleCopy.lowerHumidity',
+  'Lower surface soil moisture': 'activities.ruleCopy.lowerSurfaceSoilMoisture',
+  'Lower wind': 'activities.ruleCopy.lowerWind',
+  'Manageable gusts': 'activities.ruleCopy.manageableGusts',
+  'Manageable wind': 'activities.ruleCopy.manageableWind',
+  'Nighttime window': 'activities.ruleCopy.nighttimeWindow',
+  'No precipitation expected': 'activities.ruleCopy.noPrecipitationExpected',
+  'No rain expected': 'activities.ruleCopy.noRainExpected',
+  'Outside golden-hour window': 'activities.ruleCopy.outsideGoldenHourWindow',
+  'Precipitation expected': 'activities.ruleCopy.precipitationExpected',
+  'Rain expected': 'activities.ruleCopy.rainExpected',
+  'Rain limits field work': 'activities.ruleCopy.rainLimitsFieldWork',
+  'Rain reduces irrigation need': 'activities.ruleCopy.rainReducesIrrigationNeed',
+  'Rain risk increases': 'activities.ruleCopy.rainRiskIncreases',
+  'Reduced visibility': 'activities.ruleCopy.reducedVisibility',
+  'Solar radiation is elevated': 'activities.ruleCopy.solarRadiationElevated',
+  'Solar radiation is lower': 'activities.ruleCopy.solarRadiationLower',
+  'Soil moisture in useful range': 'activities.ruleCopy.soilMoistureInUsefulRange',
+  'Soil moisture less favorable': 'activities.ruleCopy.soilMoistureLessFavorable',
+  'Stable gust conditions': 'activities.ruleCopy.stableGustConditions',
+  'Stable wind': 'activities.ruleCopy.stableWind',
+  'Strong gusts expected': 'activities.ruleCopy.strongGustsExpected',
+  'Strong wind': 'activities.ruleCopy.strongWind',
+  'Strong wind expected': 'activities.ruleCopy.strongWindExpected',
+  'Suitable humidity': 'activities.ruleCopy.suitableHumidity',
+  'Surface soil moisture is higher': 'activities.ruleCopy.surfaceSoilMoistureHigher',
+  'Temperature above frost range': 'activities.ruleCopy.temperatureAboveFrostRange',
+  'Temperature in useful range': 'activities.ruleCopy.temperatureInUsefulRange',
+  'Temperature less favorable': 'activities.ruleCopy.temperatureLessFavorable',
+  'Temperature near frost range': 'activities.ruleCopy.temperatureNearFrostRange',
+  'Temperature outside preferred range': 'activities.ruleCopy.temperatureOutsidePreferredRange',
+  'Temperature stress possible': 'activities.ruleCopy.temperatureStressPossible',
+  'Temperature supports irrigation timing':
+    'activities.ruleCopy.temperatureSupportsIrrigationTiming',
+  'Useful cloud structure': 'activities.ruleCopy.usefulCloudStructure',
+  'Very light wind': 'activities.ruleCopy.veryLightWind',
+  'Very low cloud cover': 'activities.ruleCopy.veryLowCloudCover',
+  'Wind may affect repeatability': 'activities.ruleCopy.windMayAffectRepeatability',
+  'Wind may move small subjects': 'activities.ruleCopy.windMayMoveSmallSubjects',
+  'Wind reduces frost context': 'activities.ruleCopy.windReducesFrostContext',
+  'Wind too strong': 'activities.ruleCopy.windTooStrong',
+  'Workable temperature': 'activities.ruleCopy.workableTemperature',
+};
+
+function translateActivityRuleText(
+  text: string,
+  key: string | undefined,
+  keys: Partial<Record<string, string>>,
+): string {
+  const translationKey = key ?? keys[text];
+  if (!translationKey) {
+    throw new Error(`Missing activity rule translation key for "${text}".`);
+  }
+  return translate(translationKey);
+}
+
+function localizedActivityDomain(definition: ActivityDomainDefinition): ActivityDomainDefinition {
+  const keys = ACTIVITY_DOMAIN_TRANSLATION_KEYS[definition.id];
+  return {
+    ...definition,
+    label: translate(keys.label),
+    description: translate(keys.description),
+  };
+}
+
+function localizedActivityProfile(
+  definition: ActivityProfileDefinition,
+): ActivityProfileDefinition {
+  const keys = ACTIVITY_PROFILE_TRANSLATION_KEYS[definition.id];
+  return {
+    ...definition,
+    label: translate(keys.label),
+    description: translate(keys.description),
+    rules: definition.rules.map((activityRule) => ({
+      ...activityRule,
+      label: translateActivityRuleText(
+        activityRule.label,
+        activityRule.labelKey,
+        ACTIVITY_RULE_LABEL_KEYS,
+      ),
+      positiveText: translateActivityRuleText(
+        activityRule.positiveText,
+        activityRule.positiveTextKey,
+        ACTIVITY_RULE_COPY_KEYS,
+      ),
+      negativeText: translateActivityRuleText(
+        activityRule.negativeText,
+        activityRule.negativeTextKey,
+        ACTIVITY_RULE_COPY_KEYS,
+      ),
+    })),
+  };
+}
+
+export function activityDomains(): ActivityDomainDefinition[] {
+  return ACTIVITY_DOMAINS.map(localizedActivityDomain);
+}
+
 export function activityDomain(id: ActivityDomainId): ActivityDomainDefinition | null {
-  return ACTIVITY_DOMAINS.find((definition) => definition.id === id) ?? null;
+  const definition = ACTIVITY_DOMAINS.find((item) => item.id === id);
+  return definition ? localizedActivityDomain(definition) : null;
 }
 
 export function activityProfile(id: ActivityProfileId): ActivityProfileDefinition | null {
-  return ACTIVITY_PROFILE_DEFINITIONS.find((definition) => definition.id === id) ?? null;
+  const definition = ACTIVITY_PROFILE_DEFINITIONS.find((item) => item.id === id);
+  return definition ? localizedActivityProfile(definition) : null;
 }
 
 export function activityProfilesForDomain(domainId: ActivityDomainId): ActivityProfileDefinition[] {
@@ -1421,7 +1686,9 @@ export function enabledActivityIds(settings: ActivitySettings): ActivityDomainId
 
 export function enabledActivityProfiles(settings: ActivitySettings): ActivityProfileDefinition[] {
   const enabled = new Set(enabledActivityIds(settings));
-  return ACTIVITY_PROFILE_DEFINITIONS.filter((definition) => enabled.has(definition.domainId));
+  return ACTIVITY_PROFILE_DEFINITIONS.filter((definition) => enabled.has(definition.domainId)).map(
+    localizedActivityProfile,
+  );
 }
 
 export function categoryForActivityScore(score: number | null): ActivitySuitabilityCategory {
@@ -1440,33 +1707,33 @@ export function activityCategoryLabel(
   if (semanticType === 'risk') {
     switch (category) {
       case 'excellent':
-        return 'Very High';
+        return translate('activities.categories.riskExcellent');
       case 'good':
-        return 'High';
+        return translate('activities.categories.riskGood');
       case 'fair':
-        return 'Moderate';
+        return translate('activities.categories.riskFair');
       case 'poor':
-        return 'Low';
+        return translate('activities.categories.riskPoor');
       case 'unsuitable':
-        return 'Very Low';
+        return translate('activities.categories.riskUnsuitable');
       case 'insufficientData':
-        return 'Insufficient data';
+        return translate('activities.categories.insufficientData');
     }
   }
 
   switch (category) {
     case 'excellent':
-      return 'Excellent';
+      return translate('activities.categories.excellent');
     case 'good':
-      return 'Good';
+      return translate('activities.categories.good');
     case 'fair':
-      return 'Fair';
+      return translate('activities.categories.fair');
     case 'poor':
-      return 'Poor';
+      return translate('activities.categories.poor');
     case 'unsuitable':
-      return 'Unsuitable';
+      return translate('activities.categories.unsuitable');
     case 'insufficientData':
-      return 'Insufficient data';
+      return translate('activities.categories.insufficientData');
   }
 }
 

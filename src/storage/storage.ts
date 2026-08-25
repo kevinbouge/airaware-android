@@ -15,6 +15,7 @@ import type {
   ExtendedWeatherReadings,
   HourlyEnvironmentalReading,
 } from '../models/environment';
+import type { CachedHealthSignals, HealthGeography, HealthSignal } from '../models/healthSignals';
 import {
   CURRENT_LOCATION_ID,
   LEGACY_MANUAL_LOCATION_ID,
@@ -56,6 +57,7 @@ import { coordinateNumber, isFiniteNumber } from '../utils/number';
 import { ACTIVITY_IDS, DEFAULT_ACTIVITY_SETTINGS } from '../core/activityDefinitions';
 import type { ActivitySettings } from '../models/activities';
 import { vegetationCacheKey } from '../services/vegetationCache';
+import { validLanguagePreference } from '../i18n/locale';
 
 const SETTINGS_KEY = 'airaware.settings.v1';
 const PROFILE_KEY = 'airaware.profile.v1';
@@ -68,8 +70,10 @@ const BILLING_ENTITLEMENT_CACHE_KEY = 'airaware.billing-entitlement-cache.v1';
 const BILLING_ENTITLEMENT_CACHE_SCHEMA_VERSION = 1;
 const VEGETATION_CACHE_KEY = 'airaware.vegetation-cache.v1';
 const DATA_DETAIL_CACHE_PREFIX = 'airaware.data-detail-cache.v1:';
+const HEALTH_SIGNALS_CACHE_KEY = 'airaware.health-signals-cache.v1';
 const MAX_VEGETATION_CACHE_ENTRIES = 12;
 const MAX_ENVIRONMENTAL_EVENT_NOTIFICATION_RECORDS = 80;
+const MAX_HEALTH_SIGNAL_CACHE_ENTRIES = 24;
 
 const jsonObjectSchema = z.record(z.string(), z.unknown());
 const persistedSettingsSchema = jsonObjectSchema;
@@ -112,6 +116,12 @@ const dataDetailCacheEnvelopeSchema = z
     savedAt: z.string(),
     cacheKey: z.string(),
     data: z.unknown(),
+  })
+  .passthrough();
+const healthSignalsCacheCollectionSchema = z
+  .object({
+    version: z.literal(1),
+    entries: z.array(z.unknown()),
   })
   .passthrough();
 
@@ -270,6 +280,8 @@ function manualLocationFromObject(value: unknown): ManualSavedLocation | null {
     latitude: coordinates.latitude,
     longitude: coordinates.longitude,
     placeName: stringOrNull(object.placeName),
+    countryCode: stringOrNull(object.countryCode),
+    countryName: stringOrNull(object.countryName),
     createdAt: timestampOrNow(object.createdAt),
     updatedAt: timestampOrNow(object.updatedAt),
   };
@@ -331,6 +343,8 @@ function locationStateFromObject(
           latitude: legacyCoordinates.latitude,
           longitude: legacyCoordinates.longitude,
           placeName: stringOrNull(object.manualPlaceName),
+          countryCode: stringOrNull(object.countryCode),
+          countryName: stringOrNull(object.countryName),
           createdAt: 0,
           updatedAt: 0,
         }
@@ -501,7 +515,7 @@ function isWidgetSnapshot(value: unknown): value is WidgetSnapshot {
       (typeof score === 'object' &&
         !Array.isArray(score) &&
         (score.type === 'environmental' || score.type === 'personalized') &&
-        (score.label === 'Environmental burden' || score.label === 'Personalized risk') &&
+        typeof score.label === 'string' &&
         isRiskCategoryValue(score.category) &&
         typeof score.categoryLabel === 'string' &&
         isFiniteNumber(score.score) &&
@@ -612,6 +626,79 @@ function isDataDetailTimeline(value: unknown): value is DataDetailTimeline {
     (isFiniteNumber(summary.average) || summary.average === null) &&
     (typeof object.error === 'string' || object.error === null)
   );
+}
+
+function isHealthGeography(value: unknown): value is HealthGeography {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const object = value as Record<string, unknown>;
+
+  return (
+    (object.level === 'local' ||
+      object.level === 'subregion' ||
+      object.level === 'region' ||
+      object.level === 'country' ||
+      object.level === 'supranational') &&
+    typeof object.name === 'string' &&
+    (typeof object.code === 'string' || object.code === undefined) &&
+    (typeof object.countryCode === 'string' || object.countryCode === undefined) &&
+    (typeof object.countryName === 'string' || object.countryName === undefined)
+  );
+}
+
+function isHealthSignal(value: unknown): value is HealthSignal {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const object = value as Record<string, unknown>;
+  const source = object.source as Record<string, unknown> | undefined;
+  const freshness = object.freshness as Record<string, unknown> | undefined;
+
+  return (
+    typeof object.id === 'string' &&
+    (object.domain === 'environmental' ||
+      object.domain === 'biological' ||
+      object.domain === 'population-health') &&
+    typeof object.type === 'string' &&
+    isHealthGeography(object.geography) &&
+    typeof object.updatedAt === 'string' &&
+    Number.isFinite(Date.parse(object.updatedAt)) &&
+    (object.category === 'low' ||
+      object.category === 'moderate' ||
+      object.category === 'high' ||
+      object.category === 'very-high' ||
+      object.category === 'unknown') &&
+    (object.trend === 'falling' ||
+      object.trend === 'stable' ||
+      object.trend === 'rising' ||
+      object.trend === 'unknown') &&
+    source !== undefined &&
+    typeof source === 'object' &&
+    typeof source.provider === 'string' &&
+    freshness !== undefined &&
+    typeof freshness === 'object' &&
+    (freshness.status === 'fresh' ||
+      freshness.status === 'aging' ||
+      freshness.status === 'stale') &&
+    (isFiniteNumber(object.value) || object.value === undefined) &&
+    (typeof object.unit === 'string' || object.unit === undefined)
+  );
+}
+
+function healthSignalsCacheFromObject(value: unknown): CachedHealthSignals | null {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+  const object = value as Record<string, unknown>;
+
+  if (
+    object.version !== 1 ||
+    typeof object.savedAt !== 'string' ||
+    !Number.isFinite(Date.parse(object.savedAt)) ||
+    typeof object.cacheKey !== 'string' ||
+    !isHealthGeography(object.geography) ||
+    !Array.isArray(object.signals) ||
+    !object.signals.every(isHealthSignal)
+  ) {
+    return null;
+  }
+
+  return object as unknown as CachedHealthSignals;
 }
 
 const EMPTY_EXTENDED_AIR_QUALITY: ExtendedAirQualityReadings = {
@@ -741,6 +828,7 @@ export async function loadSettings(): Promise<AppSettings> {
     enabledActivities: knownActivities(object?.enabledActivities),
     collapsedSections: booleanRecord(object?.collapsedSections),
     locationOnboardingComplete: object?.locationOnboardingComplete === true,
+    languagePreference: validLanguagePreference(object?.languagePreference),
   };
 }
 
@@ -998,6 +1086,40 @@ export async function loadDataDetailCache(
 
 export async function saveDataDetailCache(cache: CachedDataDetailTimeline): Promise<void> {
   await AsyncStorage.setItem(`${DATA_DETAIL_CACHE_PREFIX}${cache.cacheKey}`, JSON.stringify(cache));
+}
+
+async function loadHealthSignalsCaches(): Promise<CachedHealthSignals[]> {
+  const parsed = healthSignalsCacheCollectionSchema.safeParse(
+    readObject(await AsyncStorage.getItem(HEALTH_SIGNALS_CACHE_KEY)),
+  );
+  if (!parsed.success) return [];
+
+  return parsed.data.entries
+    .map(healthSignalsCacheFromObject)
+    .filter((entry): entry is CachedHealthSignals => entry !== null)
+    .slice(0, MAX_HEALTH_SIGNAL_CACHE_ENTRIES);
+}
+
+export async function loadHealthSignalsCacheForGeography(
+  cacheKey: string,
+): Promise<CachedHealthSignals | null> {
+  return (await loadHealthSignalsCaches()).find((entry) => entry.cacheKey === cacheKey) ?? null;
+}
+
+export async function saveHealthSignalsCache(cache: CachedHealthSignals): Promise<void> {
+  const existing = await loadHealthSignalsCaches();
+  const entries = [cache, ...existing.filter((entry) => entry.cacheKey !== cache.cacheKey)].slice(
+    0,
+    MAX_HEALTH_SIGNAL_CACHE_ENTRIES,
+  );
+
+  await AsyncStorage.setItem(
+    HEALTH_SIGNALS_CACHE_KEY,
+    JSON.stringify({
+      version: 1,
+      entries,
+    }),
+  );
 }
 
 export async function loadDevelopmentEntitlementOverride(): Promise<EntitlementState | null> {

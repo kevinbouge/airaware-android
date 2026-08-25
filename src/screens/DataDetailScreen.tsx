@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { useTranslation } from 'react-i18next';
 import { AppButton } from '../components/AppButton';
 import { DetailHeader } from '../components/DetailHeader';
 import { DetailStateView } from '../components/DetailStateView';
@@ -21,6 +22,7 @@ import { goBackOrToday, type DetailBackNavigation } from '../navigation/detailNa
 import { loadDataDetailTimeline } from '../services/dataDetailService';
 import { useAppStore } from '../state/useAppStore';
 import { colors, spacing } from '../theme/theme';
+import { translate } from '../i18n';
 
 interface DataDetailRouteParams {
   variableId: EnvironmentalVariableId;
@@ -38,18 +40,23 @@ function isDataDetailRouteParams(value: unknown): value is DataDetailRouteParams
 
 function DetailUnavailable({ onBack }: { onBack: () => void }) {
   return (
-    <DetailStateView title="Timeline" message="Timeline data is unavailable." onBack={onBack} />
+    <DetailStateView
+      title={translate('detail.timeline')}
+      message={translate('detail.timelineUnavailable')}
+      onBack={onBack}
+    />
   );
 }
 
 function summaryStatLabel(stat: 'minimum' | 'maximum' | 'average'): string {
-  if (stat === 'minimum') return 'Minimum';
-  if (stat === 'maximum') return 'Maximum';
-  return 'Average';
+  if (stat === 'minimum') return translate('detail.minimum');
+  if (stat === 'maximum') return translate('detail.maximum');
+  return translate('detail.average');
 }
 
 export function DataDetailScreen() {
   const navigation = useNavigation<DataDetailNavigation>();
+  const { t } = useTranslation();
   const route = useRoute();
   const environment = useAppStore((state) => state.environment);
   const [rangeId, setRangeId] = useState<DataDetailRangeId>('24h');
@@ -97,7 +104,7 @@ export function DataDetailScreen() {
         if (!cancelled) {
           setTimeline(null);
           setError(
-            loadError instanceof Error ? loadError.message : 'Timeline data is unavailable.',
+            loadError instanceof Error ? loadError.message : t('detail.timelineUnavailable'),
           );
         }
       } finally {
@@ -110,7 +117,7 @@ export function DataDetailScreen() {
     return () => {
       cancelled = true;
     };
-  }, [environment?.coordinates, now, params?.variableId, rangeId, variable]);
+  }, [environment?.coordinates, now, params?.variableId, rangeId, t, variable]);
 
   const summaryRows =
     timeline && variable
@@ -132,13 +139,13 @@ export function DataDetailScreen() {
       <View style={styles.content}>
         <View style={styles.header}>
           <EnvironmentalIcon
-            accessibilityLabel={`${variable.label} environmental icon`}
+            accessibilityLabel={t('detail.environmentalIconLabel', { label: variable.label })}
             name={getVariableIconName(variable.id)}
             size="event"
           />
           <View style={styles.headerCopy}>
             <Text style={styles.currentValue}>
-              Current: {formatDataDetailValue(variable, currentValue)}
+              {t('detail.current')}: {formatDataDetailValue(variable, currentValue)}
             </Text>
           </View>
         </View>
@@ -154,7 +161,7 @@ export function DataDetailScreen() {
           </View>
         ) : null}
 
-        {loading ? <Text style={styles.status}>Loading timeline…</Text> : null}
+        {loading ? <Text style={styles.status}>{t('detail.loadingTimeline')}</Text> : null}
         {error && !loading ? <Text style={styles.status}>{error}</Text> : null}
       </View>
 

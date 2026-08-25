@@ -130,9 +130,9 @@ describe('navigation', () => {
     expect(screen).toContain('bestActivityForecastDates');
     expect(screen).toContain('bestDates.has(day.date)');
     expect(screen).toContain('conditionRows.length > 0');
-    expect(screen).toContain('Forecast data is unavailable.');
-    expect(screen).toContain('Current activity measurements are unavailable.');
-    expect(screen).toContain('Current data coverage');
+    expect(screen).toContain("t('activities.forecastUnavailable')");
+    expect(screen).toContain("t('activities.measurementsUnavailable')");
+    expect(screen).toContain("t('activities.currentDataCoverage')");
     expect(screen).not.toContain("let dataCoverageLabel = 'Data coverage'");
   });
 
@@ -156,8 +156,8 @@ describe('navigation', () => {
     const activityDetail = fs.readFileSync('src/screens/ActivityDetailScreen.tsx', 'utf8');
     const activityDefinitions = fs.readFileSync('src/core/activityDefinitions.ts', 'utf8');
 
-    expect(settings).toContain('title="Disclaimers"');
-    expect(settings).toContain('appDisclaimerText()');
+    expect(settings).toContain("title={t('settings.disclaimers')}");
+    expect(settings).toContain("t('settings.disclaimerText')");
     expect(profile).not.toContain('diagnosis or symptom prediction');
     expect(activityDetail).not.toContain('definition.disclaimer');
     expect(activityDefinitions).not.toContain('disclaimer:');
@@ -171,16 +171,18 @@ describe('navigation', () => {
     expect(navigator).toContain('name="Pro"');
     expect(settings).not.toContain('title="AirAware Pro"');
     expect(settings).not.toContain('title="Activities"');
-    expect(pro).toContain('title="AirAware Pro"');
-    expect(pro).toContain('title="Activities"');
-    expect(pro.indexOf('title="AirAware Pro"')).toBeLessThan(pro.indexOf('title="Activities"'));
+    expect(pro).toContain("title={t('pro.title')}");
+    expect(pro).toContain("title={t('today.activities')}");
+    expect(pro.indexOf("title={t('pro.title')}")).toBeLessThan(
+      pro.indexOf("title={t('today.activities')}"),
+    );
   });
 
   it('makes Today activity cards visibly tappable', () => {
     const today = fs.readFileSync('src/screens/TodayScreen.tsx', 'utf8');
 
     expect(today).toContain('InsightCard');
-    expect(today).toContain('Opens professional profiles.');
+    expect(today).toContain("t('today.opensDetails'");
     expect(today).toContain('activitySection');
   });
 

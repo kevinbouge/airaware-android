@@ -27,20 +27,27 @@ export type AppIconName =
   | 'calendar'
   | 'clock'
   | 'privacy'
+  | 'respiratory'
+  | 'population-health'
+  | 'trend-rising'
+  | 'trend-falling'
+  | 'trend-stable'
   | 'external-link'
   | 'generic';
 
-export type AppIconSize = 'inline' | 'navigation' | 'action' | 'activity' | 'card' | 'hero';
+export type AppIconSize =
+  'inline' | 'navigation' | 'tabBrand' | 'action' | 'activity' | 'card' | 'hero';
 
 export type ActivityIconName = ActivityDomainId;
 
-export const APP_ICON_STROKE_WIDTH = 2.25;
+export const APP_ICON_STROKE_WIDTH = 2.1;
 
 export const APP_ICON_SIZES: Record<AppIconSize, number> = {
   inline: 18,
-  navigation: 21,
+  navigation: 20,
+  tabBrand: 22,
   action: 20,
-  activity: 28,
-  card: 34,
-  hero: 44,
+  activity: 24,
+  card: 28,
+  hero: 36,
 };

@@ -1,5 +1,6 @@
 import { FORECAST_DAY_LIMITS } from './config';
 import { forecastDayLimit } from './forecast';
+import { translate } from '../i18n';
 import type {
   AppCapabilities,
   FeatureDefinition,
@@ -26,31 +27,31 @@ export function featureDefinitions(capabilities: AppCapabilities): FeatureDefini
   return [
     {
       id: 'environmental_burden',
-      displayName: 'Environmental burden',
+      displayName: translate('features.environmentalBurden'),
       category: 'environmentalVariables',
       available: true,
     },
     {
       id: 'personalized_risk',
-      displayName: 'Personalized risk',
+      displayName: translate('features.personalizedRisk'),
       category: 'environmentalVariables',
       available: true,
     },
     {
       id: 'current_readings',
-      displayName: 'Current readings',
+      displayName: translate('features.currentReadings'),
       category: 'environmentalVariables',
       available: capabilities.environmentalVariables.availableGroups.length > 0,
     },
     {
       id: 'forecast',
-      displayName: 'Forecast',
+      displayName: translate('features.forecast'),
       category: 'forecast',
       available: capabilities.forecast.defaultDays > 0 && capabilities.forecast.maxDays > 0,
     },
     {
       id: 'extended_forecast',
-      displayName: 'Extended Forecast',
+      displayName: translate('features.extendedForecast'),
       category: 'forecast',
       available: forecastDayLimit(capabilities) > FORECAST_DAY_LIMITS.free,
       requiredEntitlement: 'pro_lifetime',
@@ -60,7 +61,7 @@ export function featureDefinitions(capabilities: AppCapabilities): FeatureDefini
     },
     {
       id: 'activities',
-      displayName: 'Professional Activities',
+      displayName: translate('features.professionalActivities'),
       category: 'activities',
       available: capabilities.activities.available,
       requiredEntitlement: 'pro_lifetime',
@@ -72,7 +73,7 @@ export function featureDefinitions(capabilities: AppCapabilities): FeatureDefini
     },
     {
       id: 'nearby_vegetation',
-      displayName: 'Nearby vegetation',
+      displayName: translate('features.nearbyVegetation'),
       category: 'environmentalVariables',
       available: true,
       freeBehavior: 'OpenStreetMap vegetation and land-use context',
@@ -81,31 +82,31 @@ export function featureDefinitions(capabilities: AppCapabilities): FeatureDefini
     },
     {
       id: 'best_outdoor_window',
-      displayName: 'Best outdoor window',
+      displayName: translate('features.bestOutdoorWindow'),
       category: 'forecast',
       available: capabilities.forecast.defaultDays > 0,
     },
     {
       id: 'automatic_location',
-      displayName: 'Automatic location',
+      displayName: translate('features.automaticLocation'),
       category: 'locations',
       available: capabilities.locations.automaticLocation,
     },
     {
       id: 'manual_location',
-      displayName: 'Saved manual locations',
+      displayName: translate('features.manualLocations'),
       category: 'locations',
       available: capabilities.locations.savedManualLocations,
     },
     {
       id: 'daily_summary',
-      displayName: 'Daily summary',
+      displayName: translate('features.dailySummary'),
       category: 'sharing',
       available: capabilities.sharing.dailySummary && capabilities.sharing.nativeShareSheet,
     },
     {
       id: 'compact_home_widget',
-      displayName: 'Compact home-screen widget',
+      displayName: translate('features.compactWidget'),
       category: 'widgets',
       available: hasWidgetCapability(capabilities, 'compact_home_widget'),
       freeBehavior: 'Current score and main factor',
@@ -114,7 +115,7 @@ export function featureDefinitions(capabilities: AppCapabilities): FeatureDefini
     },
     {
       id: 'advanced_home_widget',
-      displayName: 'Advanced home-screen widget',
+      displayName: translate('features.advancedWidget'),
       category: 'widgets',
       available: hasWidgetCapability(capabilities, 'advanced_home_widget'),
       requiredEntitlement: 'pro_lifetime',
@@ -124,7 +125,7 @@ export function featureDefinitions(capabilities: AppCapabilities): FeatureDefini
     },
     {
       id: 'basic_transition_notifications',
-      displayName: 'Risk transition notifications',
+      displayName: translate('features.riskNotifications'),
       category: 'notifications',
       available: hasNotificationCapability(capabilities, 'basic_transition_notifications'),
       freeBehavior: 'Active headline score transition notifications',
@@ -133,7 +134,7 @@ export function featureDefinitions(capabilities: AppCapabilities): FeatureDefini
     },
     {
       id: 'advanced_environment_notifications',
-      displayName: 'Advanced environmental notifications',
+      displayName: translate('features.advancedNotifications'),
       category: 'notifications',
       available: hasNotificationCapability(capabilities, 'advanced_environment_notifications'),
       requiredEntitlement: 'pro_lifetime',
