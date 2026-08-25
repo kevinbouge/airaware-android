@@ -52,8 +52,9 @@ describe('navigation', () => {
     expect(screen).toContain('goBackOrToday(navigation)');
     expect(screen).toContain('function DetailUnavailable');
     expect(header).toContain('accessibilityLabel="Back"');
-    expect(header).toContain('<BackChevron />');
+    expect(header).toContain('<AppIcon name="back" size="action" color={colors.primary} />');
     expect(header).not.toContain('backIcon');
+    expect(header).not.toContain('<BackChevron />');
     expect(header).not.toContain('marginTop: -5');
   });
 

@@ -32,8 +32,13 @@ describe('nearby vegetation display rows', () => {
 
     expect(labels).toEqual(['Woodland', 'Grassland', 'Parkland', 'Mapped birch', 'Mapped olive']);
     expect(rows.find((row) => row.label === 'Grassland')?.value).toBe('180 m');
+    expect(rows.find((row) => row.label === 'Grassland')?.iconName).toBe('vegetation-grassland');
     expect(rows.find((row) => row.label === 'Woodland')?.value).toBe('1.1 km');
+    expect(rows.find((row) => row.label === 'Woodland')?.iconName).toBe('vegetation-woodland');
     expect(rows.find((row) => row.label === 'Mapped birch')?.value).toBe('6 · nearest 250 m');
+    expect(rows.find((row) => row.label === 'Mapped birch')?.iconName).toBe(
+      'vegetation-tree-taxon',
+    );
     expect(labels).not.toContain('Mapped alder');
   });
 

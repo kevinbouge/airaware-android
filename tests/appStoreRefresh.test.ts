@@ -375,6 +375,32 @@ describe('app store refresh orchestration', () => {
     });
   });
 
+  it('hydrates with defaults when local settings storage cannot be loaded', async () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    jest.mocked(AsyncStorage.getItem).mockRejectedValueOnce(new Error('storage unavailable'));
+    useAppStore.setState({
+      hydrated: false,
+      settings: {
+        ...DEFAULT_SETTINGS,
+        summaryLocation: 'place',
+      },
+      error: null,
+    });
+
+    try {
+      await useAppStore.getState().hydrate();
+    } finally {
+      warnSpy.mockRestore();
+    }
+
+    expect(useAppStore.getState().hydrated).toBe(true);
+    expect(useAppStore.getState().settings).toMatchObject({
+      activeLocationId: CURRENT_LOCATION_ID,
+      summaryLocation: DEFAULT_SETTINGS.summaryLocation,
+    });
+    expect(useAppStore.getState().error).toContain('Defaults were used');
+  });
+
   it('preserves forced refresh when queued behind an in-flight refresh', async () => {
     const firstAirQuality = deferred<NormalizedAirQuality>();
     const firstWeather = deferred<NormalizedWeather>();
@@ -512,6 +538,23 @@ describe('app store refresh orchestration', () => {
       mode: 'automatic',
       permissionStatus: 'unavailable',
     });
+    expect(useAppStore.getState().environment).toBeNull();
+    expect(useAppStore.getState().error).toBe('No environmental data is available.');
+  });
+
+  it('clears refresh loading state when widget snapshot persistence fails after refresh failure', async () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    jest.mocked(AsyncStorage.setItem).mockRejectedValueOnce(new Error('storage full'));
+    mockFetchAirQuality.mockRejectedValue(new Error('air unavailable'));
+    mockFetchWeather.mockRejectedValue(new Error('weather unavailable'));
+
+    try {
+      await useAppStore.getState().refresh({ force: true });
+    } finally {
+      warnSpy.mockRestore();
+    }
+
+    expect(useAppStore.getState().loading).toBe(false);
     expect(useAppStore.getState().environment).toBeNull();
     expect(useAppStore.getState().error).toBe('No environmental data is available.');
   });

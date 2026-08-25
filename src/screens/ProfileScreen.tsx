@@ -1,21 +1,29 @@
 import { ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SectionCard } from '../components/SectionCard';
+import { EnvironmentalIcon } from '../components/icons/EnvironmentalIcon';
+import { getProfileFactorIconName } from '../components/icons/environmentalIconResolver';
 import { profileFactorSections } from '../core/profileSections';
 import { useCapabilities } from '../hooks/useCapabilities';
+import type { ProfileFactorId } from '../models/profile';
 import { useAppStore } from '../state/useAppStore';
 import { colors, spacing } from '../theme/theme';
 
 function ToggleRow({
   label,
+  profileFactorId,
   value,
   onValueChange,
 }: {
   label: string;
+  profileFactorId?: ProfileFactorId | undefined;
   value: boolean;
   onValueChange: () => void;
 }) {
   return (
     <View style={styles.row}>
+      {profileFactorId ? (
+        <EnvironmentalIcon name={getProfileFactorIconName(profileFactorId)} size="measurement" />
+      ) : null}
       <Text style={styles.label}>{label}</Text>
       <Switch value={value} onValueChange={onValueChange} />
     </View>
@@ -52,6 +60,7 @@ export function ProfileScreen() {
           <ToggleRow
             key={factor}
             label={label}
+            profileFactorId={factor}
             value={profile.factors[factor]}
             onValueChange={() => toggleProfileFactor(factor)}
           />
@@ -63,6 +72,7 @@ export function ProfileScreen() {
           <ToggleRow
             key={factor}
             label={label}
+            profileFactorId={factor}
             value={profile.factors[factor]}
             onValueChange={() => toggleProfileFactor(factor)}
           />
@@ -74,6 +84,7 @@ export function ProfileScreen() {
           <ToggleRow
             key={factor}
             label={label}
+            profileFactorId={factor}
             value={profile.factors[factor]}
             onValueChange={() => toggleProfileFactor(factor)}
           />
@@ -87,6 +98,7 @@ export function ProfileScreen() {
               <ToggleRow
                 key={row.id}
                 label={row.label}
+                profileFactorId={row.profileFactorId}
                 value={profile.factors[row.profileFactorId]}
                 onValueChange={() => {
                   if (row.profileFactorId) void toggleProfileFactor(row.profileFactorId);

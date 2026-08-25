@@ -1,6 +1,11 @@
 import { StyleSheet, Text } from 'react-native';
 import { ReadingRow } from './ReadingRow';
 import { SectionCard } from './SectionCard';
+import {
+  getVegetationCategoryIconName,
+  getVegetationTaxonIconName,
+} from './icons/environmentalIconResolver';
+import type { EnvironmentalIconName } from './icons/environmentalIconTypes';
 import type {
   NormalizedVegetationContext,
   VegetationCategoryId,
@@ -22,6 +27,7 @@ interface VegetationRow {
   id: string;
   label: string;
   value: string;
+  iconName: EnvironmentalIconName;
 }
 
 const CATEGORY_LABELS: Record<VegetationCategoryId, string> = {
@@ -54,6 +60,7 @@ export function nearbyVegetationRows(
     return [
       {
         id,
+        iconName: getVegetationCategoryIconName(id as VegetationCategoryId),
         label,
         value: formatDistanceMeters(category.nearestMeters),
       },
@@ -66,6 +73,7 @@ export function nearbyVegetationRows(
     return [
       {
         id: `taxon.${id}`,
+        iconName: getVegetationTaxonIconName(id as VegetationTaxonId),
         label,
         value:
           taxon.nearestMeters === null
@@ -97,7 +105,9 @@ export function NearbyVegetationSection({
       onToggle={onToggle}
     >
       {rows.length > 0 ? (
-        rows.map((row) => <ReadingRow key={row.id} label={row.label} value={row.value} />)
+        rows.map((row) => (
+          <ReadingRow key={row.id} iconName={row.iconName} label={row.label} value={row.value} />
+        ))
       ) : (
         <Text style={styles.empty}>
           {loading

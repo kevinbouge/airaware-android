@@ -15,7 +15,11 @@ import { InsightCard } from '../components/InsightCard';
 import { ScoreCard } from '../components/ScoreCard';
 import { SectionCard } from '../components/SectionCard';
 import { StateView } from '../components/StateView';
+import { ActivityIcon } from '../components/icons/ActivityIcon';
+import { AppIcon } from '../components/icons/AppIcon';
+import { EnvironmentalIcon } from '../components/icons/EnvironmentalIcon';
 import { GasMaskIcon } from '../components/icons/GasMaskIcon';
+import { getEventIconName } from '../components/icons/environmentalIconResolver';
 import { useCapabilities } from '../hooks/useCapabilities';
 import { useDerivedEnvironment } from '../hooks/useDerivedEnvironment';
 import {
@@ -127,26 +131,6 @@ function locationSelectorRightLabel(input: {
   if (input.selected) return 'Active';
   if (!input.coordinates) return undefined;
   return formatCoordinates(input.coordinates) ?? undefined;
-}
-
-function eventIcon(event: EnvironmentalEvent): string {
-  switch (event.type) {
-    case 'pollen':
-      return '🌾';
-    case 'saharan-dust':
-      return '🟠';
-    case 'wildfire-pollution':
-      return '🔥';
-    case 'uv':
-      return '☀️';
-    case 'mold':
-      return '🍄';
-    case 'pollution':
-    case 'aerosol':
-      return '🌫️';
-    case 'headline-risk':
-      return '🎯';
-  }
 }
 
 function eventSeverityColor(event: EnvironmentalEvent): string {
@@ -286,10 +270,14 @@ export function TodayScreen() {
           <Pressable
             accessibilityRole="button"
             onPress={() => setLocationSelectorVisible(true)}
-            style={({ pressed }) => [pressed ? styles.pressed : null]}
+            style={({ pressed }) => [styles.placeButton, pressed ? styles.pressed : null]}
           >
-            <Text style={styles.place}>{locationLabel}</Text>
-            {locationDetail ? <Text style={styles.placeDetail}>{locationDetail}</Text> : null}
+            <AppIcon name="location" size="inline" color={colors.muted} />
+            <View style={styles.placeCopy}>
+              <Text style={styles.place}>{locationLabel}</Text>
+              {locationDetail ? <Text style={styles.placeDetail}>{locationDetail}</Text> : null}
+            </View>
+            <AppIcon name="chevron-right" size="inline" color={colors.muted} />
           </Pressable>
         </View>
 
@@ -301,6 +289,7 @@ export function TodayScreen() {
             score={environmentalScore.score}
             category={environmentalScore.category}
             details={environmentalDetails}
+            iconName="environmental-risk"
             onPress={() => navigation.navigate('EnvironmentalBurdenDetail', undefined)}
           />
         ) : null}
@@ -311,6 +300,7 @@ export function TodayScreen() {
             score={personalizedScore.score}
             category={personalizedScore.category}
             details={personalizedDetails}
+            iconName="environmental-risk"
             onPress={() => navigation.navigate('PersonalizedRiskDetail', undefined)}
           />
         ) : null}
@@ -325,16 +315,28 @@ export function TodayScreen() {
                 onPress={() => setSelectedEvent(event)}
                 style={({ pressed }) => [styles.eventCard, pressed ? styles.pressed : null]}
               >
-                <View style={styles.eventHeader}>
-                  <Text style={styles.eventTitle}>
-                    {eventIcon(event)} {event.title}
-                  </Text>
-                  <Text style={[styles.eventSeverity, { color: eventSeverityColor(event) }]}>
-                    {event.category ?? event.severity}
-                  </Text>
+                <View style={styles.eventRow}>
+                  <View
+                    style={[styles.eventIconContainer, { borderColor: eventSeverityColor(event) }]}
+                  >
+                    <EnvironmentalIcon
+                      accessibilityLabel={`${event.title} environmental event icon`}
+                      color={eventSeverityColor(event)}
+                      name={getEventIconName(event.type)}
+                      size="event"
+                    />
+                  </View>
+                  <View style={styles.eventCopy}>
+                    <View style={styles.eventHeader}>
+                      <Text style={styles.eventTitle}>{event.title}</Text>
+                      <Text style={[styles.eventSeverity, { color: eventSeverityColor(event) }]}>
+                        {event.category ?? event.severity}
+                      </Text>
+                    </View>
+                    <Text style={styles.eventTiming}>{eventTimingLabel(event, referenceTime)}</Text>
+                    <Text style={styles.eventBody}>{event.body}</Text>
+                  </View>
                 </View>
-                <Text style={styles.eventTiming}>{eventTimingLabel(event, referenceTime)}</Text>
-                <Text style={styles.eventBody}>{event.body}</Text>
               </Pressable>
             ))}
           </View>
@@ -363,6 +365,9 @@ export function TodayScreen() {
                     <InsightCard
                       key={domain.id}
                       title={domain.label}
+                      icon={
+                        <ActivityIcon activity={domain.id} size="inline" color={colors.muted} />
+                      }
                       accent={activityColor(
                         primaryProfile?.current?.category ?? 'insufficientData',
                         primaryProfile?.semanticType,
@@ -407,12 +412,13 @@ export function TodayScreen() {
               {shareMessage ? <Text style={styles.shareMessage}>{shareMessage}</Text> : null}
               <AppButton
                 title={loading ? 'Refreshing...' : 'Refresh'}
+                iconName="refresh"
                 rightLabel={updateStatus}
                 fullWidth
                 onPress={() => refresh({ force: true })}
                 disabled={loading}
               />
-              <AppButton title="Share" onPress={shareDailySummary} />
+              <AppButton title="Share" iconName="share" onPress={shareDailySummary} />
             </View>
           </>
         ) : (
@@ -424,6 +430,7 @@ export function TodayScreen() {
             </Text>
             <AppButton
               title="Continue and refresh"
+              iconName="current-location"
               onPress={startLocationRefresh}
               disabled={loading}
             />
@@ -451,6 +458,7 @@ export function TodayScreen() {
                   <AppButton
                     key={savedLocation.id}
                     title={savedLocation.name}
+                    iconName={savedLocation.type === 'current' ? 'current-location' : 'location'}
                     rightLabel={locationSelectorRightLabel({ selected, coordinates })}
                     selected={selected}
                     fullWidth
@@ -463,7 +471,12 @@ export function TodayScreen() {
                 );
               })}
             </ScrollView>
-            <AppButton title="Close" fullWidth onPress={() => setLocationSelectorVisible(false)} />
+            <AppButton
+              title="Close"
+              iconName="close"
+              fullWidth
+              onPress={() => setLocationSelectorVisible(false)}
+            />
           </View>
         </SafeAreaView>
       </Modal>
@@ -477,7 +490,15 @@ export function TodayScreen() {
           <View style={styles.selectorPanel}>
             {selectedEvent ? (
               <>
-                <Text style={styles.selectorTitle}>{selectedEvent.title}</Text>
+                <View style={styles.eventDetailTitleRow}>
+                  <EnvironmentalIcon
+                    accessibilityLabel={`${selectedEvent.title} environmental event icon`}
+                    color={eventSeverityColor(selectedEvent)}
+                    name={getEventIconName(selectedEvent.type)}
+                    size="event"
+                  />
+                  <Text style={styles.selectorTitle}>{selectedEvent.title}</Text>
+                </View>
                 <Text style={styles.eventTiming}>
                   Expected: {eventTimingLabel(selectedEvent, referenceTime)}
                 </Text>
@@ -501,7 +522,12 @@ export function TodayScreen() {
                 </Text>
               </>
             ) : null}
-            <AppButton title="Close" fullWidth onPress={() => setSelectedEvent(null)} />
+            <AppButton
+              title="Close"
+              iconName="close"
+              fullWidth
+              onPress={() => setSelectedEvent(null)}
+            />
           </View>
         </SafeAreaView>
       </Modal>
@@ -549,6 +575,29 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm,
     justifyContent: 'space-between',
+  },
+  eventCopy: {
+    flex: 1,
+    gap: spacing.xs,
+  },
+  eventDetailTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  eventIconContainer: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: colors.pressedSurface,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    height: 56,
+    justifyContent: 'center',
+    width: 56,
+  },
+  eventRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
   },
   eventSection: {
     gap: spacing.sm,
@@ -601,7 +650,20 @@ const styles = StyleSheet.create({
   place: {
     color: colors.muted,
     fontSize: 16,
+  },
+  placeButton: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    borderRadius: 10,
+    flexDirection: 'row',
+    gap: spacing.xs,
     marginTop: spacing.xs,
+    minHeight: 44,
+    paddingRight: spacing.sm,
+  },
+  placeCopy: {
+    flex: 1,
+    minWidth: 0,
   },
   placeDetail: {
     color: colors.muted,

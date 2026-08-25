@@ -167,6 +167,11 @@ const emptyLocation: LocationInfo = {
   permissionStatus: 'unknown',
 };
 
+const LOCAL_DATA_LOAD_FALLBACK_MESSAGE =
+  'Some locally saved AirAware data could not be loaded. Defaults were used where needed.';
+const SETTINGS_SAVE_FAILED_MESSAGE =
+  'Settings are applied for now, but AirAware could not save them to this device.';
+
 function staleFrom(savedAt: string | null): boolean {
   if (!savedAt) return false;
   const savedAtTime = Date.parse(savedAt);
@@ -205,8 +210,12 @@ async function persistWidgetSnapshotFor(input: {
     stale: input.stale,
   });
 
-  await saveWidgetSnapshot(snapshot);
-  await saveWidgetSnapshotToNative(snapshot);
+  try {
+    await saveWidgetSnapshot(snapshot);
+    await saveWidgetSnapshotToNative(snapshot);
+  } catch (error) {
+    console.warn('AirAware: widget snapshot save failed', error);
+  }
 }
 
 async function loadCachedVegetationFor(input: {
@@ -268,7 +277,15 @@ function enqueueSettingsSave(settings: AppSettings): Promise<void> {
   settingsSaveQueue = settingsSaveQueue
     .catch((error) => console.warn('AirAware: previous settings save failed', error))
     .then(() => saveSettings(settings))
-    .catch((error) => console.warn('AirAware: settings save failed', error));
+    .then(() => {
+      if (useAppStore.getState().error === SETTINGS_SAVE_FAILED_MESSAGE) {
+        useAppStore.setState({ error: null });
+      }
+    })
+    .catch((error) => {
+      console.warn('AirAware: settings save failed', error);
+      useAppStore.setState({ error: SETTINGS_SAVE_FAILED_MESSAGE });
+    });
   return settingsSaveQueue;
 }
 
@@ -514,6 +531,21 @@ export const useAppStore = create<AppStore>((set, get) => ({
   environmentalEventNotificationState: null,
 
   hydrate: async () => {
+    let usedLocalDataFallback = false;
+    const loadBestEffort = async <T>(
+      label: string,
+      promise: Promise<T>,
+      fallback: T,
+    ): Promise<T> => {
+      try {
+        return await promise;
+      } catch (error) {
+        usedLocalDataFallback = true;
+        console.warn(`AirAware: failed to load ${label}`, error);
+        return fallback;
+      }
+    };
+
     const [
       storedSettings,
       profile,
@@ -523,21 +555,36 @@ export const useAppStore = create<AppStore>((set, get) => ({
       notificationState,
       eventNotificationState,
     ] = await Promise.all([
-      loadSettings(),
-      loadProfile(),
-      loadEnvironmentCache(),
-      billingGateway.initializeBilling(),
-      loadDevelopmentEntitlementOverride(),
-      loadRiskNotificationTransitionState(),
-      loadEnvironmentalEventNotificationState(),
+      loadBestEffort('settings', loadSettings(), DEFAULT_SETTINGS),
+      loadBestEffort('profile', loadProfile(), DEFAULT_PROFILE),
+      loadBestEffort('environment cache', loadEnvironmentCache(), null),
+      loadBestEffort(
+        'billing state',
+        billingGateway.initializeBilling(),
+        UNCONFIGURED_BILLING_STATE,
+      ),
+      loadBestEffort(
+        'development entitlement override',
+        loadDevelopmentEntitlementOverride(),
+        null,
+      ),
+      loadBestEffort('risk notification state', loadRiskNotificationTransitionState(), null),
+      loadBestEffort(
+        'environmental event notification state',
+        loadEnvironmentalEventNotificationState(),
+        null,
+      ),
     ]);
     const billingState = effectiveBillingState(rawBillingState, developmentOverride);
     const entitlement = billingState.entitlement;
     let settings = settingsForProfileState(storedSettings, profile);
     const activeCoordinates = activeCoordinatesFromSettings(settings);
     const activeCache =
-      (await loadEnvironmentCacheForCoordinates(activeCoordinates)) ??
-      (activeCoordinates ? null : latestCache);
+      (await loadBestEffort(
+        'active location environment cache',
+        loadEnvironmentCacheForCoordinates(activeCoordinates),
+        null,
+      )) ?? (activeCoordinates ? null : latestCache);
     const environment = activeCache?.data ?? null;
     const hydratedLocation = environment
       ? {
@@ -560,9 +607,13 @@ export const useAppStore = create<AppStore>((set, get) => ({
         ),
       };
     }
-    const cachedVegetation = await loadCachedVegetationFor({
-      coordinates: environment?.coordinates ?? null,
-    });
+    const cachedVegetation = await loadBestEffort(
+      'vegetation cache',
+      loadCachedVegetationFor({
+        coordinates: environment?.coordinates ?? null,
+      }),
+      { vegetation: null, stale: false },
+    );
     const environmentalEvents =
       environment && staleForecastCanDisplayEvents(environment)
         ? detectEnvironmentalEvents(environment, {
@@ -593,6 +644,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         freshEnvironmentalEventNotificationState(eventNotificationState),
       stale: staleFrom(activeCache?.metadata.savedAt ?? null),
       location: hydratedLocation,
+      error: usedLocalDataFallback ? LOCAL_DATA_LOAD_FALLBACK_MESSAGE : get().error,
     });
 
     if (!unsubscribeBillingGateway) {

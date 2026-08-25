@@ -1,16 +1,21 @@
+import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing } from '../theme/theme';
+import { AppIcon } from './icons/AppIcon';
 
 interface DetailHeaderProps {
   title: string;
   subtitle?: string | null;
   onBack: () => void;
+  icon?: ReactNode | undefined;
 }
 
-export function DetailHeader({ title, subtitle, onBack }: DetailHeaderProps) {
+export function DetailHeader({ title, subtitle, onBack, icon }: DetailHeaderProps) {
+  const insets = useSafeAreaInsets();
+
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <Pressable
         accessibilityLabel="Back"
         accessibilityRole="button"
@@ -18,34 +23,23 @@ export function DetailHeader({ title, subtitle, onBack }: DetailHeaderProps) {
         onPress={onBack}
         style={({ pressed }) => [styles.backButton, pressed ? styles.pressed : null]}
       >
-        <BackChevron />
+        <AppIcon name="back" size="action" color={colors.primary} />
         <Text style={styles.backLabel}>Back</Text>
       </Pressable>
-      <View style={styles.titleBlock}>
-        <Text numberOfLines={1} style={styles.title}>
-          {title}
-        </Text>
-        {subtitle ? (
-          <Text numberOfLines={2} style={styles.subtitle}>
-            {subtitle}
+      <View style={styles.heading}>
+        {icon}
+        <View style={styles.titleBlock}>
+          <Text numberOfLines={1} style={styles.title}>
+            {title}
           </Text>
-        ) : null}
+          {subtitle ? (
+            <Text numberOfLines={2} style={styles.subtitle}>
+              {subtitle}
+            </Text>
+          ) : null}
+        </View>
       </View>
     </View>
-  );
-}
-
-function BackChevron() {
-  return (
-    <Svg fill="none" height={20} viewBox="0 0 24 24" width={20}>
-      <Path
-        d="M15 18 9 12l6-6"
-        stroke={colors.primary}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2.4}
-      />
-    </Svg>
   );
 }
 
@@ -75,6 +69,13 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.65,
+  },
+  heading: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    minWidth: 0,
   },
   subtitle: {
     color: colors.muted,

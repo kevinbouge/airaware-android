@@ -46,7 +46,9 @@ provide medical advice.
 - Generated Android `AppWidgetProvider` classes and RemoteViews layouts for the compact and advanced
   home-screen widgets
 - Small native bridge for writing widget snapshots into Android shared preferences
-- `react-native-svg` for the gas-mask identity and tab icons
+- `react-native-svg` for the gas-mask identity, Lucide icons, and local environmental SVGs
+- `@meteocons/svg-static` for offline static Meteocons environmental icons
+- `lucide-react-native` for activity identity, navigation, and generic application icons
 - `react-native-purchases` for RevenueCat purchase and entitlement integration
 
 ### Quality Tooling
@@ -69,6 +71,9 @@ nvm use 22.13.1
 - Open-Meteo Air Quality and Weather Forecast data, no API key required
 - Approximate foreground location plus multiple locally saved manual map locations
 - Location permission is requested only after the first-launch explanation is accepted
+- Current location uses Android coarse foreground permission, last-known device coordinates, and the
+  locally stored Current-location coordinates as a best-effort fallback when Android cannot provide a
+  fresh fix
 - Exactly one active location drives environmental data, vegetation, forecasts, notifications,
   daily summaries, and widgets
 - Saved manual locations are capped by the app capability model and remain available to Free and Pro
@@ -90,6 +95,8 @@ nvm use 22.13.1
 - Contextual environmental measurement drill-downs from Today detail screens
 - Compact Environmental events section on Today, with event detail evidence and Open-Meteo/CAMS
   attribution
+- Semantic icon system with local static Meteocons for environmental information and Lucide for
+  activities, navigation, locations, settings, notifications, and actions
 - Nearby vegetation and land-use context from OpenStreetMap, available to Free and Pro users
 - Pro-only Activity domains for agriculture, drone operations, photography, astronomy, and outdoor
   work
@@ -101,7 +108,7 @@ nvm use 22.13.1
 - Optional Free risk transition notifications for the active headline score
 - Pro-only configurable Environmental Event alert notifications, evaluated during normal app
   refreshes
-- Gas-mask app icon and risk-colored Today icon
+- Preserved gas-mask app icon and brand mark
 - Capability-based Free/Pro forecast horizon, Activities, and advanced widget access
 - AirAware Pro lifetime purchase entitlement managed through RevenueCat and Google Play when a
   public RevenueCat SDK key is configured
@@ -113,7 +120,8 @@ nvm use 22.13.1
   cards
 - **Context detail screens**: Environmental burden, Personalized risk, and Activity details with
   Daily forecast graphs, current-to-next-24-hour forecast graphs, and tappable environmental
-  measurements
+  measurements. Detail headers are safe-area aware on Android devices with status bars or display
+  cutouts.
 - **Environmental variable details**: shared 24-hour, week, month, and year timeline for individual
   variables. The 24-hour variable timeline is the history-aware view: past values appear above Now
   and forecast values appear below Now.
@@ -237,6 +245,36 @@ fire location or movement.
 Events use model forecasts, not local sensors, and do not predict medical symptoms. Advanced CAMS
 fields may be unavailable for some regions, model domains, or forecast hours. Missing optional event
 evidence is omitted rather than treated as zero.
+
+## Environmental Visual System
+
+AirAware keeps three icon families deliberately separate:
+
+- **Brand**: the AirAware gas mask is the application identity. Launcher icons, adaptive launcher
+  foreground/background/monochrome assets, splash artwork, notification icon configuration, and the
+  Today header and Today tab brand marks continue to use the existing gas-mask assets unchanged.
+- **Environmental information**: local static Meteocons Monochrome SVGs are bundled through the
+  semantic `EnvironmentalIcon` abstraction with AirAware-controlled color and standardized sizes.
+  Screens ask for AirAware concepts such as `saharan-dust`,
+  `grass-pollen`, `pm25`, `uv`, or `mold-potential`; they do not import Meteocons filenames
+  directly.
+- **General UI and Activities**: Lucide icons are used through the semantic `AppIcon` and
+  `ActivityIcon` abstractions for activity identities, bottom navigation, back, map zoom, settings,
+  location, notifications, share, refresh, edit, delete, and other application actions.
+
+The environmental icon resolver maps variables, event types, and normalized weather icon conditions
+to a small explicit Meteocons asset set. Icons are decorative or supplementary unless they are the
+only visible representation of a concept; text labels, values, and categories remain authoritative.
+Event severity continues to come from AirAware's existing semantic colors and text, not from
+Meteocons artwork.
+
+The Lucide resolver maps app concepts and Activity domains to a small explicit component set. It is
+not used for environmental measurements when a Meteocons/environmental icon is available.
+
+Environmental icons are local app assets and work offline. AirAware does not use the Meteocons CDN,
+remote SVG URLs, WebViews, runtime SVG downloads, runtime Base64 generation, or icon-service
+requests. Android widgets are native `RemoteViews`; this milestone preserves the existing widget
+presentation rather than trying to render React Native SVGs inside widgets.
 
 ## Nearby Vegetation
 
@@ -541,6 +579,18 @@ Run on Android:
 npm run android
 ```
 
+For emulator testing with ADB, enable location services and inject a coarse test fix before testing
+the first-launch Current location flow:
+
+```sh
+adb shell cmd location set-location-enabled true
+adb emu geo fix 14.4378 50.0755
+```
+
+The emulator command expects longitude first, then latitude. On a fresh install with no previously
+stored Current-location coordinates, AirAware does not invent a fallback city; Android must provide a
+real current fix or the user can add a manual saved location.
+
 Generate native Android project files for development builds or native validation:
 
 ```sh
@@ -590,7 +640,7 @@ src/models/       Provider-independent TypeScript domain models
 src/services/     Location, billing gateway, notifications, widgets, and environment assembly
 src/storage/      AsyncStorage-backed settings and cache
 src/state/        Zustand app store and refresh orchestration
-src/components/   Reusable UI primitives
+src/components/   Reusable UI primitives, including semantic icon adapters
 src/screens/      Today, Profile, Pro, Settings, and stack detail screens
 src/navigation/   React Navigation setup
 src/theme/        Shared colors and spacing
@@ -703,7 +753,8 @@ checks in event detection.
 - Nearby vegetation depends on OpenStreetMap and Overpass coverage. Missing mapped features do not
   mean vegetation is absent.
 - Widgets update when the app writes a fresh local widget snapshot. They do not perform aggressive
-  independent polling, background location, or independent provider requests.
+  independent polling, background location, independent provider requests, or React Native SVG
+  rendering inside native `RemoteViews`.
 - Wildfire-related particulate pollution events require wildfire-attributed CAMS/Open-Meteo PM10.
   AirAware does not detect active fires, fire distance, fire perimeters, fire names, fire direction,
   or number of fires.
@@ -717,3 +768,7 @@ checks in event detection.
 ## License
 
 AirAware Android is released under the MIT License. See [LICENSE](./LICENSE).
+
+Meteocons static SVG assets are provided by `@meteocons/svg-static` under the MIT License.
+
+Lucide React Native icons are provided by `lucide-react-native` under the ISC License.

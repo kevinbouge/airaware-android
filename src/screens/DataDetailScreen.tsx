@@ -4,6 +4,8 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { AppButton } from '../components/AppButton';
 import { DetailHeader } from '../components/DetailHeader';
 import { DetailStateView } from '../components/DetailStateView';
+import { EnvironmentalIcon } from '../components/icons/EnvironmentalIcon';
+import { getVariableIconName } from '../components/icons/environmentalIconResolver';
 import { VerticalTimelineChart } from '../components/VerticalTimelineChart';
 import {
   DATA_DETAIL_RANGES,
@@ -129,9 +131,16 @@ export function DataDetailScreen() {
       <DetailHeader title={variable.label} onBack={handleBack} />
       <View style={styles.content}>
         <View style={styles.header}>
-          <Text style={styles.currentValue}>
-            Current: {formatDataDetailValue(variable, currentValue)}
-          </Text>
+          <EnvironmentalIcon
+            accessibilityLabel={`${variable.label} environmental icon`}
+            name={getVariableIconName(variable.id)}
+            size="event"
+          />
+          <View style={styles.headerCopy}>
+            <Text style={styles.currentValue}>
+              Current: {formatDataDetailValue(variable, currentValue)}
+            </Text>
+          </View>
         </View>
 
         {summaryRows.length > 0 ? (
@@ -187,7 +196,12 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
   },
   header: {
+    alignItems: 'center',
+    flexDirection: 'row',
     gap: spacing.xs,
+  },
+  headerCopy: {
+    flex: 1,
   },
   rangeButton: {
     flex: 1,

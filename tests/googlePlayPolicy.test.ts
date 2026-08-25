@@ -31,17 +31,69 @@ function readText(relativePath: string): string {
   return fs.readFileSync(path.join(root, relativePath), 'utf8');
 }
 
+function optionalText(relativePath: string): string | null {
+  const fullPath = path.join(root, relativePath);
+  return fs.existsSync(fullPath) ? fs.readFileSync(fullPath, 'utf8') : null;
+}
+
+function nativePermissionLines(manifest: string, permission: string): string[] {
+  return manifest
+    .split('\n')
+    .filter(
+      (line) => line.includes('<uses-permission') && line.includes(`android:name="${permission}"`),
+    );
+}
+
+function activeNativePermissionLines(manifest: string, permission: string): string[] {
+  return nativePermissionLines(manifest, permission).filter(
+    (line) => !line.includes('tools:node="remove"'),
+  );
+}
+
+function removedNativePermissionLines(manifest: string, permission: string): string[] {
+  return nativePermissionLines(manifest, permission).filter((line) =>
+    line.includes('tools:node="remove"'),
+  );
+}
+
+function buildGradleBlock(source: string, blockName: string): string {
+  const lines = source.split('\n');
+  const start = lines.findIndex((line) => line.trim() === `${blockName} {`);
+
+  if (start < 0) {
+    return '';
+  }
+
+  const blockLines: string[] = [];
+  let depth = 0;
+
+  for (const line of lines.slice(start)) {
+    blockLines.push(line);
+    depth += line.split('{').length - 1;
+    depth -= line.split('}').length - 1;
+
+    if (blockLines.length > 1 && depth <= 0) {
+      break;
+    }
+  }
+
+  return blockLines.join('\n');
+}
+
 describe('Google Play policy guardrails', () => {
   it('requests only approximate foreground location', () => {
     const appJson = readJson('app.json') as {
       expo?: {
         android?: {
+          blockedPermissions?: string[];
           permissions?: string[];
         };
         plugins?: unknown[];
       };
     };
     const permissions = appJson.expo?.android?.permissions ?? [];
+    const blockedPermissions = appJson.expo?.android?.blockedPermissions ?? [];
+    const nativeManifest = optionalText('android/app/src/main/AndroidManifest.xml');
     const locationPlugin = appJson.expo?.plugins?.find(
       (plugin) => Array.isArray(plugin) && plugin[0] === 'expo-location',
     ) as ['expo-location', { locationWhenInUsePermission?: string }] | undefined;
@@ -50,7 +102,89 @@ describe('Google Play policy guardrails', () => {
     expect(permissions).not.toContain('ACCESS_FINE_LOCATION');
     expect(permissions).not.toContain('ACCESS_BACKGROUND_LOCATION');
     expect(permissions).not.toContain('FOREGROUND_SERVICE_LOCATION');
+    expect(blockedPermissions).toEqual(
+      expect.arrayContaining([
+        'android.permission.ACCESS_FINE_LOCATION',
+        'android.permission.ACCESS_BACKGROUND_LOCATION',
+        'android.permission.FOREGROUND_SERVICE_LOCATION',
+      ]),
+    );
+    if (nativeManifest) {
+      expect(
+        activeNativePermissionLines(nativeManifest, 'android.permission.ACCESS_COARSE_LOCATION'),
+      ).toHaveLength(1);
+      [
+        'android.permission.ACCESS_FINE_LOCATION',
+        'android.permission.ACCESS_BACKGROUND_LOCATION',
+        'android.permission.FOREGROUND_SERVICE_LOCATION',
+      ].forEach((permission) => {
+        expect(activeNativePermissionLines(nativeManifest, permission)).toEqual([]);
+        expect(removedNativePermissionLines(nativeManifest, permission)).toHaveLength(1);
+      });
+    }
     expect(locationPlugin?.[1]?.locationWhenInUsePermission).toContain('approximate foreground');
+  });
+
+  it('does not request unrelated Android storage or overlay permissions', () => {
+    const appJson = readJson('app.json') as {
+      expo?: {
+        android?: {
+          blockedPermissions?: string[];
+        };
+      };
+    };
+    const blockedPermissions = appJson.expo?.android?.blockedPermissions ?? [];
+    const nativeManifest = optionalText('android/app/src/main/AndroidManifest.xml');
+    const disallowedPermissions = [
+      'android.permission.READ_EXTERNAL_STORAGE',
+      'android.permission.WRITE_EXTERNAL_STORAGE',
+      'android.permission.SYSTEM_ALERT_WINDOW',
+    ];
+
+    expect(blockedPermissions).toEqual(expect.arrayContaining(disallowedPermissions));
+    if (nativeManifest) {
+      disallowedPermissions.forEach((permission) => {
+        expect(activeNativePermissionLines(nativeManifest, permission)).toEqual([]);
+        expect(removedNativePermissionLines(nativeManifest, permission)).toHaveLength(1);
+      });
+    }
+  });
+
+  it('keeps debug-only manifests free of overlay permissions', () => {
+    [
+      'android/app/src/debug/AndroidManifest.xml',
+      'android/app/src/debugOptimized/AndroidManifest.xml',
+    ]
+      .map(optionalText)
+      .filter((manifest): manifest is string => manifest !== null)
+      .forEach((manifest) => {
+        expect(
+          activeNativePermissionLines(manifest, 'android.permission.SYSTEM_ALERT_WINDOW'),
+        ).toEqual([]);
+      });
+  });
+
+  it('keeps Android local data out of platform backup', () => {
+    const appJson = readJson('app.json') as {
+      expo?: {
+        android?: {
+          allowBackup?: boolean;
+        };
+      };
+    };
+    const nativeManifest = optionalText('android/app/src/main/AndroidManifest.xml');
+
+    expect(appJson.expo?.android?.allowBackup).toBe(false);
+    if (nativeManifest) {
+      expect(nativeManifest).toContain('android:allowBackup="false"');
+    }
+  });
+
+  it('does not sign release builds with the debug keystore', () => {
+    const buildGradle = optionalText('android/app/build.gradle') ?? '';
+    const releaseBlock = buildGradleBlock(buildGradle, 'release');
+
+    expect(releaseBlock).not.toContain('signingConfig signingConfigs.debug');
   });
 
   it('does not advertise automatic dark-mode support before a dynamic theme exists', () => {

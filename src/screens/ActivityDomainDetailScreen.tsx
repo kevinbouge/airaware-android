@@ -5,6 +5,7 @@ import type { RouteProp } from '@react-navigation/native';
 import { DetailHeader } from '../components/DetailHeader';
 import { DetailStateView } from '../components/DetailStateView';
 import { InsightCard } from '../components/InsightCard';
+import { ActivityIcon } from '../components/icons/ActivityIcon';
 import { activityDomain, activityProfilesForDomain } from '../core/activityDefinitions';
 import {
   activityCategoryLabel,
@@ -133,7 +134,12 @@ export function ActivityDomainDetailScreen() {
 
   return (
     <View style={styles.screen}>
-      <DetailHeader title={domain.label} subtitle={domain.description} onBack={handleBack} />
+      <DetailHeader
+        title={domain.label}
+        subtitle={domain.description}
+        icon={<ActivityIcon activity={domain.id} size="activity" />}
+        onBack={handleBack}
+      />
       <ScrollView style={styles.scroller} contentContainerStyle={styles.content}>
         <Text style={styles.sectionTitle}>Professional profiles</Text>
         {profileEvaluations.length > 0 ? (
@@ -152,6 +158,7 @@ export function ActivityDomainDetailScreen() {
               <InsightCard
                 key={profile.id}
                 title={profile.label}
+                icon={<ActivityIcon activity={domain.id} size="activity" color={colors.text} />}
                 accent={activityColor(category, profile.semanticType)}
                 primary={activityCategoryLabel(category, profile.semanticType)}
                 secondary={

@@ -143,6 +143,36 @@ describe('location service', () => {
     expect(location.placeName).toBe('Prague');
   });
 
+  it('uses last-known automatic coordinates before requesting a fresh device fix', async () => {
+    const deps = dependencies({
+      getPermission: jest.fn(async () => 'granted' as const),
+      getLastKnownCoordinates: jest.fn(async () => ({ latitude: 49.1951, longitude: 16.6068 })),
+    });
+    const location = await resolveLocation(DEFAULT_SETTINGS, deps);
+
+    expect(deps.getCurrentCoordinates).not.toHaveBeenCalled();
+    expect(location.coordinates).toEqual({ latitude: 49.1951, longitude: 16.6068 });
+  });
+
+  it('falls back to a fresh automatic location when last-known lookup fails', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const deps = dependencies({
+      getPermission: jest.fn(async () => 'granted' as const),
+      getLastKnownCoordinates: jest.fn(async () => {
+        throw new Error('last-known unavailable');
+      }),
+    });
+
+    try {
+      const location = await resolveLocation(DEFAULT_SETTINGS, deps);
+
+      expect(deps.getCurrentCoordinates).toHaveBeenCalledTimes(1);
+      expect(location.coordinates).toEqual({ latitude: 50.0755, longitude: 14.4378 });
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it('resolves Current location through the automatic foreground flow', async () => {
     const deps = dependencies({
       getPermission: jest.fn(async () => 'granted' as const),
@@ -159,6 +189,63 @@ describe('location service', () => {
     expect(location.activeLocationId).toBe(CURRENT_LOCATION_ID);
     expect(location.mode).toBe('automatic');
     expect(location.coordinates).toEqual({ latitude: 50.0755, longitude: 14.4378 });
+  });
+
+  it('prefers fresh Current coordinates over stored Current coordinates', async () => {
+    const deps = dependencies({
+      getPermission: jest.fn(async () => 'granted' as const),
+    });
+
+    const location = await resolveActiveLocation(
+      {
+        locations: [
+          currentLocationEntry({
+            coordinates: { latitude: 49.1951, longitude: 16.6068 },
+            placeName: 'Brno',
+          }),
+        ],
+        activeLocationId: CURRENT_LOCATION_ID,
+      },
+      deps,
+    );
+
+    expect(location.activeLocationId).toBe(CURRENT_LOCATION_ID);
+    expect(location.coordinates).toEqual({ latitude: 50.0755, longitude: 14.4378 });
+    expect(location.placeName).toBe('Prague');
+    expect(location.permissionStatus).toBe('granted');
+  });
+
+  it('falls back to stored Current coordinates when Android cannot provide a fresh fix', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const deps = dependencies({
+      getPermission: jest.fn(async () => 'granted' as const),
+      getCurrentCoordinates: jest.fn(async () => {
+        throw new Error('location unavailable');
+      }),
+    });
+
+    try {
+      const location = await resolveActiveLocation(
+        {
+          locations: [
+            currentLocationEntry({
+              coordinates: { latitude: 49.1951, longitude: 16.6068 },
+              placeName: 'Brno',
+            }),
+          ],
+          activeLocationId: CURRENT_LOCATION_ID,
+        },
+        deps,
+      );
+
+      expect(location.activeLocationId).toBe(CURRENT_LOCATION_ID);
+      expect(location.mode).toBe('automatic');
+      expect(location.coordinates).toEqual({ latitude: 49.1951, longitude: 16.6068 });
+      expect(location.placeName).toBe('Brno');
+      expect(location.permissionStatus).toBe('unavailable');
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it('resolves saved manual locations without requesting device location', async () => {

@@ -3,6 +3,7 @@ import { featureDefinitions } from '../capabilities/features';
 import { AppButton } from '../components/AppButton';
 import { OptionButton } from '../components/OptionButton';
 import { SectionCard } from '../components/SectionCard';
+import { ActivityIcon } from '../components/icons/ActivityIcon';
 import { ACTIVITY_DOMAINS } from '../core/activityDefinitions';
 import { useCapabilities } from '../hooks/useCapabilities';
 import { useAppStore } from '../state/useAppStore';
@@ -57,6 +58,7 @@ export function ProScreen() {
             <View style={styles.buttonRow}>
               <OptionButton
                 label="Use RevenueCat"
+                iconName="restore"
                 selected={developmentEntitlementOverride === null}
                 onPress={() => setDevelopmentEntitlement(null)}
               />
@@ -64,12 +66,14 @@ export function ProScreen() {
             <View style={styles.twoButtonRow}>
               <OptionButton
                 label="Preview Free"
+                iconName="profile"
                 selected={developmentEntitlementOverride?.kind === 'free'}
                 grow
                 onPress={() => setDevelopmentEntitlement('free')}
               />
               <OptionButton
                 label="Preview Pro"
+                iconName="pro"
                 selected={developmentEntitlementOverride?.kind === 'pro_lifetime'}
                 grow
                 onPress={() => setDevelopmentEntitlement('pro_lifetime')}
@@ -110,6 +114,7 @@ export function ProScreen() {
         {billingState.billingStatus === 'ready' && !billingState.proActive ? (
           <AppButton
             title={unlockTitle}
+            iconName="pro"
             fullWidth
             disabled={!purchaseAvailable || billingBusy}
             onPress={purchaseProLifetime}
@@ -117,12 +122,18 @@ export function ProScreen() {
         ) : null}
         <AppButton
           title={billingState.restoreInProgress ? 'Restoring purchase...' : 'Restore purchase'}
+          iconName="restore"
           fullWidth
           disabled={billingState.billingStatus !== 'ready' || billingBusy}
           onPress={restorePurchases}
         />
         {billingState.billingStatus !== 'ready' ? (
-          <AppButton title="Retry AirAware Pro" fullWidth onPress={refreshBilling} />
+          <AppButton
+            title="Retry AirAware Pro"
+            iconName="refresh"
+            fullWidth
+            onPress={refreshBilling}
+          />
         ) : null}
         {billingMessage ? <Text style={styles.notice}>{billingMessage}</Text> : null}
         {!billingMessage && billingState.error ? (
@@ -171,9 +182,12 @@ export function ProScreen() {
                 pressed && !disabled ? styles.pressed : null,
               ]}
             >
-              <View style={styles.activityText}>
-                <Text style={styles.activityLabel}>{activity.label}</Text>
-                <Text style={styles.activityState}>{enabled ? 'Enabled' : 'Disabled'}</Text>
+              <View style={styles.activityIdentity}>
+                <ActivityIcon activity={activity.id} size="activity" color={colors.text} />
+                <View style={styles.activityText}>
+                  <Text style={styles.activityLabel}>{activity.label}</Text>
+                  <Text style={styles.activityState}>{enabled ? 'Enabled' : 'Disabled'}</Text>
+                </View>
               </View>
               <Switch
                 accessibilityElementsHidden
@@ -197,6 +211,13 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 15,
     fontWeight: '700',
+  },
+  activityIdentity: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    minWidth: 0,
   },
   activityRow: {
     alignItems: 'center',

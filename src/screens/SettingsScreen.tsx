@@ -1,15 +1,30 @@
-import { Modal, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  Alert,
+  Modal,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useState } from 'react';
 import { isFeatureAvailable } from '../capabilities/features';
 import { AppButton } from '../components/AppButton';
 import { LocationMapPicker } from '../components/LocationMapPicker';
 import { OptionButton } from '../components/OptionButton';
 import { SectionCard } from '../components/SectionCard';
+import { AppIcon } from '../components/icons/AppIcon';
 import { appDisclaimerText } from '../core/appDisclaimers';
 import { googlePlayPrivacyDisclosureText } from '../core/googlePlayCompliance';
 import { useCapabilities } from '../hooks/useCapabilities';
 import type { EnvironmentalEventNotificationSettings } from '../models/environmentalEvents';
-import { CURRENT_LOCATION_ID, coordinatesForSavedLocation } from '../models/location';
+import {
+  CURRENT_LOCATION_ID,
+  type SavedLocation,
+  type ManualSavedLocation,
+} from '../models/location';
 import { useAppStore } from '../state/useAppStore';
 import { colors, spacing } from '../theme/theme';
 import { formatMapCoordinate } from '../utils/mapTiles';
@@ -32,8 +47,47 @@ const ENVIRONMENTAL_ALERT_OPTIONS: {
   { id: 'headlineRisk', label: 'Overall environmental risk' },
 ];
 
+interface SettingsSwitchRowProps {
+  label: string;
+  value: boolean;
+  disabled?: boolean;
+  description?: string | undefined;
+  onValueChange: (value: boolean) => void;
+}
+
+function SettingsSwitchRow({
+  label,
+  value,
+  disabled = false,
+  description,
+  onValueChange,
+}: SettingsSwitchRowProps) {
+  return (
+    <View style={[styles.switchRow, disabled ? styles.disabled : null]}>
+      <View style={styles.switchCopy}>
+        <Text style={styles.switchLabel}>{label}</Text>
+        {description ? <Text style={styles.notice}>{description}</Text> : null}
+      </View>
+      <Switch
+        accessibilityLabel={label}
+        accessibilityState={{ checked: value, disabled }}
+        disabled={disabled}
+        onValueChange={onValueChange}
+        thumbColor={value ? colors.primary : colors.surface}
+        trackColor={{ false: colors.border, true: colors.forecastTrack }}
+        value={value}
+      />
+    </View>
+  );
+}
+
+function isManualLocation(location: SavedLocation): location is ManualSavedLocation {
+  return location.type === 'manual';
+}
+
 export function SettingsScreen() {
   const [mapPickerVisible, setMapPickerVisible] = useState(false);
+  const [managedLocationId, setManagedLocationId] = useState<string | null>(null);
   const [mapPickerMode, setMapPickerMode] = useState<
     { type: 'add' } | { type: 'edit'; id: string }
   >({ type: 'add' });
@@ -75,6 +129,11 @@ export function SettingsScreen() {
     settings.riskTransitionNotificationsEnabled || environmentalAlertsEnabled;
   const fallbackMapCoordinates =
     location.coordinates ?? environment?.coordinates ?? DEFAULT_MAP_COORDINATES;
+  const managedLocation =
+    settings.locations.find(
+      (savedLocation): savedLocation is ManualSavedLocation =>
+        savedLocation.id === managedLocationId && isManualLocation(savedLocation),
+    ) ?? null;
 
   const openAddLocationPicker = () => {
     setMapPickerMode({ type: 'add' });
@@ -84,6 +143,7 @@ export function SettingsScreen() {
   };
 
   const openEditLocationPicker = (id: string, coordinates: typeof DEFAULT_MAP_COORDINATES) => {
+    setManagedLocationId(null);
     setMapPickerMode({ type: 'edit', id });
     setMapPickerCoordinates(coordinates);
     setMapPickerVisible(true);
@@ -111,20 +171,43 @@ export function SettingsScreen() {
     });
   };
 
+  const requestDeleteLocation = (savedLocation: ManualSavedLocation) => {
+    Alert.alert(
+      'Delete saved location?',
+      `Remove ${savedLocation.name} from AirAware saved locations?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            void deleteSavedLocation(savedLocation.id);
+            setManagedLocationId(null);
+          },
+        },
+      ],
+    );
+  };
+
   return (
     <>
       <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
         <SectionCard title="Locations" subtitle="Choose the active location for AirAware data.">
           {settings.locations.map((savedLocation) => {
             const selected = savedLocation.id === settings.activeLocationId;
-            const coordinates = coordinatesForSavedLocation(savedLocation);
-            const draftName = draftNames[savedLocation.id] ?? savedLocation.name;
 
             return (
               <View key={savedLocation.id} style={styles.locationRow}>
                 <View style={styles.locationHeader}>
                   <View style={styles.locationTitleGroup}>
-                    <Text style={styles.locationName}>{savedLocation.name}</Text>
+                    <View style={styles.locationNameRow}>
+                      <AppIcon
+                        name={savedLocation.type === 'current' ? 'current-location' : 'location'}
+                        size="inline"
+                        color={colors.primary}
+                      />
+                      <Text style={styles.locationName}>{savedLocation.name}</Text>
+                    </View>
                     <Text style={styles.notice}>
                       {savedLocation.type === 'current'
                         ? 'Uses approximate foreground location'
@@ -139,6 +222,7 @@ export function SettingsScreen() {
                 </View>
                 <AppButton
                   title={selected ? 'Active location' : 'Use this location'}
+                  iconName={savedLocation.type === 'current' ? 'current-location' : 'location'}
                   selected={selected}
                   disabled={
                     selected ||
@@ -148,45 +232,13 @@ export function SettingsScreen() {
                   onPress={() => setActiveLocation(savedLocation.id)}
                 />
                 {savedLocation.type === 'manual' ? (
-                  <View style={styles.manualLocationActions}>
-                    <TextInput
-                      accessibilityLabel={`Rename ${savedLocation.name}`}
-                      autoCapitalize="words"
-                      onChangeText={(value) =>
-                        setDraftNames((current) => ({ ...current, [savedLocation.id]: value }))
-                      }
-                      placeholder="Location name"
-                      placeholderTextColor={colors.muted}
-                      style={styles.input}
-                      value={draftName}
-                    />
-                    <View style={styles.twoButtonRow}>
-                      <OptionButton
-                        label="Rename"
-                        selected={false}
-                        disabled={loading || draftName.trim().length === 0}
-                        grow
-                        onPress={() => renameSavedLocation(savedLocation.id, draftName)}
-                      />
-                      <OptionButton
-                        label="Edit map"
-                        selected={false}
-                        disabled={loading || coordinates === null}
-                        grow
-                        onPress={() =>
-                          coordinates
-                            ? openEditLocationPicker(savedLocation.id, coordinates)
-                            : undefined
-                        }
-                      />
-                    </View>
-                    <AppButton
-                      title="Delete location"
-                      disabled={loading}
-                      fullWidth
-                      onPress={() => deleteSavedLocation(savedLocation.id)}
-                    />
-                  </View>
+                  <AppButton
+                    title="Manage location"
+                    iconName="settings"
+                    fullWidth
+                    disabled={loading}
+                    onPress={() => setManagedLocationId(savedLocation.id)}
+                  />
                 ) : null}
               </View>
             );
@@ -200,6 +252,7 @@ export function SettingsScreen() {
           {manualLocationAvailable ? (
             <AppButton
               title="Add saved location"
+              iconName="add"
               fullWidth
               onPress={openAddLocationPicker}
               disabled={loading || manualLocationLimitReached}
@@ -215,20 +268,13 @@ export function SettingsScreen() {
             AirAware can notify you when the active headline score enters a high category.
             Personalized risk is used when available; otherwise Environmental burden is used.
           </Text>
-          <View style={styles.twoButtonRow}>
-            <OptionButton
-              label="Disabled"
-              selected={!settings.riskTransitionNotificationsEnabled}
-              grow
-              onPress={() => updateSettings({ riskTransitionNotificationsEnabled: false })}
-            />
-            <OptionButton
-              label="Enabled"
-              selected={settings.riskTransitionNotificationsEnabled}
-              grow
-              onPress={() => updateSettings({ riskTransitionNotificationsEnabled: true })}
-            />
-          </View>
+          <SettingsSwitchRow
+            label="Risk transition notifications"
+            value={settings.riskTransitionNotificationsEnabled}
+            onValueChange={(enabled) =>
+              updateSettings({ riskTransitionNotificationsEnabled: enabled })
+            }
+          />
           <View style={styles.twoButtonRow}>
             <OptionButton
               label="High + Very High"
@@ -255,6 +301,7 @@ export function SettingsScreen() {
           ) : null}
           <AppButton
             title="Send test notification"
+            iconName="notifications"
             fullWidth
             onPress={sendTestRiskNotification}
             disabled={notificationPermissionStatus !== 'granted'}
@@ -264,6 +311,7 @@ export function SettingsScreen() {
             (notificationsEnabled && notificationPermissionStatus !== 'granted') ? (
               <OptionButton
                 label="Open Android settings"
+                iconName="settings"
                 selected={false}
                 onPress={openNotificationSettings}
               />
@@ -282,15 +330,15 @@ export function SettingsScreen() {
           ) : null}
           <View style={styles.buttonRow}>
             {ENVIRONMENTAL_ALERT_OPTIONS.map((option) => (
-              <OptionButton
+              <SettingsSwitchRow
                 key={option.id}
                 label={option.label}
-                selected={
+                value={
                   advancedEnvironmentalAlertsAvailable &&
                   settings.environmentalEventNotifications[option.id]
                 }
                 disabled={!advancedEnvironmentalAlertsAvailable}
-                onPress={() => toggleEnvironmentalAlert(option.id)}
+                onValueChange={() => toggleEnvironmentalAlert(option.id)}
               />
             ))}
           </View>
@@ -300,12 +348,14 @@ export function SettingsScreen() {
           <View style={styles.twoButtonRow}>
             <OptionButton
               label="Environmental"
+              iconName="generic"
               selected={settings.summaryScore === 'environmental'}
               grow
               onPress={() => updateSettings({ summaryScore: 'environmental' })}
             />
             <OptionButton
               label="Personalized"
+              iconName="profile"
               selected={settings.summaryScore === 'personalized'}
               disabled={!profileEnabled}
               grow
@@ -315,12 +365,14 @@ export function SettingsScreen() {
           <View style={styles.twoButtonRow}>
             <OptionButton
               label="Place name"
+              iconName="location"
               selected={settings.summaryLocation === 'place'}
               grow
               onPress={() => updateSettings({ summaryLocation: 'place' })}
             />
             <OptionButton
               label="Hide location"
+              iconName="privacy"
               selected={settings.summaryLocation === 'hidden'}
               grow
               onPress={() => updateSettings({ summaryLocation: 'hidden' })}
@@ -374,15 +426,94 @@ export function SettingsScreen() {
           <View style={styles.mapModalActions}>
             <OptionButton
               label="Cancel"
+              iconName="close"
               selected={false}
               grow
               onPress={closeManualLocationPicker}
             />
             <OptionButton
               label="Use this location"
+              iconName="location"
               selected={false}
               grow
               onPress={confirmManualLocation}
+            />
+          </View>
+        </SafeAreaView>
+      </Modal>
+      <Modal
+        animationType="fade"
+        onRequestClose={() => setManagedLocationId(null)}
+        transparent
+        visible={managedLocation !== null}
+      >
+        <SafeAreaView style={styles.managementOverlay}>
+          <View style={styles.managementPanel}>
+            {managedLocation ? (
+              <>
+                <View style={styles.mapModalTitleGroup}>
+                  <Text style={styles.mapModalTitle}>{managedLocation.name}</Text>
+                  <Text style={styles.notice}>
+                    {formatMapCoordinate(managedLocation.latitude)},{' '}
+                    {formatMapCoordinate(managedLocation.longitude)}
+                  </Text>
+                </View>
+                <TextInput
+                  accessibilityLabel={`Rename ${managedLocation.name}`}
+                  autoCapitalize="words"
+                  onChangeText={(value) =>
+                    setDraftNames((current) => ({ ...current, [managedLocation.id]: value }))
+                  }
+                  placeholder="Location name"
+                  placeholderTextColor={colors.muted}
+                  style={styles.input}
+                  value={draftNames[managedLocation.id] ?? managedLocation.name}
+                />
+                <View style={styles.twoButtonRow}>
+                  <OptionButton
+                    label="Rename"
+                    iconName="edit"
+                    selected={false}
+                    disabled={
+                      loading ||
+                      (draftNames[managedLocation.id] ?? managedLocation.name).trim().length === 0
+                    }
+                    grow
+                    onPress={() =>
+                      renameSavedLocation(
+                        managedLocation.id,
+                        draftNames[managedLocation.id] ?? managedLocation.name,
+                      )
+                    }
+                  />
+                  <OptionButton
+                    label="Edit map"
+                    iconName="location-management"
+                    selected={false}
+                    disabled={loading}
+                    grow
+                    onPress={() =>
+                      openEditLocationPicker(managedLocation.id, {
+                        latitude: managedLocation.latitude,
+                        longitude: managedLocation.longitude,
+                      })
+                    }
+                  />
+                </View>
+                <AppButton
+                  title="Delete location"
+                  iconName="delete"
+                  disabled={loading}
+                  fullWidth
+                  onPress={() => requestDeleteLocation(managedLocation)}
+                />
+              </>
+            ) : null}
+            <AppButton
+              title="Close"
+              iconName="close"
+              fullWidth
+              onPress={() => setManagedLocationId(null)}
             />
           </View>
         </SafeAreaView>
@@ -424,6 +555,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
+  disabled: {
+    opacity: 0.55,
+  },
   locationHeader: {
     alignItems: 'flex-start',
     flexDirection: 'row',
@@ -432,8 +566,14 @@ const styles = StyleSheet.create({
   },
   locationName: {
     color: colors.text,
+    flex: 1,
     fontSize: 16,
     fontWeight: '700',
+  },
+  locationNameRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
   },
   locationRow: {
     borderBottomColor: colors.border,
@@ -450,8 +590,17 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: spacing.xs,
   },
-  manualLocationActions: {
+  managementOverlay: {
+    backgroundColor: 'rgba(23, 32, 26, 0.28)',
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  managementPanel: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
     gap: spacing.sm,
+    padding: spacing.lg,
   },
   notificationDivider: {
     backgroundColor: colors.border,
@@ -462,6 +611,9 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 15,
     fontWeight: '700',
+  },
+  pressed: {
+    backgroundColor: colors.pressedSurface,
   },
   mapModal: {
     backgroundColor: colors.background,
@@ -498,5 +650,27 @@ const styles = StyleSheet.create({
   twoButtonRow: {
     flexDirection: 'row',
     gap: spacing.sm,
+  },
+  switchCopy: {
+    flex: 1,
+    gap: spacing.xs,
+    minWidth: 0,
+  },
+  switchLabel: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  switchRow: {
+    alignItems: 'center',
+    borderColor: colors.border,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing.md,
+    justifyContent: 'space-between',
+    minHeight: 56,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
 });

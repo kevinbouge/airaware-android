@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import type { ReactNode } from 'react';
 import { colors, spacing } from '../theme/theme';
 
 interface InsightCardProps {
@@ -8,6 +9,7 @@ interface InsightCardProps {
   secondary?: string | undefined;
   details?: string[];
   compact?: boolean;
+  icon?: ReactNode | undefined;
   onPress?: (() => void) | undefined;
   accessibilityLabel?: string | undefined;
 }
@@ -19,13 +21,17 @@ export function InsightCard({
   secondary,
   details = [],
   compact = false,
+  icon,
   onPress,
   accessibilityLabel,
 }: InsightCardProps) {
   const content = (
     <View style={[styles.card, { borderLeftColor: accent }]}>
       <View style={styles.titleRow}>
-        <Text style={styles.title}>{title}</Text>
+        <View style={styles.titleWithIcon}>
+          {icon}
+          <Text style={styles.title}>{title}</Text>
+        </View>
         {onPress ? <Text style={styles.chevron}>›</Text> : null}
       </View>
       <View style={styles.primaryRow}>
@@ -109,5 +115,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm,
     justifyContent: 'space-between',
+  },
+  titleWithIcon: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexShrink: 1,
+    gap: spacing.sm,
   },
 });

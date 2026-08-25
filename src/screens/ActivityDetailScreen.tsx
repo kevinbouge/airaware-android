@@ -8,6 +8,7 @@ import { DetailStateView } from '../components/DetailStateView';
 import { ReadingRow } from '../components/ReadingRow';
 import { SectionCard } from '../components/SectionCard';
 import { ForecastBarSection } from '../components/ForecastSections';
+import { ActivityIcon } from '../components/icons/ActivityIcon';
 import type { ForecastBarItem } from '../components/ForecastSections';
 import { SummaryMetricGrid } from '../components/ui/SummaryMetricGrid';
 import { forecastDaysForCapabilities } from '../capabilities/forecast';
@@ -306,6 +307,11 @@ export function ActivityDetailScreen() {
       <DetailHeader
         title={definition.label}
         subtitle={domain ? `${domain.label} · ${definition.description}` : definition.description}
+        icon={
+          domain ? (
+            <ActivityIcon activity={domain.id} size="activity" color={currentAccent} />
+          ) : null
+        }
         onBack={handleBack}
       />
       <ScrollView style={styles.scroller} contentContainerStyle={styles.content}>

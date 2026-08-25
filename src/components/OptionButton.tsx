@@ -1,8 +1,10 @@
 import { StyleSheet, View } from 'react-native';
 import { AppButton } from './AppButton';
+import type { AppIconName } from './icons/appIconTypes';
 
 interface OptionButtonProps {
   label: string;
+  iconName?: AppIconName | undefined;
   selected: boolean;
   disabled?: boolean;
   grow?: boolean;
@@ -11,6 +13,7 @@ interface OptionButtonProps {
 
 export function OptionButton({
   label,
+  iconName,
   selected,
   disabled = false,
   grow = false,
@@ -20,6 +23,7 @@ export function OptionButton({
     <View style={grow ? styles.growingOption : undefined}>
       <AppButton
         title={label}
+        iconName={iconName}
         onPress={onPress}
         selected={selected}
         disabled={disabled}

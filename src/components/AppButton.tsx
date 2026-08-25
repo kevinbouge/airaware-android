@@ -1,9 +1,12 @@
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, spacing } from '../theme/theme';
+import { AppIcon } from './icons/AppIcon';
+import type { AppIconName } from './icons/appIconTypes';
 
 interface AppButtonProps {
   title: string;
   onPress: () => void;
+  iconName?: AppIconName | undefined;
   disabled?: boolean;
   selected?: boolean;
   rightLabel?: string | undefined;
@@ -13,11 +16,14 @@ interface AppButtonProps {
 export function AppButton({
   title,
   onPress,
+  iconName,
   disabled = false,
   selected = false,
   rightLabel,
   fullWidth = false,
 }: AppButtonProps) {
+  const contentColor = selected ? colors.surface : colors.text;
+
   return (
     <Pressable
       accessibilityRole="button"
@@ -33,9 +39,17 @@ export function AppButton({
         pressed && !disabled ? styles.pressed : null,
       ]}
     >
-      <Text style={[styles.label, selected ? styles.selectedLabel : null]}>{title}</Text>
+      <View style={[styles.labelGroup, rightLabel ? styles.splitLabelGroup : null]}>
+        {iconName ? <AppIcon name={iconName} size="inline" color={contentColor} /> : null}
+        <Text
+          numberOfLines={rightLabel ? 1 : undefined}
+          style={[styles.label, selected ? styles.selectedLabel : null]}
+        >
+          {title}
+        </Text>
+      </View>
       {rightLabel ? (
-        <Text style={[styles.rightLabel, selected ? styles.selectedLabel : null]}>
+        <Text numberOfLines={1} style={[styles.rightLabel, selected ? styles.selectedLabel : null]}>
           {rightLabel}
         </Text>
       ) : null}
@@ -59,8 +73,17 @@ const styles = StyleSheet.create({
   },
   label: {
     color: colors.text,
+    flexShrink: 1,
     fontSize: 15,
     fontWeight: '700',
+  },
+  labelGroup: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    justifyContent: 'center',
+    minWidth: 0,
   },
   pressed: {
     opacity: 0.7,
@@ -86,5 +109,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.md,
     justifyContent: 'space-between',
+  },
+  splitLabelGroup: {
+    justifyContent: 'flex-start',
   },
 });

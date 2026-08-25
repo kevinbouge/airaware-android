@@ -2,6 +2,7 @@ import { StatusBar } from 'expo-status-bar';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 import { AppState } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppNavigator } from './src/navigation/AppNavigator';
 import { installQueryFocusListener, queryClient } from './src/services/queryClient';
 import { shouldRefreshAfterHydration } from './src/state/appLifecycle';
@@ -59,8 +60,10 @@ export default function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AppNavigator />
-      <StatusBar style="auto" />
+      <SafeAreaProvider>
+        <AppNavigator />
+        <StatusBar style="auto" />
+      </SafeAreaProvider>
     </QueryClientProvider>
   );
 }

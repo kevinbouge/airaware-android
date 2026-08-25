@@ -1,19 +1,32 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { EnvironmentalVariableId } from '../capabilities/types';
 import { colors, spacing } from '../theme/theme';
+import { EnvironmentalIcon } from './icons/EnvironmentalIcon';
+import { getVariableIconName } from './icons/environmentalIconResolver';
+import type { EnvironmentalIconName } from './icons/environmentalIconTypes';
 
 interface ReadingRowProps {
   label: string;
   value: string;
   detail?: string | undefined;
   variableId?: EnvironmentalVariableId | undefined;
+  iconName?: EnvironmentalIconName | undefined;
   onPress?: ((variableId: EnvironmentalVariableId) => void) | undefined;
 }
 
-export function ReadingRow({ label, value, detail, variableId, onPress }: ReadingRowProps) {
+export function ReadingRow({
+  label,
+  value,
+  detail,
+  variableId,
+  iconName,
+  onPress,
+}: ReadingRowProps) {
   const tappable = Boolean(variableId && onPress);
+  const resolvedIconName = iconName ?? (variableId ? getVariableIconName(variableId) : null);
   const content = (
     <View style={styles.row}>
+      {resolvedIconName ? <EnvironmentalIcon name={resolvedIconName} size="measurement" /> : null}
       <Text style={styles.label}>{label}</Text>
       <View style={styles.values}>
         <Text style={styles.value}>{value}</Text>
@@ -61,7 +74,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.md,
     justifyContent: 'space-between',
-    minHeight: 30,
+    minHeight: 44,
   },
   pressable: {
     borderRadius: 8,

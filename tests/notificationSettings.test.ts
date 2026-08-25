@@ -124,6 +124,32 @@ describe('notification settings', () => {
     );
   });
 
+  it('surfaces a recoverable error when settings cannot be persisted', async () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const setItemMock = jest.mocked(AsyncStorage.setItem);
+    const originalSetItem = setItemMock.getMockImplementation();
+    setItemMock.mockImplementation((key, value) => {
+      if (key === 'airaware.settings.v1') {
+        return Promise.reject(new Error('storage full'));
+      }
+
+      return originalSetItem?.(key, value) ?? Promise.resolve();
+    });
+
+    try {
+      await useAppStore.getState().updateSettings({ summaryLocation: 'hidden' });
+      await flushPendingSettingsSave();
+    } finally {
+      if (originalSetItem) {
+        setItemMock.mockImplementation(originalSetItem);
+      }
+      warnSpy.mockRestore();
+    }
+
+    expect(useAppStore.getState().settings.summaryLocation).toBe('hidden');
+    expect(useAppStore.getState().error).toContain('could not save');
+  });
+
   it('preserves concurrent settings changes while notification permission is pending', async () => {
     let nestedSettingsUpdate: Promise<void> | null = null;
     jest.mocked(requestRiskNotificationPermission).mockImplementation(async () => {

@@ -8,9 +8,9 @@ import {
   type GestureResponderEvent,
   type LayoutChangeEvent,
 } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
 import type { Coordinates } from '../models/environment';
 import { colors, spacing } from '../theme/theme';
+import { AppIcon } from './icons/AppIcon';
 import {
   MAP_MAX_ZOOM,
   MAP_MIN_ZOOM,
@@ -132,26 +132,7 @@ function ZoomIconButton({
         pressed && !disabled ? styles.zoomButtonPressed : null,
       ]}
     >
-      <Svg height={20} width={20} viewBox="0 0 24 24">
-        <Path
-          d="M5 12h14"
-          fill="none"
-          stroke={colors.text}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2.4}
-        />
-        {type === 'plus' ? (
-          <Path
-            d="M12 5v14"
-            fill="none"
-            stroke={colors.text}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2.4}
-          />
-        ) : null}
-      </Svg>
+      <AppIcon name={type === 'plus' ? 'add' : 'minus'} size="action" color={colors.text} />
     </Pressable>
   );
 }
