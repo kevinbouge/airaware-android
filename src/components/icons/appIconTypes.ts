@@ -29,6 +29,7 @@ export type AppIconName =
   | 'privacy'
   | 'respiratory'
   | 'population-health'
+  | 'radiological'
   | 'trend-rising'
   | 'trend-falling'
   | 'trend-stable'

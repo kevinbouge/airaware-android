@@ -1,6 +1,14 @@
 # AirAware — Agent Development Instructions
 
-AirAware is an Android application that estimates environmental allergy burden using environmental data such as pollen, air pollution, weather, vegetation, mold potential, and related environmental conditions.
+AirAware is an Android application that helps users understand health-relevant external conditions around them.
+
+The application currently combines:
+
+- environmental data such as pollen, air pollution, weather, vegetation, UV, mold potential, Saharan dust, wildfire-related particulate pollution, and related environmental events
+- biological/public-health signals such as respiratory surveillance and excess mortality where supported
+- radiological context from public ambient-radiation monitoring where supported
+
+AirAware must remain conservative about health-related interpretation. It does not diagnose disease, estimate individual infection probability, calculate personal mortality risk, infer nuclear incidents, or calculate personal cumulative radiation dose.
 
 The application is:
 
@@ -36,6 +44,22 @@ Avoid:
 Before implementing a change, inspect the relevant existing code and understand the current architecture and conventions.
 
 Do not assume how the application works from the task description alone.
+
+---
+
+# Local toolchain
+
+Use the repository Node version before running Node/npm commands.
+
+Prefer:
+
+```sh
+nvm use
+```
+
+or the explicit version from `.nvmrc` when needed.
+
+Do not update the Node version, npm lockfile format, Expo SDK, or native build tooling unless the task explicitly requires it.
 
 ---
 
@@ -131,9 +155,27 @@ Purchase entitlement must never depend solely on UI state.
 
 Preserve existing entitlement behavior unless the task explicitly changes it.
 
+## Public health and radiological providers
+
+Biological, population-health, and radiological providers must be public, anonymous, keyless, and machine-readable.
+
+Do not:
+
+- scrape dashboards or HTML
+- use undocumented/private dashboard endpoints
+- reverse-engineer map XHR calls and hardcode them
+- add provider API keys or credentials
+- introduce a backend to hide credentials
+
+For public-health surveillance, preserve true reporting geography and period. Country-level or regional surveillance must not be presented as GPS-local data.
+
+For radiological data, distinguish measured ambient radiation from incidents. Do not infer a nuclear incident, source, cause, safety guarantee, or personal dose from monitor readings.
+
+If a provider has no suitable stable anonymous interface, keep the abstraction ready and document/handle the provider as unavailable rather than shipping a brittle integration.
+
 ---
 
-# Environmental calculations
+# Health and environmental calculations
 
 Never invent environmental, medical, meteorological, pollution, pollen, or allergy formulas.
 
@@ -147,7 +189,9 @@ When implementing or changing a calculation:
 
 Do not imply medical diagnosis or predict individual symptoms.
 
-AirAware reports environmental conditions and estimated environmental burden.
+AirAware reports external conditions and domain-specific interpretations. Do not create cross-domain pseudo-scores that combine environmental, biological, population-health, and radiological signals unless a future task provides a scientifically justified model.
+
+Missing data is not low/normal data. Do not silently convert unavailable measurements, provider gaps, or stale observations into reassuring categories.
 
 ---
 
@@ -194,6 +238,55 @@ Do not introduce:
 Do not send Personal Allergy Profile information to environmental providers unless explicitly required by a future feature and explicitly approved.
 
 Only transmit the minimum data required by an external service.
+
+Do not send saved-location names, location IDs, Personal Allergy Profile selections, Activity settings, notification fingerprints, purchase state, language preference, or personal health information to environmental, public-health, radiological, or map providers unless a future task explicitly requires and approves it.
+
+---
+
+# Localization
+
+AirAware uses local bundled translations.
+
+Keep internal identifiers language-neutral. Domain values, storage keys, cache keys, notification fingerprints, provider mappings, and tests should use canonical identifiers such as:
+
+- `low`, `moderate`, `high`, `very-high`
+- `pollen`, `pollution`, `saharan-dust`, `wildfire-pollution`, `uv`, `mold`
+- `influenza`, `covid-19`, `rsv`
+- `ambient-dose-rate`
+
+Translate only at presentation boundaries using the existing i18n infrastructure.
+
+Do not:
+
+- use translated strings as identifiers
+- fetch translations at runtime
+- add remote translation services
+- concatenate translated fragments when a parameterized translation key is needed
+- invalidate provider caches because the language changed
+
+User-visible strings, notifications, summaries, widgets, errors, empty states, and accessibility labels should be localized when touched.
+
+---
+
+# Visual identity and icons
+
+Preserve the AirAware gas-mask artwork as the application brand identity.
+
+Classify it as:
+
+```text
+PRESERVE — AIRAWARE BRAND ASSET
+```
+
+Do not replace, redraw, recolor, restyle, simplify, or convert the gas mask to another icon library.
+
+Use icon roles consistently:
+
+- AirAware gas mask: brand identity only
+- Meteocons: environmental/weather semantics
+- Lucide: Activities, navigation, actions, generic UI, and non-environmental health-domain identity where appropriate
+
+Do not use weather icons for generic actions, and do not use the gas mask as a health, infection, radiation, Pro, or navigation substitute unless it is explicitly a brand surface.
 
 ---
 

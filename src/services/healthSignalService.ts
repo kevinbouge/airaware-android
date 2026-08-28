@@ -1,4 +1,8 @@
 import { eurostatExcessMortalityProvider } from '../api/health/eurostatExcessMortality';
+import {
+  radiologicalSpatialCacheKey,
+  safecastRadiologicalProvider,
+} from '../api/health/safecastRadiological';
 import { RESPIRATORY_SIGNAL_TYPES, whoRespiratoryProvider } from '../api/health/whoRespiratory';
 import { translate } from '../i18n';
 import type { LocationInfo, NormalizedEnvironment } from '../models/environment';
@@ -13,6 +17,7 @@ import { loadHealthSignalsCacheForGeography, saveHealthSignalsCache } from '../s
 import { healthCacheKey, resolveHealthGeography } from './healthGeography';
 import {
   EXCESS_MORTALITY_FRESHNESS,
+  RADIATION_MONITORING_FRESHNESS,
   RESPIRATORY_SURVEILLANCE_FRESHNESS,
   calculateHealthSignalFreshness,
 } from './healthSignalFreshness';
@@ -20,15 +25,20 @@ import {
 const HEALTH_SIGNAL_PROVIDERS: HealthSignalProvider[] = [
   whoRespiratoryProvider,
   eurostatExcessMortalityProvider,
+  safecastRadiologicalProvider,
 ];
 
-function cacheFreshEnough(cache: CachedHealthSignals | null, now: string): boolean {
+function cacheSavedWithin(
+  cache: CachedHealthSignals | null,
+  now: string,
+  maxAgeMs: number,
+): boolean {
   if (!cache) return false;
   const savedAt = Date.parse(cache.savedAt);
   const nowTime = Date.parse(now);
   if (!Number.isFinite(savedAt) || !Number.isFinite(nowTime)) return false;
 
-  return nowTime - savedAt < 12 * 60 * 60 * 1000;
+  return nowTime - savedAt < maxAgeMs;
 }
 
 function sortSignals(signals: HealthSignal[]): HealthSignal[] {
@@ -37,6 +47,7 @@ function sortSignals(signals: HealthSignal[]): HealthSignal[] {
     'covid-19': 1,
     rsv: 2,
     'excess-mortality': 3,
+    'ambient-dose-rate': 4,
   };
 
   return [...signals].sort((left, right) => order[left.type] - order[right.type]);
@@ -49,10 +60,14 @@ function providerOwnsSignal(providerId: string, signal: HealthSignal): boolean {
   if (providerId === eurostatExcessMortalityProvider.id) {
     return signal.type === 'excess-mortality';
   }
+  if (providerId === safecastRadiologicalProvider.id) {
+    return signal.type === 'ambient-dose-rate';
+  }
   return false;
 }
 
 function freshnessPolicyForSignal(signal: HealthSignal) {
+  if (signal.type === 'ambient-dose-rate') return RADIATION_MONITORING_FRESHNESS;
   return signal.type === 'excess-mortality'
     ? EXCESS_MORTALITY_FRESHNESS
     : RESPIRATORY_SURVEILLANCE_FRESHNESS;
@@ -76,6 +91,98 @@ function usableCachedSignals(cache: CachedHealthSignals | null, now: string): He
 function mergeSignalsByType(fresh: HealthSignal[], cached: HealthSignal[]): HealthSignal[] {
   const freshTypes = new Set(fresh.map((signal) => signal.type));
   return [...fresh, ...cached.filter((signal) => !freshTypes.has(signal.type))];
+}
+
+function cacheKeyForProvider(
+  provider: HealthSignalProvider,
+  geography: HealthGeography | null,
+  coordinates: { latitude: number; longitude: number } | undefined,
+): string | null {
+  if (provider.id === safecastRadiologicalProvider.id) {
+    return coordinates ? radiologicalSpatialCacheKey(coordinates) : null;
+  }
+
+  return geography ? healthCacheKey(geography) : null;
+}
+
+async function loadProviderCaches(
+  providers: HealthSignalProvider[],
+  geography: HealthGeography | null,
+  coordinates: { latitude: number; longitude: number } | undefined,
+): Promise<Map<string, CachedHealthSignals | null>> {
+  const keys = [
+    ...new Set(
+      providers.flatMap((provider) => {
+        const key = cacheKeyForProvider(provider, geography, coordinates);
+        return key ? [key] : [];
+      }),
+    ),
+  ];
+  const caches = await Promise.all(
+    keys.map(async (key) => [key, await loadHealthSignalsCacheForGeography(key)] as const),
+  );
+  return new Map(caches);
+}
+
+function cachedSignalsForFailedProviders(input: {
+  cachedSignals: HealthSignal[];
+  failedProviderIds: Set<string>;
+}): HealthSignal[] {
+  return input.cachedSignals.filter((signal) =>
+    [...input.failedProviderIds].some((providerId) => providerOwnsSignal(providerId, signal)),
+  );
+}
+
+function providerHasFreshCache(input: {
+  provider: HealthSignalProvider;
+  cache: CachedHealthSignals | null;
+  now: string;
+}): boolean {
+  const ownedSignals =
+    input.cache?.signals.filter((signal) => providerOwnsSignal(input.provider.id, signal)) ?? [];
+  if (ownedSignals.length === 0) return false;
+
+  return ownedSignals.some(
+    (signal) =>
+      cacheSavedWithin(
+        input.cache,
+        input.now,
+        freshnessPolicyForSignal(signal).expectedUpdateIntervalMs,
+      ) && cachedSignalForNow(signal, input.now) !== null,
+  );
+}
+
+async function saveSignalCaches(input: {
+  providers: HealthSignalProvider[];
+  geography: HealthGeography | null;
+  coordinates: { latitude: number; longitude: number } | undefined;
+  signals: HealthSignal[];
+  now: string;
+}): Promise<void> {
+  const providerKeys = input.providers.flatMap((provider) => {
+    const key = cacheKeyForProvider(provider, input.geography, input.coordinates);
+    return key ? [{ provider, key }] : [];
+  });
+  const uniqueKeys = [...new Set(providerKeys.map((entry) => entry.key))];
+
+  for (const key of uniqueKeys) {
+    const providersForKey = providerKeys
+      .filter((entry) => entry.key === key)
+      .map((entry) => entry.provider);
+    const signalsForKey = input.signals.filter((signal) =>
+      providersForKey.some((provider) => providerOwnsSignal(provider.id, signal)),
+    );
+    const cacheGeography = signalsForKey[0]?.geography ?? input.geography;
+    if (signalsForKey.length === 0 || !cacheGeography) continue;
+
+    await saveHealthSignalsCache({
+      version: 1,
+      savedAt: input.now,
+      cacheKey: key,
+      geography: cacheGeography,
+      signals: signalsForKey,
+    });
+  }
 }
 
 function initialState(geography: HealthGeography | null): HealthSignalsState {
@@ -109,34 +216,48 @@ export async function refreshHealthSignalsForLocation(input: {
   now?: string | undefined;
 }): Promise<HealthSignalsState> {
   const now = input.now ?? new Date().toISOString();
+  const coordinates = input.environment?.coordinates ?? input.location.coordinates ?? undefined;
   const geography = resolveHealthGeography({
     location: input.location,
-    coordinates: input.environment?.coordinates ?? input.location.coordinates,
+    coordinates,
   });
-  if (!geography) {
+  if (!geography && !coordinates) {
     return {
       ...initialState(null),
       error: translate('errors.healthUnavailable'),
     };
   }
 
-  const cache = await loadHealthSignalsCacheForGeography(healthCacheKey(geography));
-  const cachedSignals = usableCachedSignals(cache, now);
-  if (cache && cacheFreshEnough(cache, now) && cachedSignals.length > 0 && input.force !== true) {
+  const providerContext = { geography, coordinates, now };
+  const providers = HEALTH_SIGNAL_PROVIDERS.filter((provider) =>
+    provider.supports(providerContext),
+  );
+  const caches = await loadProviderCaches(providers, geography, coordinates);
+  const cachedSignals = [...caches.values()].flatMap((cache) => usableCachedSignals(cache, now));
+  const providersToFetch =
+    input.force === true
+      ? providers
+      : providers.filter((provider) => {
+          const key = cacheKeyForProvider(provider, geography, coordinates);
+          return !providerHasFreshCache({
+            provider,
+            cache: key ? (caches.get(key) ?? null) : null,
+            now,
+          });
+        });
+
+  if (providersToFetch.length === 0 && cachedSignals.length > 0 && input.force !== true) {
     return {
-      geography: cache.geography,
+      geography,
       signals: sortSignals(cachedSignals),
       loading: false,
       error: null,
-      updatedAt: cache.savedAt,
+      updatedAt: [...caches.values()].find((cache) => cache !== null)?.savedAt ?? null,
     };
   }
 
-  const providers = HEALTH_SIGNAL_PROVIDERS.filter((provider) =>
-    provider.supports({ geography, now }),
-  );
   const results = await Promise.allSettled(
-    providers.map((provider) => provider.fetchSignals({ geography, now })),
+    providersToFetch.map((provider) => provider.fetchSignals(providerContext)),
   );
   const freshSignals = sortSignals(
     results.flatMap((result) => (result.status === 'fulfilled' ? result.value.signals : [])),
@@ -144,26 +265,31 @@ export async function refreshHealthSignalsForLocation(input: {
   const failed = results.some((result) => result.status === 'rejected');
   const failedProviderIds = new Set(
     results.flatMap((result, index) =>
-      result.status === 'rejected' && providers[index] ? [providers[index].id] : [],
+      result.status === 'rejected' && providersToFetch[index] ? [providersToFetch[index].id] : [],
     ),
   );
-  const fallbackSignals = cachedSignals.filter((signal) =>
-    [...failedProviderIds].some((providerId) => providerOwnsSignal(providerId, signal)),
+  const fetchedProviderIds = new Set(providersToFetch.map((provider) => provider.id));
+  const skippedCachedSignals = cachedSignals.filter((signal) =>
+    providers.some(
+      (provider) => !fetchedProviderIds.has(provider.id) && providerOwnsSignal(provider.id, signal),
+    ),
   );
-  const signals = sortSignals(mergeSignalsByType(freshSignals, fallbackSignals));
+  const fallbackSignals = cachedSignalsForFailedProviders({ cachedSignals, failedProviderIds });
+  const signals = sortSignals(
+    mergeSignalsByType(freshSignals, [...skippedCachedSignals, ...fallbackSignals]),
+  );
   const respiratoryUnavailable = !signals.some((signal) =>
     RESPIRATORY_SIGNAL_TYPES.some((type) => type === signal.type),
   );
 
   if (signals.length > 0) {
-    const nextCache: CachedHealthSignals = {
-      version: 1,
-      savedAt: now,
-      cacheKey: healthCacheKey(geography),
+    await saveSignalCaches({
+      providers,
       geography,
       signals,
-    };
-    await saveHealthSignalsCache(nextCache);
+      coordinates,
+      now,
+    });
 
     return {
       geography,
@@ -174,6 +300,7 @@ export async function refreshHealthSignalsForLocation(input: {
     };
   }
 
+  const cache = [...caches.values()].find((entry) => entry !== null) ?? null;
   if (cache) {
     if (cachedSignals.length === 0) {
       return {

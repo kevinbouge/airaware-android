@@ -84,6 +84,10 @@ describe('i18n resources', () => {
     expect(translate('activities.droneOperations')).toBe('Opérations de drone');
     expect(translate('health.influenza')).toBe('Grippe');
     expect(translate('health.rsv')).toBe('VRS');
+    expect(translate('health.ambientDoseRate')).toBe('Rayonnement ambiant');
+    expect(translate('health.radiological.status.normalBackground')).toBe(
+      'Conforme au niveau de fond local',
+    );
   });
 
   it('localizes Activity rule labels and copy through covered keys', async () => {

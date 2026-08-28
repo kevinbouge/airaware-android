@@ -153,6 +153,8 @@ export const en = {
     respiratoryActivity: 'Respiratory activity',
     latestSurveillance: 'Latest surveillance',
     populationHealth: 'Population health',
+    radiological: 'Radiological',
+    radiologicalSource: 'Safecast ambient radiation',
     unavailableRespiratory: 'Respiratory surveillance is unavailable for this location.',
     loadingRespiratory: 'Loading respiratory surveillance...',
     environmentalEvents: 'Environmental events',
@@ -227,6 +229,7 @@ export const en = {
     covid19: 'COVID-19',
     rsv: 'RSV',
     excessMortality: 'Excess mortality',
+    ambientDoseRate: 'Ambient radiation',
     trend: {
       rising: 'Rising',
       falling: 'Falling',
@@ -259,12 +262,31 @@ export const en = {
     countrySurveillance: 'Country-level respiratory virological surveillance',
     whoCategoryUnavailable:
       'WHO FluNet does not provide a universal country-level Low/High category.',
+    radiological: {
+      currentMeasurement: 'Current measurement',
+      statusLabel: 'Status',
+      nearestSensor: 'Nearest sensor',
+      localBaseline: 'Local background',
+      difference: 'Difference',
+      noRecentLocalMeasurement: 'No recent local measurement',
+      status: {
+        normalBackground: 'Consistent with local background',
+        elevated: 'Elevated compared with local background',
+        stronglyElevated: 'Strongly elevated compared with local background',
+        unknown: 'Baseline unavailable',
+      },
+      disclaimer:
+        'Ambient ionizing radiation is measured by nearby public monitoring data where available. AirAware does not detect nuclear incidents, estimate personal radiation risk, or calculate personal cumulative dose.',
+    },
   },
   providers: {
     who: 'WHO',
     cdc: 'CDC',
     ecdc: 'ECDC',
     eurostat: 'Eurostat',
+    safecast: 'Safecast',
+    radnet: 'EPA RadNet',
+    eurdep: 'EURDEP',
   },
   environment: {
     sections: {

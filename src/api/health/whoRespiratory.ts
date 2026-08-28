@@ -407,8 +407,18 @@ export function normalizeWhoRespiratorySignals(
 
 export const whoRespiratoryProvider: HealthSignalProvider = {
   id: 'who-respiratory',
-  supports: (context: HealthSignalProviderContext) => Boolean(whoRespiratoryUrl(context.geography)),
+  supports: (context: HealthSignalProviderContext) =>
+    context.geography !== null && Boolean(whoRespiratoryUrl(context.geography)),
   fetchSignals: async (context) => {
+    if (context.geography === null) {
+      return {
+        providerId: 'who-respiratory',
+        fetchedAt: context.now,
+        signals: [],
+        unavailableSignals: RESPIRATORY_SIGNAL_TYPES,
+      };
+    }
+
     const url = whoRespiratoryUrl(context.geography);
     if (!url) {
       return {

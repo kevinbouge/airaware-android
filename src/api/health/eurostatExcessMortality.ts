@@ -88,9 +88,15 @@ function periodEnd(period: ReportingPeriod): string {
   return periodStart(period);
 }
 
+type EurostatExcessMortalityObservation = HealthSignalObservation & {
+  period: ReportingPeriod;
+  periodStart: string;
+  periodEnd: string;
+};
+
 function sortedExcessMortalityObservations(
   parsed: z.infer<typeof eurostatDatasetSchema>,
-): HealthSignalObservation[] {
+): EurostatExcessMortalityObservation[] {
   const timeDimension = parsed.dimension.time?.category.index;
   if (!timeDimension) return [];
 
@@ -183,8 +189,17 @@ export function normalizeEurostatExcessMortality(
 export const eurostatExcessMortalityProvider: HealthSignalProvider = {
   id: 'eurostat-excess-mortality',
   supports: (context: HealthSignalProviderContext) =>
-    Boolean(eurostatExcessMortalityUrl(context.geography)),
+    context.geography !== null && Boolean(eurostatExcessMortalityUrl(context.geography)),
   fetchSignals: async (context) => {
+    if (context.geography === null) {
+      return {
+        providerId: 'eurostat-excess-mortality',
+        fetchedAt: context.now,
+        signals: [],
+        unavailableSignals: ['excess-mortality'],
+      };
+    }
+
     const url = eurostatExcessMortalityUrl(context.geography);
     if (!url) {
       return {

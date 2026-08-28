@@ -431,6 +431,19 @@ function activeLocationRequestScope(settings: AppSettings): string {
   return `${active.id}|${coordinateRequestKey(coordinates)}`;
 }
 
+function healthSignalRequestScope(input: {
+  settings: AppSettings;
+  location: LocationInfo;
+  environment: NormalizedEnvironment | null;
+}): string {
+  const locationScope = activeLocationRequestScope(input.settings);
+  const active = activeSavedLocation(input.settings);
+  if (active.type === 'manual') return locationScope;
+
+  const coordinates = input.environment?.coordinates ?? input.location.coordinates;
+  return coordinates ? `${locationScope}|${coordinateRequestKey(coordinates)}` : locationScope;
+}
+
 function activeVegetationCoordinatesKey(): string | null {
   const state = useAppStore.getState();
   const coordinates = state.environment?.coordinates ?? state.location.coordinates;
@@ -1061,12 +1074,17 @@ export const useAppStore = create<AppStore>((set, get) => ({
         location: resolvedLocation ?? get().location,
         environmentalEvents,
       });
+      void get().refreshHealthSignals();
       await runPendingRefresh();
     }
   },
 
   refreshHealthSignals: async (options = {}) => {
-    const requestActiveLocationScope = activeLocationRequestScope(get().settings);
+    const requestActiveLocationScope = healthSignalRequestScope({
+      settings: get().settings,
+      location: get().location,
+      environment: get().environment,
+    });
     set({
       healthSignals: {
         ...get().healthSignals,
@@ -1081,14 +1099,30 @@ export const useAppStore = create<AppStore>((set, get) => ({
         environment: get().environment,
         force: options.force,
       });
-      if (activeLocationRequestScope(get().settings) !== requestActiveLocationScope) return;
+      if (
+        healthSignalRequestScope({
+          settings: get().settings,
+          location: get().location,
+          environment: get().environment,
+        }) !== requestActiveLocationScope
+      ) {
+        return;
+      }
 
       set({
         healthSignals: nextHealthSignals,
       });
     } catch (error) {
       console.warn('AirAware: health surveillance refresh failed', error);
-      if (activeLocationRequestScope(get().settings) !== requestActiveLocationScope) return;
+      if (
+        healthSignalRequestScope({
+          settings: get().settings,
+          location: get().location,
+          environment: get().environment,
+        }) !== requestActiveLocationScope
+      ) {
+        return;
+      }
 
       set({
         healthSignals: {

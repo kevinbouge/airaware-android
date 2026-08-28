@@ -1,14 +1,19 @@
-export type HealthSignalDomain = 'environmental' | 'biological' | 'population-health';
+export type HealthSignalDomain =
+  'environmental' | 'biological' | 'population-health' | 'radiological';
 
-export type HealthSignalCategory = 'low' | 'moderate' | 'high' | 'very-high' | 'unknown';
+export type RadiologicalStatus = 'normal-background' | 'elevated' | 'strongly-elevated' | 'unknown';
+
+export type HealthSignalCategory = 'low' | 'moderate' | 'high' | 'very-high' | RadiologicalStatus;
 
 export type HealthSignalTrend = 'falling' | 'stable' | 'rising' | 'unknown';
 
-export type GeographyLevel = 'local' | 'subregion' | 'region' | 'country' | 'supranational';
+type GeographyLevel = 'local' | 'subregion' | 'region' | 'country' | 'supranational';
 
 export type BiologicalSignalType = 'influenza' | 'covid-19' | 'rsv';
 
-export type HealthSignalType = BiologicalSignalType | 'excess-mortality';
+type RadiologicalSignalType = 'ambient-dose-rate';
+
+export type HealthSignalType = BiologicalSignalType | 'excess-mortality' | RadiologicalSignalType;
 
 export type HealthSignalFreshnessStatus = 'fresh' | 'aging' | 'stale';
 
@@ -37,9 +42,14 @@ export interface HealthGeography {
   };
 }
 
+interface HealthSignalCoordinates {
+  latitude: number;
+  longitude: number;
+}
+
 export interface HealthSignalObservation {
   pathogen?: BiologicalSignalType | undefined;
-  period: ReportingPeriod;
+  period?: ReportingPeriod | undefined;
   periodStart?: string | undefined;
   periodEnd?: string | undefined;
   observedAt?: string | undefined;
@@ -72,6 +82,21 @@ export interface BiologicalEvidence {
   sourceMeasureCode?: string | undefined;
 }
 
+export interface RadiologicalEvidence {
+  type: RadiologicalSignalType;
+  provider: 'safecast' | 'radnet' | 'eurdep';
+  value: number;
+  unit: string;
+  measuredAt: string;
+  latitude?: number | undefined;
+  longitude?: number | undefined;
+  distanceKm?: number | undefined;
+  sensorId?: string | undefined;
+  measurementId?: string | undefined;
+  role?: 'current' | 'baseline-sample' | 'provider-evidence' | undefined;
+  rawMeasurementType?: string | undefined;
+}
+
 export interface HealthSignal {
   id: string;
   domain: HealthSignalDomain;
@@ -96,12 +121,13 @@ export interface HealthSignal {
     ageMs?: number | undefined;
   };
   history?: HealthSignalObservation[] | undefined;
-  evidence?: BiologicalEvidence[] | undefined;
+  evidence?: (BiologicalEvidence | RadiologicalEvidence)[] | undefined;
   metadata?: Record<string, unknown> | undefined;
 }
 
 export interface HealthSignalProviderContext {
-  geography: HealthGeography;
+  geography: HealthGeography | null;
+  coordinates?: HealthSignalCoordinates | undefined;
   now: string;
   signalTypes?: HealthSignalType[] | undefined;
 }

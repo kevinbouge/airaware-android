@@ -7,6 +7,7 @@ import { AppIcon } from '../components/icons/AppIcon';
 import { SectionCard } from '../components/SectionCard';
 import { SummaryMetricGrid } from '../components/ui/SummaryMetricGrid';
 import {
+  healthSignalCategoryLabel,
   healthSignalPeriodLabel,
   healthSignalFreshnessLabel,
   healthSignalGeographyLabel,
@@ -15,7 +16,11 @@ import {
   healthSignalTypeLabel,
   healthSignalValueLabel,
 } from '../core/healthSignals';
-import type { BiologicalEvidence, HealthSignal } from '../models/healthSignals';
+import type {
+  BiologicalEvidence,
+  HealthSignal,
+  RadiologicalEvidence,
+} from '../models/healthSignals';
 import { goBackOrToday, type DetailBackNavigation } from '../navigation/detailNavigation';
 import { useAppStore } from '../state/useAppStore';
 import { colors, spacing } from '../theme/theme';
@@ -33,14 +38,64 @@ function isHealthSignalRouteParams(value: unknown): value is HealthSignalRoutePa
   );
 }
 
-function iconNameForSignal(signal: HealthSignal): 'respiratory' | 'population-health' {
+function iconNameForSignal(
+  signal: HealthSignal,
+): 'respiratory' | 'population-health' | 'radiological' {
+  if (signal.domain === 'radiological') return 'radiological';
   return signal.domain === 'population-health' ? 'population-health' : 'respiratory';
 }
 
-function evidenceValueLabel(evidence: BiologicalEvidence): string {
+function evidenceValueLabel(evidence: BiologicalEvidence | RadiologicalEvidence): string {
   if (evidence.value === undefined || evidence.unit === undefined) return '';
 
-  return formatMeasurement(evidence.value, evidence.unit, 1);
+  return formatMeasurement(evidence.value, evidence.unit, evidence.unit === 'µSv/h' ? 2 : 1);
+}
+
+function isRadiologicalEvidence(
+  evidence: BiologicalEvidence | RadiologicalEvidence,
+): evidence is RadiologicalEvidence {
+  return 'measuredAt' in evidence;
+}
+
+function evidenceKey(evidence: BiologicalEvidence | RadiologicalEvidence): string {
+  if (isRadiologicalEvidence(evidence)) {
+    return [
+      evidence.provider,
+      evidence.sensorId,
+      evidence.measurementId,
+      evidence.measuredAt,
+      evidence.value,
+    ].join(':');
+  }
+
+  return [
+    evidence.provider,
+    evidence.pathogen,
+    evidence.periodStart ?? evidence.reportingPeriod.year,
+    evidence.periodEnd ??
+      (evidence.reportingPeriod.type === 'week'
+        ? evidence.reportingPeriod.week
+        : evidence.reportingPeriod.month),
+    evidence.measure,
+  ].join(':');
+}
+
+function evidenceLabel(evidence: BiologicalEvidence | RadiologicalEvidence): string {
+  if (isRadiologicalEvidence(evidence)) return evidence.sensorId ?? evidence.provider;
+  return evidence.measure;
+}
+
+function numberMetadata(signal: HealthSignal, key: string): number | null {
+  const value = signal.metadata?.[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function baselineMedian(signal: HealthSignal): number | null {
+  const baseline = signal.metadata?.baseline;
+  if (baseline === null || typeof baseline !== 'object' || !('median' in baseline)) return null;
+  return typeof baseline.median === 'number' && Number.isFinite(baseline.median)
+    ? baseline.median
+    : null;
 }
 
 export function HealthSignalDetailScreen() {
@@ -78,13 +133,22 @@ export function HealthSignalDetailScreen() {
           <SummaryMetricGrid
             metrics={[
               {
-                label: t('health.latestSurveillance'),
+                label:
+                  signal.domain === 'radiological'
+                    ? t('health.radiological.currentMeasurement')
+                    : t('health.latestSurveillance'),
                 value: healthSignalValueLabel(signal),
                 accent: colors.primary,
               },
               {
-                label: t('health.trendLabel'),
-                value: healthSignalTrendLabel(signal.trend),
+                label:
+                  signal.domain === 'radiological'
+                    ? t('health.radiological.statusLabel')
+                    : t('health.trendLabel'),
+                value:
+                  signal.domain === 'radiological'
+                    ? healthSignalCategoryLabel(signal)
+                    : healthSignalTrendLabel(signal.trend),
                 compact: true,
               },
             ]}
@@ -100,6 +164,30 @@ export function HealthSignalDetailScreen() {
             <Text style={styles.detailLabel}>{t('health.period')}</Text>
             <Text style={styles.detailValue}>{healthSignalPeriodLabel(signal)}</Text>
           </View>
+          {signal.domain === 'radiological' ? (
+            <>
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>{t('health.radiological.nearestSensor')}</Text>
+                <Text style={styles.detailValue}>
+                  {formatMeasurement(numberMetadata(signal, 'nearestSensorDistanceKm'), 'km', 1)}
+                </Text>
+              </View>
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>{t('health.radiological.localBaseline')}</Text>
+                <Text style={styles.detailValue}>
+                  {formatMeasurement(baselineMedian(signal), 'µSv/h', 2)}
+                </Text>
+              </View>
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>{t('health.radiological.difference')}</Text>
+                <Text style={styles.detailValue}>
+                  {numberMetadata(signal, 'ratioToBaseline') !== null
+                    ? `${formatMeasurement(numberMetadata(signal, 'ratioToBaseline'), '', 1)}×`
+                    : t('common.unavailable')}
+                </Text>
+              </View>
+            </>
+          ) : null}
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>{t('common.updated')}</Text>
             <Text style={styles.detailValue}>{formatTimestamp(signal.updatedAt)}</Text>
@@ -119,20 +207,8 @@ export function HealthSignalDetailScreen() {
         {signal.evidence && signal.evidence.length > 0 ? (
           <SectionCard title={t('health.evidence')}>
             {signal.evidence.slice(0, 4).map((evidence) => (
-              <View
-                key={[
-                  evidence.provider,
-                  evidence.pathogen,
-                  evidence.periodStart ?? evidence.reportingPeriod.year,
-                  evidence.periodEnd ??
-                    (evidence.reportingPeriod.type === 'week'
-                      ? evidence.reportingPeriod.week
-                      : evidence.reportingPeriod.month),
-                  evidence.measure,
-                ].join(':')}
-                style={styles.detailRow}
-              >
-                <Text style={styles.detailLabel}>{evidence.measure}</Text>
+              <View key={evidenceKey(evidence)} style={styles.detailRow}>
+                <Text style={styles.detailLabel}>{evidenceLabel(evidence)}</Text>
                 <Text style={styles.detailValue}>{evidenceValueLabel(evidence)}</Text>
               </View>
             ))}
@@ -140,7 +216,11 @@ export function HealthSignalDetailScreen() {
         ) : null}
 
         <SectionCard title={t('health.about')}>
-          <Text style={styles.body}>{t('health.populationDisclaimer')}</Text>
+          <Text style={styles.body}>
+            {signal.domain === 'radiological'
+              ? t('health.radiological.disclaimer')
+              : t('health.populationDisclaimer')}
+          </Text>
           {signal.source.measure ? <Text style={styles.body}>{signal.source.measure}</Text> : null}
         </SectionCard>
       </ScrollView>

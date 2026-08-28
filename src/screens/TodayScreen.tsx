@@ -30,6 +30,7 @@ import {
   environmentalEventTitle,
 } from '../core/environmentalEvents';
 import {
+  healthSignalCategoryLabel,
   healthSignalPeriodLabel,
   healthSignalGeographyLabel,
   healthSignalTrendLabel,
@@ -176,7 +177,10 @@ function formatEvidenceValue(value: number | null | undefined, unit: string | un
   return formatMeasurement(value ?? null, unit, unit === 'µg/m³' || unit === 'grains/m³' ? 0 : 1);
 }
 
-function healthSignalIcon(signal: HealthSignal): 'respiratory' | 'population-health' {
+function healthSignalIcon(
+  signal: HealthSignal,
+): 'respiratory' | 'population-health' | 'radiological' {
+  if (signal.domain === 'radiological') return 'radiological';
   return signal.domain === 'population-health' ? 'population-health' : 'respiratory';
 }
 
@@ -194,6 +198,11 @@ function HealthSignalRow({
   onPress: (signal: HealthSignal) => void;
 }) {
   const label = healthSignalTypeLabel(signal.type);
+  const secondaryLabel =
+    signal.domain === 'radiological'
+      ? healthSignalCategoryLabel(signal)
+      : healthSignalTrendLabel(signal.trend);
+  const showTrendIcon = signal.domain !== 'radiological';
 
   return (
     <Pressable
@@ -214,8 +223,10 @@ function HealthSignalRow({
       <View style={styles.healthValueBlock}>
         <Text style={styles.healthValue}>{healthSignalValueLabel(signal)}</Text>
         <View style={styles.healthTrend}>
-          <AppIcon name={healthTrendIcon(signal)} size={14} color={colors.muted} />
-          <Text style={styles.healthMeta}>{healthSignalTrendLabel(signal.trend)}</Text>
+          {showTrendIcon ? (
+            <AppIcon name={healthTrendIcon(signal)} size={14} color={colors.muted} />
+          ) : null}
+          <Text style={styles.healthMeta}>{secondaryLabel}</Text>
         </View>
       </View>
       <AppIcon name="chevron-right" size="inline" color={colors.muted} />
@@ -310,6 +321,14 @@ export function TodayScreen() {
   const populationSignals = healthSignals.signals.filter(
     (signal) => signal.domain === 'population-health',
   );
+  const radiologicalSignals = healthSignals.signals.filter(
+    (signal) => signal.domain === 'radiological',
+  );
+  const hasHealthSignalLocationContext =
+    settings.locationOnboardingComplete || location.coordinates !== null || environment !== null;
+  const shouldShowHealthSignals =
+    hasHealthSignalLocationContext &&
+    (healthSignals.loading || healthSignals.error !== null || healthSignals.signals.length > 0);
   const openHealthSignal = (signal: HealthSignal) => {
     navigation.navigate('HealthSignalDetail', { signalId: signal.id });
   };
@@ -431,7 +450,7 @@ export function TodayScreen() {
           </View>
         ) : null}
 
-        {environment ? (
+        {shouldShowHealthSignals ? (
           <>
             <SectionCard
               title={t('today.respiratoryActivity')}
@@ -446,6 +465,14 @@ export function TodayScreen() {
                 subtitle={healthSignals.geography?.name}
               >
                 {populationSignals.map((signal) => (
+                  <HealthSignalRow key={signal.id} signal={signal} onPress={openHealthSignal} />
+                ))}
+              </SectionCard>
+            ) : null}
+
+            {radiologicalSignals.length > 0 ? (
+              <SectionCard title={t('today.radiological')} subtitle={t('today.radiologicalSource')}>
+                {radiologicalSignals.map((signal) => (
                   <HealthSignalRow key={signal.id} signal={signal} onPress={openHealthSignal} />
                 ))}
               </SectionCard>

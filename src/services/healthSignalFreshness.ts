@@ -19,6 +19,12 @@ export const EXCESS_MORTALITY_FRESHNESS: HealthSignalFreshnessPolicy = {
   staleAfterMs: 240 * 24 * 60 * 60 * 1000,
 };
 
+export const RADIATION_MONITORING_FRESHNESS: HealthSignalFreshnessPolicy = {
+  expectedUpdateIntervalMs: 6 * 60 * 60 * 1000,
+  agingAfterMs: 30 * 24 * 60 * 60 * 1000,
+  staleAfterMs: 180 * 24 * 60 * 60 * 1000,
+};
+
 export function calculateHealthSignalFreshness(input: {
   updatedAt: string;
   now: string;

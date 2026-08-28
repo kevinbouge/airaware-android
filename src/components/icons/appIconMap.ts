@@ -20,6 +20,7 @@ import MapPinned from 'lucide-react-native/icons/map-pinned';
 import Minus from 'lucide-react-native/icons/minus';
 import Pencil from 'lucide-react-native/icons/pencil';
 import Plus from 'lucide-react-native/icons/plus';
+import Radiation from 'lucide-react-native/icons/radiation';
 import RefreshCw from 'lucide-react-native/icons/refresh-cw';
 import RotateCcw from 'lucide-react-native/icons/rotate-ccw';
 import Settings from 'lucide-react-native/icons/settings';
@@ -71,6 +72,7 @@ export const APP_ICON_MAP: Record<AppIconName, AppIconDefinition> = {
   privacy: { component: Shield, libraryName: 'Shield' },
   respiratory: { component: HeartPulse, libraryName: 'HeartPulse' },
   'population-health': { component: UsersRound, libraryName: 'UsersRound' },
+  radiological: { component: Radiation, libraryName: 'Radiation' },
   'trend-rising': { component: TrendingUp, libraryName: 'TrendingUp' },
   'trend-falling': { component: TrendingDown, libraryName: 'TrendingDown' },
   'trend-stable': { component: TrendingUpDown, libraryName: 'TrendingUpDown' },

@@ -655,7 +655,8 @@ function isHealthSignal(value: unknown): value is HealthSignal {
     typeof object.id === 'string' &&
     (object.domain === 'environmental' ||
       object.domain === 'biological' ||
-      object.domain === 'population-health') &&
+      object.domain === 'population-health' ||
+      object.domain === 'radiological') &&
     typeof object.type === 'string' &&
     isHealthGeography(object.geography) &&
     typeof object.updatedAt === 'string' &&
@@ -664,6 +665,9 @@ function isHealthSignal(value: unknown): value is HealthSignal {
       object.category === 'moderate' ||
       object.category === 'high' ||
       object.category === 'very-high' ||
+      object.category === 'normal-background' ||
+      object.category === 'elevated' ||
+      object.category === 'strongly-elevated' ||
       object.category === 'unknown') &&
     (object.trend === 'falling' ||
       object.trend === 'stable' ||

@@ -11,6 +11,7 @@ const mockFetchVegetationContext = jest.fn();
 const mockReverseGeocodePlaceName = jest.fn();
 const mockDeliverRiskTransitionNotification = jest.fn();
 const mockGetRiskNotificationPermissionStatus = jest.fn();
+const mockRefreshHealthSignalsForLocation = jest.fn();
 
 jest.mock('../src/services/environmentProviders', () => ({
   activeEnvironmentalProvider: jest.fn(() => ({
@@ -43,6 +44,11 @@ jest.mock('../src/services/notificationService', () => ({
   requestRiskNotificationPermission: jest.fn().mockResolvedValue('granted'),
 }));
 
+jest.mock('../src/services/healthSignalService', () => ({
+  refreshHealthSignalsForLocation: (...args: unknown[]) =>
+    mockRefreshHealthSignalsForLocation(...args),
+}));
+
 import {
   airQualityVariableCoverageFor,
   type NormalizedAirQuality,
@@ -54,10 +60,48 @@ import { assembleEnvironment } from '../src/services/environmentAssembler';
 import { useAppStore } from '../src/state/useAppStore';
 import { loadWidgetSnapshot } from '../src/storage/storage';
 import type { NormalizedVegetationContext } from '../src/models/vegetation';
+import type { HealthSignalsState } from '../src/models/healthSignals';
 
 const coordinates = { latitude: 50.0755, longitude: 14.4378 };
 const brnoCoordinates = { latitude: 49.1951, longitude: 16.6068 };
 const timestamp = '2026-08-14T12:00:00Z';
+
+function healthSignalsStateForLocation(input: {
+  id: string;
+  value: number;
+  latitude: number;
+  longitude: number;
+}): HealthSignalsState {
+  return {
+    geography: {
+      level: 'local',
+      code: `radiological:safecast:${input.latitude}:${input.longitude}`,
+      name: input.id,
+    },
+    signals: [
+      {
+        id: input.id,
+        domain: 'radiological',
+        type: 'ambient-dose-rate',
+        geography: {
+          level: 'local',
+          code: `radiological:safecast:${input.latitude}:${input.longitude}`,
+          name: input.id,
+        },
+        updatedAt: timestamp,
+        value: input.value,
+        unit: 'µSv/h',
+        category: 'normal-background',
+        trend: 'stable',
+        source: { provider: 'Safecast' },
+        freshness: { status: 'fresh' },
+      },
+    ],
+    loading: false,
+    error: null,
+    updatedAt: timestamp,
+  };
+}
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -323,6 +367,13 @@ describe('app store refresh orchestration', () => {
     mockFetchWeather.mockResolvedValue(weather());
     mockDeliverRiskTransitionNotification.mockResolvedValue(true);
     mockGetRiskNotificationPermissionStatus.mockResolvedValue('granted');
+    mockRefreshHealthSignalsForLocation.mockResolvedValue({
+      geography: null,
+      signals: [],
+      loading: false,
+      error: null,
+      updatedAt: null,
+    });
     mockResolveLocation.mockResolvedValue({
       activeLocationId: 'manual-prague',
       activeLocationName: 'Prague',
@@ -570,6 +621,87 @@ describe('app store refresh orchestration', () => {
     });
     expect(useAppStore.getState().environment).toBeNull();
     expect(useAppStore.getState().error).toBe('No environmental data is available.');
+  });
+
+  it('refreshes health signals even when environmental providers fail', async () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    mockFetchAirQuality.mockRejectedValue(new Error('air unavailable'));
+    mockFetchWeather.mockRejectedValue(new Error('weather unavailable'));
+
+    try {
+      await useAppStore.getState().refresh({ force: true });
+      await flushMicrotasks();
+    } finally {
+      warnSpy.mockRestore();
+    }
+
+    expect(useAppStore.getState().environment).toBeNull();
+    expect(useAppStore.getState().location.coordinates).toEqual(coordinates);
+    expect(mockRefreshHealthSignalsForLocation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        location: expect.objectContaining({
+          coordinates,
+          activeLocationId: 'manual-prague',
+        }),
+        environment: null,
+      }),
+    );
+  });
+
+  it('does not let an old current-location health refresh overwrite newer coordinates', async () => {
+    const firstHealthRefresh = deferred<HealthSignalsState>();
+    mockRefreshHealthSignalsForLocation
+      .mockReturnValueOnce(firstHealthRefresh.promise)
+      .mockResolvedValueOnce(
+        healthSignalsStateForLocation({
+          id: 'radiological:brno',
+          value: 0.11,
+          latitude: brnoCoordinates.latitude,
+          longitude: brnoCoordinates.longitude,
+        }),
+      );
+    useAppStore.setState({
+      settings: {
+        ...useAppStore.getState().settings,
+        locations: [currentLocationEntry({ coordinates, placeName: 'Prague', updatedAt: 0 })],
+        activeLocationId: CURRENT_LOCATION_ID,
+      },
+      location: {
+        activeLocationId: CURRENT_LOCATION_ID,
+        activeLocationName: 'Current location',
+        coordinates,
+        placeName: 'Prague',
+        mode: 'automatic',
+        permissionStatus: 'granted',
+      },
+      environment: null,
+    });
+
+    const firstRefresh = useAppStore.getState().refreshHealthSignals();
+    await flushMicrotasks();
+    useAppStore.setState({
+      location: {
+        activeLocationId: CURRENT_LOCATION_ID,
+        activeLocationName: 'Current location',
+        coordinates: brnoCoordinates,
+        placeName: 'Brno',
+        mode: 'automatic',
+        permissionStatus: 'granted',
+      },
+    });
+
+    await useAppStore.getState().refreshHealthSignals();
+    firstHealthRefresh.resolve(
+      healthSignalsStateForLocation({
+        id: 'radiological:prague',
+        value: 0.2,
+        latitude: coordinates.latitude,
+        longitude: coordinates.longitude,
+      }),
+    );
+    await firstRefresh;
+
+    expect(useAppStore.getState().healthSignals.signals[0]?.id).toBe('radiological:brno');
   });
 
   it('clears refresh loading state when widget snapshot persistence fails after refresh failure', async () => {

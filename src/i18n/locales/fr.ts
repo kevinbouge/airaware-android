@@ -156,6 +156,8 @@ export const fr = {
     respiratoryActivity: 'Activité respiratoire',
     latestSurveillance: 'Dernière surveillance',
     populationHealth: 'Santé de la population',
+    radiological: 'Radiologique',
+    radiologicalSource: 'Rayonnement ambiant Safecast',
     unavailableRespiratory: 'La surveillance respiratoire est indisponible pour ce lieu.',
     loadingRespiratory: 'Chargement de la surveillance respiratoire...',
     environmentalEvents: 'Événements environnementaux',
@@ -230,6 +232,7 @@ export const fr = {
     covid19: 'COVID-19',
     rsv: 'VRS',
     excessMortality: 'Surmortalité',
+    ambientDoseRate: 'Rayonnement ambiant',
     trend: {
       rising: 'En hausse',
       falling: 'En baisse',
@@ -262,12 +265,31 @@ export const fr = {
     countrySurveillance: 'Surveillance virologique respiratoire au niveau national',
     whoCategoryUnavailable:
       'WHO FluNet ne fournit pas de catégorie universelle faible/élevée au niveau national.',
+    radiological: {
+      currentMeasurement: 'Mesure actuelle',
+      statusLabel: 'Statut',
+      nearestSensor: 'Capteur le plus proche',
+      localBaseline: 'Niveau de fond local',
+      difference: 'Différence',
+      noRecentLocalMeasurement: 'Aucune mesure locale récente',
+      status: {
+        normalBackground: 'Conforme au niveau de fond local',
+        elevated: 'Élevé par rapport au niveau de fond local',
+        stronglyElevated: 'Fortement élevé par rapport au niveau de fond local',
+        unknown: 'Niveau de fond indisponible',
+      },
+      disclaimer:
+        'Le rayonnement ionisant ambiant est mesuré par des données publiques de surveillance à proximité lorsqu’elles sont disponibles. AirAware ne détecte pas les incidents nucléaires, n’estime pas le risque radiologique personnel et ne calcule pas la dose cumulée personnelle.',
+    },
   },
   providers: {
     who: 'OMS',
     cdc: 'CDC',
     ecdc: 'ECDC',
     eurostat: 'Eurostat',
+    safecast: 'Safecast',
+    radnet: 'EPA RadNet',
+    eurdep: 'EURDEP',
   },
   environment: {
     sections: {

@@ -1,8 +1,9 @@
 # AirAware Android
 
 AirAware is an Android application that helps users understand health-relevant external conditions
-around them. It combines local environmental conditions with a first health-signal architecture for
-public biological and population-health surveillance where suitable public data is available.
+around them. It combines local environmental conditions with health-signal architecture for public
+biological, population-health, and radiological surveillance where suitable public data is
+available.
 
 AirAware reports external conditions and population-level surveillance only. It does not predict
 individual symptoms, estimate infection probability, diagnose illness or allergies, predict
@@ -34,6 +35,7 @@ individual mortality risk, or provide medical advice.
 - Open-Meteo Air Quality API and Weather Forecast API through isolated provider modules
 - OpenStreetMap Overpass API through an isolated nearby-vegetation provider
 - Eurostat REST Statistics API through an isolated population-health provider
+- Safecast public radiation API through an isolated radiological provider
 - Expo Location for foreground approximate location
 - AsyncStorage for local settings, saved locations, active location ID, profile selections, a small
   entitlement presentation cache, development capability preview override, provider caches,
@@ -72,11 +74,18 @@ nvm use 22.13.1
 ## Features
 
 - Open-Meteo Air Quality and Weather Forecast data, no API key required
-- Health Signal domain model for environmental, biological, and population-health signals
+- Health Signal domain model for environmental, biological, population-health, and radiological
+  signals
 - Global country-level respiratory surveillance through WHO GISRS / FluNet public FluMart OData
   where suitable influenza, COVID-19, and RSV data exists
 - Country-level population-health signal support for Eurostat excess mortality where Eurostat
   publishes data for the active location's country
+- Local ambient-radiation signal support from nearby calibrated Safecast dose-rate measurements
+  where suitable recent public measurements exist
+- Robust local radiation baseline comparison from recent nearby history when enough calibrated
+  samples are available
+- Explicit radiological no-data states; missing radiation measurements are never interpreted as
+  normal background
 - Explicit no-data respiratory states; missing surveillance is never interpreted as Low activity
 - Approximate foreground location plus multiple locally saved manual map locations
 - Location permission is requested only after the first-launch explanation is accepted
@@ -161,8 +170,8 @@ source label.
 ## Screens
 
 - **Today**: headline scores, scrollable active location selector, Environmental Events, respiratory
-  surveillance availability, population-health signals, update status, main factor, best outdoor
-  window, refresh, share summary, and enabled Activity summary cards
+  surveillance availability, population-health signals, radiological signals, update status, main
+  factor, best outdoor window, refresh, share summary, and enabled Activity summary cards
 - **Context detail screens**: Environmental burden, Personalized risk, and Activity details with
   Daily forecast graphs, current-to-next-24-hour forecast graphs, and tappable environmental
   measurements. Detail headers are safe-area aware on Android devices with status bars or display
@@ -170,8 +179,9 @@ source label.
 - **Environmental variable details**: shared 24-hour, week, month, and year timeline for individual
   variables. The 24-hour variable timeline is the history-aware view: past values appear above Now
   and forecast values appear below Now.
-- **Health signal details**: source, geography, reporting period, freshness, trend, provider
-  measure, and a population-level-not-individual-risk explanation.
+- **Health signal details**: source, geography, reporting period or measurement time, freshness,
+  trend, provider measure, radiological sensor distance/baseline where available, and
+  domain-specific non-medical-risk explanations.
 - **Profile**: local Personal Allergy Profile toggles, including Mold potential and UV index
 - **Pro**: AirAware Pro purchase/restore status, development capability preview, and Activity
   toggles
@@ -247,9 +257,12 @@ concentration.
 - OpenStreetMap map tiles for manual location selection
 - WHO GISRS / FluNet public FluMart OData for global country-level respiratory surveillance
 - Eurostat REST Statistics API for official excess mortality by month (`demo_mexrt`)
+- Safecast public radiation API for nearby calibrated ambient dose-rate measurements
 - CDC and ECDC/ERVISS are optional future enrichment providers only when stable documented
   anonymous machine-readable sources are suitable; they are not required for global baseline
   respiratory coverage
+- EPA RadNet and EURDEP are optional future radiological enrichment providers only when a stable
+  documented anonymous machine-readable mobile-suitable source is integrated
 
 Open-Meteo Air Quality data includes CAMS ENSEMBLE atmospheric forecasts where available.
 Availability varies by variable, region, model domain, and season.
@@ -269,6 +282,14 @@ requests only the WHO country code derived from the active location's country an
 for that country. It does not send exact coordinates, saved-location names, Personal Allergy
 Profile selections, Activity settings, notification fingerprints, RevenueCat state, or personal
 medical data to WHO.
+
+Safecast radiation monitoring is public community monitoring data from
+`https://simplemap.safecast.org/api/radiation`. AirAware requests nearby measurements for the
+active coordinates using expanding radii of 25 km, 100 km, and 250 km, and uses only calibrated
+dose-rate units such as `µSv/h`, `nSv/h`, or `mSv/h`. Count-only values such as CPM or CPS are not
+converted into dose rate. Sensor distance, measurement age, source, and local baseline availability
+are preserved in presentation. If no suitable recent calibrated measurement exists, AirAware shows an
+explicit no-recent-local-measurement state rather than treating the area as normal background.
 
 ## Environmental Events
 
@@ -329,6 +350,13 @@ Supported domains are:
 - **Population health**: Eurostat excess mortality (`demo_mexrt`) is implemented as a
   country-level population-health signal where Eurostat publishes the indicator for the active
   location's country.
+- **Radiological**: ambient dose rate is represented as a local radiological signal when Safecast
+  reports a suitable nearby calibrated measurement. AirAware compares fresh readings with recent
+  same-sensor or local-area history when enough samples exist, using a median and MAD-based robust
+  baseline over a 30-day window with at least 8 valid samples. Baseline calculations exclude the
+  current measurement and prefer the same sensor before falling back to local-area history. The
+  status vocabulary is radiological-specific: `consistent with local background`, `elevated`,
+  `strongly elevated`, or `unknown`.
 
 Health signals preserve true geography. Country-level surveillance is displayed as country-level
 data, for example `Czechia`, not as a GPS-local reading for Prague or Brno. Health caches are keyed
@@ -341,12 +369,19 @@ Eurostat's provider-defined 2016-2019 monthly baseline. It is population context
 monitoring and not an individual mortality-risk estimate. The latest available period may lag by
 months because Eurostat mortality data is released on a slower schedule than environmental data.
 
-Health-signal refresh runs independently from the environmental refresh path. A slow or failed WHO,
-CDC, ECDC, or Eurostat request must not block or invalidate Open-Meteo environmental data. If one
-health provider fails, AirAware can keep non-stale cached signals from that provider while using
-fresh signals from providers that succeeded; stale health signals are not presented as fresh
-surveillance. Biological and population-health sections use provider-specific freshness rules, not
-hourly environmental freshness.
+Health-signal refresh runs independently from the environmental refresh path and follows a
+best-effort provider model. A slow or failed WHO, CDC, ECDC, Eurostat, or Safecast request must not
+block or invalidate Open-Meteo environmental data. If one health provider fails, AirAware can keep
+non-stale cached signals from that provider while using fresh signals from providers that succeeded;
+stale health signals are not presented as fresh surveillance. Biological, population-health, and
+radiological sections use provider-specific freshness rules, not hourly environmental freshness.
+Country-level health data is cached by reporting geography; radiological data is cached by a
+normalized spatial Safecast query key rather than saved-location names.
+
+Radiological signals report measured ambient radiation context only. They do not detect nuclear
+incidents, identify radiation sources, calculate personal cumulative dose, estimate cancer or
+medical risk, or provide radiation-protection advice. Elevated readings are described as elevated
+relative to recent local measurements or broad dose-rate context, not as proof of an incident.
 
 ## Environmental Visual System
 
@@ -424,6 +459,13 @@ data to WHO, CDC, ECDC, Eurostat, or unrelated services. Biological/population h
 uses public population-level data and local
 interpretation only.
 
+Radiological providers may receive the active coordinates and search radius required to find nearby
+monitoring data. AirAware does not send saved-location names, saved-location IDs, Personal Allergy
+Profile selections, biological signal preferences, Activity settings, notification history,
+RevenueCat identifiers, or other personal health data to Safecast, EPA RadNet, EURDEP, or unrelated
+services. Radiological interpretation and baseline comparison run locally from provider
+measurements cached on the device.
+
 AirAware uses RevenueCat to manage AirAware Pro purchase entitlement. Google Play processes
 payments; AirAware does not directly handle card or payment information. RevenueCat may process
 anonymous app identifiers, purchase records, product identifiers, entitlement state, and device/app
@@ -496,7 +538,8 @@ AirAware's currently implemented core features remain free.
 
 Free includes Standard Environmental Data, which covers the core pollen, regulated-pollution,
 atmospheric-irritant, Mold potential, UV readings, available Health Signals, respiratory
-surveillance availability states, and Eurostat excess mortality where supported.
+surveillance availability states, Eurostat excess mortality where supported, and Safecast ambient
+radiation where suitable nearby measurements exist.
 
 AirAware Pro currently adds three modeled capabilities:
 
@@ -747,8 +790,8 @@ integrations.
 ## Architecture
 
 ```text
-src/api/          Open-Meteo, OpenStreetMap, WHO respiratory surveillance, and Eurostat
-                  network providers and response normalization
+src/api/          Open-Meteo, OpenStreetMap, WHO respiratory surveillance, Eurostat,
+                  and Safecast network providers and response normalization
 src/capabilities/ Static capability profiles, feature metadata, and availability selectors
 src/core/         Pure scoring, mold, Environmental Events, personalization, forecast, activity,
                   health-signal presentation, trend, and summary logic
@@ -773,36 +816,45 @@ last valid cached data for the failed provider without discarding fresh data fro
 provider. Slow health-surveillance providers follow the same best-effort principle at provider
 boundaries: successful providers update their signals, failed providers may retain non-stale cached
 signals, and stale cached signals are excluded from presentation. Environmental Events are detected
-by a pure TypeScript engine from normalized
-provider-independent models after environment assembly; React components and notification code do
-not parse provider JSON or implement event thresholds directly. Health signals sit beside this path:
-slow biological/population providers normalize into provider-independent `HealthSignal` objects,
-with geography and freshness preserved. Provider query keys and persisted environment/vegetation
-cache entries are isolated by coordinates, while public-health caches are isolated by reporting
-geography. Refresh requests are scoped by active location and, for manual locations, by active
-coordinates so a stale request cannot overwrite presentation state after switching locations or
-editing the active saved location's coordinates.
+by a pure TypeScript engine from normalized provider-independent models after environment assembly;
+React components and notification code do not parse provider JSON or implement event thresholds
+directly. Health signals sit beside this path: biological, population-health, and radiological
+providers normalize into provider-independent `HealthSignal` objects, with geography, source,
+freshness, and evidence preserved. Provider query keys and persisted environment/vegetation cache
+entries are isolated by coordinates, country-level public-health caches are isolated by reporting
+geography, and Safecast radiological caches are isolated by normalized spatial query. Refresh
+requests are scoped by active location and, for manual locations, by active coordinates so a stale
+request cannot overwrite presentation state after switching locations or editing the active saved
+location's coordinates.
 
 ```text
                     PROVIDERS
 
- Open-Meteo/CAMS      WHO GISRS/FluNet        Eurostat
-       │                       │                  │
-       │                       ├── CDC enrichment (future, optional)
-       │                       └── ECDC enrichment (future, optional)
-       ↓                       ↓                  ↓
+Open-Meteo/CAMS
+      ↓
+environmental normalized models
+      ↓
+Environmental Events + environmental health-signal adapters
 
- environmental        biological evidence     population-health
- normalized                                      health signals
- models
-                              ↓
-                         HealthSignal
+WHO GISRS/FluNet
+      ├── CDC enrichment (future, optional)
+      └── ECDC enrichment (future, optional)
+      ↓
+biological evidence → HealthSignal
 
-       └──────────────────┬───────────────────────┘
-                          ↓
-                     presentation
-                          ↓
-                  Today / detail screens
+Eurostat
+      ↓
+population-health signals → HealthSignal
+
+Safecast
+      ├── RadNet enrichment (future, optional)
+      └── EURDEP enrichment (deferred)
+      ↓
+radiological signals → HealthSignal
+
+HealthSignal + Environmental Events
+      ↓
+Today / detail screens / local notifications / widgets
 ```
 
 ## Capabilities
@@ -820,8 +872,8 @@ Capabilities describe stable application concepts:
 - Location support, currently automatic foreground Current location plus multiple saved manual
   locations for Free and Pro users
 - Provider availability, currently Open-Meteo
-- Health-signal availability, currently WHO respiratory surveillance plus geography-scoped Eurostat
-  excess mortality
+- Health-signal availability, currently WHO respiratory surveillance, geography-scoped Eurostat
+  excess mortality, and Safecast radiological monitoring where suitable nearby measurements exist
 - Sharing support, currently local daily summary sharing through the Android share sheet
 - Notification capabilities, currently Free basic transition notifications and Pro advanced
   Environmental Event alerts
@@ -909,6 +961,21 @@ checks in event detection.
   stable documented anonymous machine-readable sources.
 - Eurostat excess mortality is a delayed country-level population statistic. It is not live
   monitoring and is not an individual mortality-risk prediction.
+- Radiological monitoring depends on nearby public monitoring-network coverage. A nearby Safecast
+  reading may not exist, and community measurements may differ in hardware, calibration, and sensor
+  placement.
+- Ambient radiation varies naturally by geology, altitude, building materials, and weather.
+  Elevated ambient radiation does not identify a source, cause, plume, leak, reactor issue, or
+  nuclear incident.
+- AirAware does not calculate personal cumulative radiation dose, personal cancer risk, or any
+  individual radiological health-risk score.
+- Count-only radiation measurements such as CPM or CPS are not converted into `µSv/h` unless the
+  provider supplies a calibrated dose-rate value. Missing radiological measurements are not treated
+  as normal background.
+- EPA RadNet enrichment is not implemented in this milestone; public RadNet downloads exist, but a
+  compact mobile-suitable anonymous structured integration has not been added.
+- EURDEP enrichment is deferred because a stable documented anonymous machine-readable endpoint
+  suitable for direct mobile use was not verified for this milestone.
 - Health signals do not produce a cross-domain health score and are not added to Environmental
   burden or Personalized risk.
 - Widgets update when the app writes a fresh local widget snapshot. They do not perform aggressive
