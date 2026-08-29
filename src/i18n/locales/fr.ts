@@ -2,6 +2,7 @@ export const fr = {
   common: {
     active: 'Actif',
     add: 'Ajouter',
+    back: 'Retour',
     cancel: 'Annuler',
     close: 'Fermer',
     delete: 'Supprimer',
@@ -104,7 +105,8 @@ export const fr = {
     previewFree: 'Aperçu gratuit',
     previewPro: 'Aperçu Pro',
     active: 'AirAware Pro est actif. Vos fonctionnalités Pro à vie sont déverrouillées.',
-    unlockBody: 'Déverrouillez des capacités AirAware supplémentaires avec un achat à vie.',
+    unlockBody:
+      'Déverrouillez des outils de planification pour des prévisions plus longues, les activités professionnelles, des widgets enrichis et les alertes avancées d’événements environnementaux.',
     oneTime: 'Achat unique. Aucun abonnement. Aucun compte AirAware.',
     unconfigured: 'L’achat AirAware Pro n’est pas configuré dans cette version.',
     unavailable:
@@ -132,7 +134,7 @@ export const fr = {
     revenueCatEntitlementActive: 'Le droit d’accès RevenueCat est actif.',
     developmentPreviewUpdated: 'Aperçu des capacités de développement mis à jour.',
     activitiesSubtitle:
-      'Outils environnementaux professionnels pour l’agriculture, les opérations de drone, la photographie, l’astronomie et le travail en extérieur.',
+      'Planification orientée métier pour l’agriculture, les opérations de drone, la photographie, l’astronomie et le travail en extérieur.',
     activitiesRequirePro: 'Les activités sont disponibles avec AirAware Pro.',
   },
   features: {
@@ -153,7 +155,14 @@ export const fr = {
     advancedNotifications: 'Notifications environnementales avancées',
   },
   today: {
+    thermalStress: 'Stress thermique',
+    thermalSource: 'UTCI si valide, sinon température ressentie',
+    healthSignals: 'Contexte santé',
+    healthSignalsSubtitle: 'Signaux publics avec géographie, période et fraîcheur indiquées',
     respiratoryActivity: 'Activité respiratoire',
+    vectorBorneActivity: 'Activité vectorielle',
+    wastewaterSurveillance: 'Surveillance des eaux usées',
+    wastewaterSource: 'CDC NWSS et autres flux publics si disponibles',
     latestSurveillance: 'Dernière surveillance',
     populationHealth: 'Santé de la population',
     radiological: 'Radiologique',
@@ -177,8 +186,10 @@ export const fr = {
     share: 'Partager',
     locationRequired: 'Localisation requise',
     locationRequiredBody:
-      'AirAware a besoin de la position actuelle ou d’un lieu manuel enregistré pour récupérer les conditions environnementales locales. Les coordonnées ne sont envoyées qu’aux fournisseurs environnementaux qui en ont besoin.',
+      'Utilisez la position actuelle ou choisissez un lieu manuel enregistré pour récupérer les conditions locales. Les coordonnées ne sont envoyées qu’aux fournisseurs qui en ont besoin.',
     continueAndRefresh: 'Continuer et actualiser',
+    useCurrentLocation: 'Utiliser la position actuelle',
+    chooseManualLocation: 'Choisir un lieu manuel',
     activeLocation: 'Lieu actif',
     eventExpected: 'Attendu : {{time}}',
     eventPeak: 'Pic : {{time}}',
@@ -247,6 +258,7 @@ export const fr = {
     geography: 'Géographie',
     period: 'Période',
     reportingWeek: 'Semaine {{week}}, {{year}}',
+    reportingYear: '{{year}}',
     periodRange: '{{start}} à {{end}}',
     freshness: 'Fraîcheur',
     freshnessStatus: {
@@ -262,6 +274,7 @@ export const fr = {
     belowBaseline: 'En dessous du niveau de référence',
     atBaseline: 'Au niveau de référence',
     noRecentData: 'Aucune donnée récente',
+    categoryUnknown: 'Catégorie indisponible',
     countrySurveillance: 'Surveillance virologique respiratoire au niveau national',
     whoCategoryUnavailable:
       'WHO FluNet ne fournit pas de catégorie universelle faible/élevée au niveau national.',
@@ -281,12 +294,51 @@ export const fr = {
       disclaimer:
         'Le rayonnement ionisant ambiant est mesuré par des données publiques de surveillance à proximité lorsqu’elles sont disponibles. AirAware ne détecte pas les incidents nucléaires, n’estime pas le risque radiologique personnel et ne calcule pas la dose cumulée personnelle.',
     },
+    thermalStress: {
+      title: 'Stress thermique',
+      status: {
+        extremeColdStress: 'Stress extrême dû au froid',
+        veryStrongColdStress: 'Stress très fort dû au froid',
+        strongColdStress: 'Stress fort dû au froid',
+        moderateColdStress: 'Stress modéré dû au froid',
+        slightColdStress: 'Stress léger dû au froid',
+        noThermalStress: 'Absence de stress thermique',
+        moderateHeatStress: 'Stress modéré dû à la chaleur',
+        strongHeatStress: 'Stress fort dû à la chaleur',
+        veryStrongHeatStress: 'Stress très fort dû à la chaleur',
+        extremeHeatStress: 'Stress extrême dû à la chaleur',
+        noThermalStrain: 'Absence de contrainte thermique',
+        coldStrain: 'Contrainte due au froid',
+        moderateHeatStrain: 'Contrainte thermique modérée due à la chaleur',
+        highHeatStrain: 'Contrainte thermique élevée due à la chaleur',
+        veryHighHeatStrain: 'Contrainte thermique très élevée due à la chaleur',
+      },
+      apparentTemperatureFallback:
+        'Utilise la température ressentie Open-Meteo lorsque l’UTCI ne peut pas être calculé avec des entrées complètes.',
+    },
+    vector: {
+      dengue: 'Dengue',
+      westNile: 'Virus du Nil occidental',
+      malaria: 'Contexte du paludisme',
+      tickBorneDisease: 'Maladie transmise par les tiques',
+    },
+    wastewater: {
+      covid19: 'COVID-19 dans les eaux usées',
+      influenza: 'Grippe A dans les eaux usées',
+      rsv: 'VRS dans les eaux usées',
+      viralActivity: 'Activité virale dans les eaux usées',
+      noLocalData: 'Aucune donnée locale sur les eaux usées',
+    },
+    measuredMoldSpores: 'Spores de moisissures mesurées',
   },
   providers: {
     who: 'OMS',
     cdc: 'CDC',
     ecdc: 'ECDC',
     eurostat: 'Eurostat',
+    owid: 'Our World in Data',
+    openMeteo: 'Open-Meteo',
+    rivm: 'RIVM',
     safecast: 'Safecast',
     radnet: 'EPA RadNet',
     eurdep: 'EURDEP',

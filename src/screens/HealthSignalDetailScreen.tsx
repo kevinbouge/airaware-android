@@ -1,33 +1,56 @@
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ScrollView, StyleSheet, Text, View, type DimensionValue } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
+import { AppButton } from '../components/AppButton';
 import { DetailHeader } from '../components/DetailHeader';
 import { DetailStateView } from '../components/DetailStateView';
 import { AppIcon } from '../components/icons/AppIcon';
-import { SectionCard } from '../components/SectionCard';
-import { SummaryMetricGrid } from '../components/ui/SummaryMetricGrid';
+import { EnvironmentalIcon } from '../components/icons/EnvironmentalIcon';
 import {
   healthSignalCategoryLabel,
-  healthSignalPeriodLabel,
   healthSignalFreshnessLabel,
   healthSignalGeographyLabel,
+  healthSignalPeriodLabel,
   healthSignalSourceLabel,
   healthSignalTrendLabel,
   healthSignalTypeLabel,
   healthSignalValueLabel,
 } from '../core/healthSignals';
-import type {
-  BiologicalEvidence,
-  HealthSignal,
-  RadiologicalEvidence,
-} from '../models/healthSignals';
+import {
+  healthTimelineFillStyle,
+  healthTimelinePointValueLabel,
+  selectedHealthSignalDetailRange,
+  timelinePositionPercent,
+} from '../core/healthSignalPresentation';
+import { DATA_DETAIL_RANGES, dataDetailRange } from '../core/dataVariableMetadata';
+import { appLocale, translate } from '../i18n';
+import type { DataDetailRangeId } from '../models/dataDetail';
+import type { HealthSignal, HealthSignalObservation } from '../models/healthSignals';
 import { goBackOrToday, type DetailBackNavigation } from '../navigation/detailNavigation';
 import { useAppStore } from '../state/useAppStore';
 import { colors, spacing } from '../theme/theme';
 import { formatMeasurement, formatTimestamp } from '../utils/format';
+import { isFiniteNumber } from '../utils/number';
+
+const ROW_HEIGHT = 46;
 
 interface HealthSignalRouteParams {
   signalId: string;
+}
+
+interface HealthTimelinePoint {
+  id: string;
+  label: string;
+  value: number | null;
+  unit: string | null;
+  source: 'history' | 'forecast';
+  time: number;
+}
+
+interface RangeSelection {
+  signalId: string | null;
+  rangeId: DataDetailRangeId;
 }
 
 function isHealthSignalRouteParams(value: unknown): value is HealthSignalRouteParams {
@@ -38,64 +61,282 @@ function isHealthSignalRouteParams(value: unknown): value is HealthSignalRoutePa
   );
 }
 
-function iconNameForSignal(
+function observationTime(observation: HealthSignalObservation): number {
+  const timestamp = observation.periodEnd ?? observation.observedAt ?? observation.updatedAt;
+  const parsed = timestamp ? Date.parse(timestamp) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function signalAnchorTime(signal: HealthSignal): number {
+  const timestamp = signal.observedAt ?? signal.periodEnd ?? signal.updatedAt;
+  const parsed = Date.parse(timestamp);
+  return Number.isFinite(parsed) ? parsed : Date.now();
+}
+
+function observationLabel(observation: HealthSignalObservation): string {
+  if (observation.period?.type === 'week') {
+    return `W${String(observation.period.week).padStart(2, '0')} ${observation.period.year}`;
+  }
+  if (observation.period?.type === 'month') {
+    const date = new Date(Date.UTC(observation.period.year, observation.period.month - 1, 1));
+    return new Intl.DateTimeFormat(appLocale(), {
+      month: 'short',
+      timeZone: 'UTC',
+      year: 'numeric',
+    }).format(date);
+  }
+  if (observation.period?.type === 'year') {
+    return String(observation.period.year);
+  }
+
+  return formatTimestamp(observation.observedAt ?? observation.updatedAt ?? null);
+}
+
+function currentObservation(signal: HealthSignal): HealthSignalObservation | null {
+  if (!isFiniteNumber(signal.value) || !signal.unit) return null;
+  return {
+    period: signal.reportingPeriod,
+    periodStart: signal.periodStart,
+    periodEnd: signal.periodEnd,
+    observedAt: signal.observedAt,
+    updatedAt: signal.updatedAt,
+    measure: signal.source.measure,
+    value: signal.value,
+    unit: signal.unit,
+    source: signal.source,
+  };
+}
+
+function timelinePoints(signal: HealthSignal): HealthTimelinePoint[] {
+  const anchorTime = signalAnchorTime(signal);
+  const observations =
+    signal.history && signal.history.length > 0
+      ? signal.history
+      : [currentObservation(signal)].filter(
+          (item): item is HealthSignalObservation => item !== null,
+        );
+
+  return observations
+    .filter((observation) => isFiniteNumber(observation.value))
+    .sort((left, right) => observationTime(left) - observationTime(right))
+    .map((observation, index) => {
+      const time = observationTime(observation);
+      return {
+        id: [
+          observation.periodEnd,
+          observation.observedAt,
+          observation.updatedAt,
+          observation.measure,
+          index,
+        ].join(':'),
+        label: observationLabel(observation),
+        value: observation.value,
+        unit: observation.unit,
+        source: time > anchorTime ? ('forecast' as const) : ('history' as const),
+        time,
+      };
+    });
+}
+
+function average(values: number[]): number | null {
+  if (values.length === 0) return null;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function filteredPointsForRange(
+  points: HealthTimelinePoint[],
   signal: HealthSignal,
-): 'respiratory' | 'population-health' | 'radiological' {
-  if (signal.domain === 'radiological') return 'radiological';
-  return signal.domain === 'population-health' ? 'population-health' : 'respiratory';
+  rangeId: DataDetailRangeId,
+): HealthTimelinePoint[] {
+  const range = dataDetailRange(rangeId);
+  const anchor = signalAnchorTime(signal);
+  const minTime = anchor - range.historyHours * 60 * 60 * 1000;
+  const maxTime = anchor + range.forecastHours * 60 * 60 * 1000;
+  return points.filter((point) => point.time >= minTime && point.time <= maxTime);
 }
 
-function evidenceValueLabel(evidence: BiologicalEvidence | RadiologicalEvidence): string {
-  if (evidence.value === undefined || evidence.unit === undefined) return '';
-
-  return formatMeasurement(evidence.value, evidence.unit, evidence.unit === 'µSv/h' ? 2 : 1);
-}
-
-function isRadiologicalEvidence(
-  evidence: BiologicalEvidence | RadiologicalEvidence,
-): evidence is RadiologicalEvidence {
-  return 'measuredAt' in evidence;
-}
-
-function evidenceKey(evidence: BiologicalEvidence | RadiologicalEvidence): string {
-  if (isRadiologicalEvidence(evidence)) {
+function summaryRows(signal: HealthSignal, points: HealthTimelinePoint[]) {
+  const values = points.map((point) => point.value).filter(isFiniteNumber);
+  if (values.length > 1) {
     return [
-      evidence.provider,
-      evidence.sensorId,
-      evidence.measurementId,
-      evidence.measuredAt,
-      evidence.value,
-    ].join(':');
+      {
+        label: translate('detail.minimum'),
+        value: formatMeasurement(
+          Math.min(...values),
+          signal.unit ?? '',
+          signal.type === 'ambient-dose-rate' ? 2 : 1,
+        ),
+      },
+      {
+        label: translate('detail.maximum'),
+        value: formatMeasurement(
+          Math.max(...values),
+          signal.unit ?? '',
+          signal.type === 'ambient-dose-rate' ? 2 : 1,
+        ),
+      },
+      {
+        label: translate('detail.average'),
+        value: formatMeasurement(
+          average(values),
+          signal.unit ?? '',
+          signal.type === 'ambient-dose-rate' ? 2 : 1,
+        ),
+      },
+    ];
   }
 
   return [
-    evidence.provider,
-    evidence.pathogen,
-    evidence.periodStart ?? evidence.reportingPeriod.year,
-    evidence.periodEnd ??
-      (evidence.reportingPeriod.type === 'week'
-        ? evidence.reportingPeriod.week
-        : evidence.reportingPeriod.month),
-    evidence.measure,
-  ].join(':');
+    {
+      label: translate('health.period'),
+      value: healthSignalPeriodLabel(signal),
+    },
+    {
+      label: healthSignalSourceLabel(signal),
+      value: healthSignalGeographyLabel(signal),
+    },
+    {
+      label:
+        signal.domain === 'radiological' || signal.type === 'thermal-stress'
+          ? translate('health.radiological.statusLabel')
+          : translate('health.trendLabel'),
+      value:
+        signal.domain === 'radiological' || signal.type === 'thermal-stress'
+          ? healthSignalCategoryLabel(signal)
+          : healthSignalTrendLabel(signal.trend),
+    },
+  ];
 }
 
-function evidenceLabel(evidence: BiologicalEvidence | RadiologicalEvidence): string {
-  if (isRadiologicalEvidence(evidence)) return evidence.sensorId ?? evidence.provider;
-  return evidence.measure;
+function detailHeaderIcon(signal: HealthSignal) {
+  if (signal.type === 'thermal-stress') {
+    return <EnvironmentalIcon name="apparent-temperature" size="event" color={colors.primary} />;
+  }
+
+  if (signal.domain === 'radiological') {
+    return <AppIcon name="radiological" size="action" color={colors.primary} />;
+  }
+
+  const iconName = signal.domain === 'population-health' ? 'population-health' : 'respiratory';
+  return <AppIcon name={iconName} size="action" color={colors.primary} />;
 }
 
-function numberMetadata(signal: HealthSignal, key: string): number | null {
-  const value = signal.metadata?.[key];
-  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+function HealthTimelineChart({
+  points,
+  signal,
+}: {
+  points: HealthTimelinePoint[];
+  signal: HealthSignal;
+}) {
+  const scrollRef = useRef<ScrollView>(null);
+  const [viewportHeight, setViewportHeight] = useState(0);
+  const historyPoints = useMemo(
+    () => points.filter((point) => point.source === 'history'),
+    [points],
+  );
+  const forecastPoints = useMemo(
+    () => points.filter((point) => point.source === 'forecast'),
+    [points],
+  );
+  const showNowSeparator = forecastPoints.length > 0;
+  const values = points.map((point) => point.value).filter(isFiniteNumber);
+  const min = values.length > 0 ? Math.min(...values, 0) : 0;
+  const max = values.length > 0 ? Math.max(...values) : 1;
+  const nowOffset = historyPoints.length * ROW_HEIGHT;
+
+  useEffect(() => {
+    if (viewportHeight <= 0) return;
+    const targetOffset = showNowSeparator
+      ? nowOffset - viewportHeight / 2
+      : points.length * ROW_HEIGHT;
+    const offset = Math.max(0, targetOffset);
+    const timeout = setTimeout(
+      () => scrollRef.current?.scrollTo({ y: offset, animated: false }),
+      0,
+    );
+    return () => clearTimeout(timeout);
+  }, [nowOffset, points.length, showNowSeparator, viewportHeight]);
+
+  if (points.length === 0) {
+    return (
+      <View style={styles.emptyChart}>
+        <Text style={styles.emptyText}>{healthSignalValueLabel(signal)}</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.chart}>
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={styles.chartContent}
+        nestedScrollEnabled
+        onLayout={(event) => setViewportHeight(event.nativeEvent.layout.height)}
+      >
+        {historyPoints.map((point) => (
+          <HealthPointRow key={point.id} point={point} signal={signal} min={min} max={max} />
+        ))}
+        {showNowSeparator ? (
+          <View style={styles.nowSeparator}>
+            <View style={styles.nowLine} />
+            <Text style={styles.nowLabel}>{translate('detail.current')}</Text>
+            <View style={styles.nowLine} />
+          </View>
+        ) : null}
+        {forecastPoints.map((point) => (
+          <HealthPointRow key={point.id} point={point} signal={signal} min={min} max={max} />
+        ))}
+      </ScrollView>
+    </View>
+  );
 }
 
-function baselineMedian(signal: HealthSignal): number | null {
-  const baseline = signal.metadata?.baseline;
-  if (baseline === null || typeof baseline !== 'object' || !('median' in baseline)) return null;
-  return typeof baseline.median === 'number' && Number.isFinite(baseline.median)
-    ? baseline.median
-    : null;
+function HealthPointRow({
+  point,
+  signal,
+  min,
+  max,
+}: {
+  point: HealthTimelinePoint;
+  signal: HealthSignal;
+  min: number;
+  max: number;
+}) {
+  return (
+    <View
+      style={[styles.pointRow, point.source === 'history' ? styles.historyRow : styles.forecastRow]}
+    >
+      <Text numberOfLines={1} style={styles.timeLabel}>
+        {point.label}
+      </Text>
+      <View style={styles.track}>
+        {point.value !== null ? (
+          <View
+            style={[
+              styles.fill,
+              healthTimelineFillStyle({
+                value: point.value,
+                min,
+                max,
+                signalType: signal.type,
+              }),
+            ]}
+          />
+        ) : null}
+        {signal.type === 'excess-mortality' ? (
+          <View
+            style={[
+              styles.zeroLine,
+              { left: `${timelinePositionPercent(0, min, max)}%` as DimensionValue },
+            ]}
+          />
+        ) : null}
+      </View>
+      <Text numberOfLines={1} style={styles.valueLabel}>
+        {healthTimelinePointValueLabel(point, signal)}
+      </Text>
+    </View>
+  );
 }
 
 export function HealthSignalDetailScreen() {
@@ -103,10 +344,26 @@ export function HealthSignalDetailScreen() {
   const { t } = useTranslation();
   const route = useRoute();
   const params = isHealthSignalRouteParams(route.params) ? route.params : null;
+  const [rangeSelection, setRangeSelection] = useState<RangeSelection>({
+    signalId: null,
+    rangeId: '24h',
+  });
   const signal = useAppStore((state) =>
     params ? state.healthSignals.signals.find((item) => item.id === params.signalId) : undefined,
   );
   const handleBack = () => goBackOrToday(navigation);
+  const rangeId = selectedHealthSignalDetailRange(signal, rangeSelection);
+  const setRangeId = (nextRangeId: DataDetailRangeId) => {
+    setRangeSelection({
+      signalId: signal?.id ?? null,
+      rangeId: nextRangeId,
+    });
+  };
+  const points = useMemo(() => (signal ? timelinePoints(signal) : []), [signal]);
+  const visiblePoints = useMemo(
+    () => (signal ? filteredPointsForRange(points, signal, rangeId) : []),
+    [points, rangeId, signal],
+  );
 
   if (!signal) {
     return (
@@ -117,150 +374,210 @@ export function HealthSignalDetailScreen() {
       />
     );
   }
-  const signalLabel = healthSignalTypeLabel(signal.type);
-  const geographyLabel = healthSignalGeographyLabel(signal);
 
   return (
     <View style={styles.screen}>
       <DetailHeader
-        title={signalLabel}
-        subtitle={geographyLabel}
-        icon={<AppIcon name={iconNameForSignal(signal)} size="action" color={colors.primary} />}
+        title={healthSignalTypeLabel(signal.type)}
+        subtitle={healthSignalGeographyLabel(signal)}
+        icon={detailHeaderIcon(signal)}
         onBack={handleBack}
       />
-      <ScrollView style={styles.scroller} contentContainerStyle={styles.content}>
-        <SectionCard>
-          <SummaryMetricGrid
-            metrics={[
-              {
-                label:
-                  signal.domain === 'radiological'
-                    ? t('health.radiological.currentMeasurement')
-                    : t('health.latestSurveillance'),
-                value: healthSignalValueLabel(signal),
-                accent: colors.primary,
-              },
-              {
-                label:
-                  signal.domain === 'radiological'
-                    ? t('health.radiological.statusLabel')
-                    : t('health.trendLabel'),
-                value:
-                  signal.domain === 'radiological'
-                    ? healthSignalCategoryLabel(signal)
-                    : healthSignalTrendLabel(signal.trend),
-                compact: true,
-              },
-            ]}
-          />
-        </SectionCard>
-
-        <SectionCard title={t('health.reporting')}>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>{t('health.geography')}</Text>
-            <Text style={styles.detailValue}>{geographyLabel}</Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>{t('health.period')}</Text>
-            <Text style={styles.detailValue}>{healthSignalPeriodLabel(signal)}</Text>
-          </View>
-          {signal.domain === 'radiological' ? (
-            <>
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>{t('health.radiological.nearestSensor')}</Text>
-                <Text style={styles.detailValue}>
-                  {formatMeasurement(numberMetadata(signal, 'nearestSensorDistanceKm'), 'km', 1)}
-                </Text>
-              </View>
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>{t('health.radiological.localBaseline')}</Text>
-                <Text style={styles.detailValue}>
-                  {formatMeasurement(baselineMedian(signal), 'µSv/h', 2)}
-                </Text>
-              </View>
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>{t('health.radiological.difference')}</Text>
-                <Text style={styles.detailValue}>
-                  {numberMetadata(signal, 'ratioToBaseline') !== null
-                    ? `${formatMeasurement(numberMetadata(signal, 'ratioToBaseline'), '', 1)}×`
-                    : t('common.unavailable')}
-                </Text>
-              </View>
-            </>
-          ) : null}
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>{t('common.updated')}</Text>
-            <Text style={styles.detailValue}>{formatTimestamp(signal.updatedAt)}</Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>{t('health.freshness')}</Text>
-            <Text style={styles.detailValue}>
-              {healthSignalFreshnessLabel(signal.freshness.status)}
-            </Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>{t('common.source')}</Text>
-            <Text style={styles.detailValue}>{healthSignalSourceLabel(signal)}</Text>
-          </View>
-        </SectionCard>
-
-        {signal.evidence && signal.evidence.length > 0 ? (
-          <SectionCard title={t('health.evidence')}>
-            {signal.evidence.slice(0, 4).map((evidence) => (
-              <View key={evidenceKey(evidence)} style={styles.detailRow}>
-                <Text style={styles.detailLabel}>{evidenceLabel(evidence)}</Text>
-                <Text style={styles.detailValue}>{evidenceValueLabel(evidence)}</Text>
-              </View>
-            ))}
-          </SectionCard>
-        ) : null}
-
-        <SectionCard title={t('health.about')}>
-          <Text style={styles.body}>
-            {signal.domain === 'radiological'
-              ? t('health.radiological.disclaimer')
-              : t('health.populationDisclaimer')}
+      <View style={styles.content}>
+        <View style={styles.header}>
+          <Text style={styles.currentValue}>
+            {t('detail.current')}: {healthSignalValueLabel(signal)}
           </Text>
-          {signal.source.measure ? <Text style={styles.body}>{signal.source.measure}</Text> : null}
-        </SectionCard>
-      </ScrollView>
+          <Text style={styles.status}>
+            {healthSignalFreshnessLabel(signal.freshness.status)} ·{' '}
+            {healthSignalPeriodLabel(signal)}
+          </Text>
+        </View>
+
+        <View style={styles.summary}>
+          {summaryRows(signal, visiblePoints).map((row) => (
+            <View key={row.label} style={styles.summaryItem}>
+              <Text numberOfLines={1} style={styles.summaryLabel}>
+                {row.label}
+              </Text>
+              <Text numberOfLines={2} style={styles.summaryValue}>
+                {row.value}
+              </Text>
+            </View>
+          ))}
+        </View>
+      </View>
+
+      <View style={styles.chartArea}>
+        <HealthTimelineChart points={visiblePoints} signal={signal} />
+      </View>
+      <View style={styles.footer}>
+        <View style={styles.rangeSelector}>
+          {DATA_DETAIL_RANGES.map((item) => (
+            <View key={item.id} style={styles.rangeButton}>
+              <AppButton
+                title={dataDetailRange(item.id).label}
+                selected={rangeId === item.id}
+                onPress={() => setRangeId(item.id)}
+              />
+            </View>
+          ))}
+        </View>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  body: {
-    color: colors.muted,
-    fontSize: 14,
-    lineHeight: 20,
+  chart: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    flex: 1,
+    overflow: 'hidden',
+  },
+  chartArea: {
+    flex: 1,
+    paddingBottom: spacing.lg,
+    paddingHorizontal: spacing.lg,
+  },
+  chartContent: {
+    paddingVertical: spacing.xs,
   },
   content: {
+    gap: spacing.lg,
+    padding: spacing.lg,
+    paddingBottom: spacing.md,
+  },
+  currentValue: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  emptyChart: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 12,
+    borderWidth: 1,
     padding: spacing.lg,
   },
-  detailLabel: {
+  emptyText: {
     color: colors.muted,
-    flex: 1,
     fontSize: 14,
   },
-  detailRow: {
+  fill: {
+    borderRadius: 999,
+    height: '100%',
+  },
+  footer: {
+    gap: spacing.sm,
+    paddingBottom: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+  },
+  forecastRow: {
+    backgroundColor: '#FFF7EC',
+  },
+  header: {
+    gap: spacing.xs,
+  },
+  historyRow: {
+    backgroundColor: '#EEF5F0',
+  },
+  nowLabel: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  nowLine: {
+    backgroundColor: colors.primary,
+    flex: 1,
+    height: 2,
+  },
+  nowSeparator: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: spacing.md,
-    justifyContent: 'space-between',
-    minHeight: 36,
+    gap: spacing.sm,
+    height: ROW_HEIGHT,
+    paddingHorizontal: spacing.md,
   },
-  detailValue: {
-    color: colors.text,
+  pointRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    height: ROW_HEIGHT,
+    paddingHorizontal: spacing.md,
+  },
+  rangeButton: {
     flex: 1,
-    fontSize: 14,
-    fontWeight: '700',
-    textAlign: 'right',
+  },
+  rangeSelector: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
   },
   screen: {
     backgroundColor: colors.background,
     flex: 1,
   },
-  scroller: {
-    backgroundColor: colors.background,
+  status: {
+    color: colors.muted,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  summary: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    padding: spacing.md,
+  },
+  summaryItem: {
+    alignItems: 'center',
+    flexBasis: 0,
+    flexGrow: 1,
+    gap: spacing.xs,
+    minWidth: 0,
+  },
+  summaryLabel: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  summaryValue: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  timeLabel: {
+    color: colors.muted,
+    flex: 1.1,
+    fontSize: 12,
+  },
+  track: {
+    backgroundColor: '#E6ECE7',
+    borderRadius: 999,
+    flex: 1.2,
+    height: 12,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  valueLabel: {
+    color: colors.text,
+    flex: 0.8,
+    fontSize: 13,
+    fontWeight: '700',
+    textAlign: 'right',
+  },
+  zeroLine: {
+    backgroundColor: colors.text,
+    height: '100%',
+    opacity: 0.45,
+    position: 'absolute',
+    width: 1,
   },
 });

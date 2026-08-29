@@ -26,7 +26,7 @@ import type { AppSettings, PersonalAllergyProfile } from '../models/profile';
 import { translate } from '../i18n';
 import { formatShortTime, formatTimeRangeWithTomorrow } from '../utils/format';
 import { isFiniteNumber, normalizeByThresholds } from '../utils/number';
-import { irritantLabel, pollenLabel, pollutantLabel } from '../utils/readingLabels';
+import { pollenLabel, pollutantLabel } from '../utils/readingLabels';
 
 const DETECTION_HORIZON_HOURS = 24;
 const MAX_EPISODE_GAP_MS = 90 * 60 * 1000;
@@ -356,35 +356,6 @@ export function environmentalEventBody(
 
 export function environmentalEventCategoryLabel(event: EnvironmentalEvent): string {
   return localizedEventCategoryLabel(event.severity);
-}
-
-export function environmentalEventEvidenceLabel(variable: string): string {
-  switch (variable) {
-    case 'dust':
-      return irritantLabel('dust');
-    case 'pm10':
-      return pollutantLabel('pm10');
-    case 'pm2_5':
-      return 'PM2.5';
-    case 'pm10_wildfires':
-      return translate('environment.irritants.wildfirePm10');
-    case 'aerosol_optical_depth':
-      return translate('environment.irritants.aerosolOpticalDepth');
-    case 'pm2_5_total_organic_matter':
-      return translate('environment.irritants.pm25OrganicMatter');
-    case 'total_elementary_carbon':
-      return translate('environment.irritants.totalElementaryCarbon');
-    case 'uv_index':
-      return translate('environment.uvIndex');
-    case 'mold_potential':
-      return translate('environment.moldPotential');
-    case 'environmental_burden':
-      return translate('risk.environmentalBurden');
-    case 'personalized_risk':
-      return translate('risk.personalizedRisk');
-    default:
-      return variable.replaceAll('_', ' ');
-  }
 }
 
 function categoryForScore(score: number | null): RiskCategoryId {

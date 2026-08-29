@@ -16,6 +16,7 @@ describe('navigation', () => {
       'DataDetail',
       'ActivityDomainDetail',
       'ActivityDetail',
+      'HealthSignalDetail',
     ];
     const tabScreens = mainTabs.screens;
     expect(Object.keys(screens)).toEqual(routes);
@@ -27,6 +28,7 @@ describe('navigation', () => {
     expect(screens.DataDetail).toBe('data/:variableId');
     expect(screens.ActivityDomainDetail).toBe('activities/:domainId');
     expect(screens.ActivityDetail).toBe('activities/:domainId/:profileId');
+    expect(screens.HealthSignalDetail).toBe('health/:signalId');
   });
 
   it('keeps the variable detail route in a stack with gesture dismissal disabled', () => {
@@ -51,7 +53,8 @@ describe('navigation', () => {
     expect(screen).toContain('<DetailHeader title={variable.label} onBack={handleBack} />');
     expect(screen).toContain('goBackOrToday(navigation)');
     expect(screen).toContain('function DetailUnavailable');
-    expect(header).toContain('accessibilityLabel="Back"');
+    expect(header).toContain("accessibilityLabel={t('common.back')}");
+    expect(header).toContain("{t('common.back')}");
     expect(header).toContain('<AppIcon name="back" size="action" color={colors.primary} />');
     expect(header).not.toContain('backIcon');
     expect(header).not.toContain('<BackChevron />');
@@ -184,6 +187,64 @@ describe('navigation', () => {
     expect(today).toContain('InsightCard');
     expect(today).toContain("t('today.opensDetails'");
     expect(today).toContain('activitySection');
+  });
+
+  it('renders Today environmental events as static cards with score context for headline risk', () => {
+    const today = fs.readFileSync('src/screens/TodayScreen.tsx', 'utf8');
+
+    expect(today).toContain('function eventSeverityLabel(event: EnvironmentalEvent): string');
+    expect(today).toContain('function eventDataValueLabel(event: EnvironmentalEvent): string');
+    expect(today).toContain("event.type === 'headline-risk' || event.type === 'mold' ? '%' : ''");
+    expect(today).toContain('return `${category} · ${value}`');
+    expect(today).not.toContain('selectedEvent');
+    expect(today).not.toContain('environmentalEventEvidenceLabel');
+    expect(today).not.toContain('setSelectedEvent(event)');
+  });
+
+  it('keeps Today health context concise and honest about stale or unavailable signals', () => {
+    const today = fs.readFileSync('src/screens/TodayScreen.tsx', 'utf8');
+
+    expect(today).toContain("title={t('today.healthSignals')}");
+    expect(today).toContain('function HealthSignalGroup');
+    expect(today).toContain('name="apparent-temperature"');
+    expect(today).toContain('size="event"');
+    expect(today).toContain('function isDemotedHealthSignal(signal: HealthSignal): boolean');
+    expect(today).toContain(
+      "signal.metadata?.unavailable === true || signal.freshness.status === 'stale'",
+    );
+    expect(today).toContain('sortedHealthSignals(');
+  });
+
+  it('keeps health-signal detail pages aligned with the pollen timeline layout', () => {
+    const screen = fs.readFileSync('src/screens/HealthSignalDetailScreen.tsx', 'utf8');
+
+    expect(screen).toContain('DATA_DETAIL_RANGES.map');
+    expect(screen).toContain('styles.summary');
+    expect(screen).toContain('styles.chartArea');
+    expect(screen.indexOf('styles.summary')).toBeLessThan(screen.indexOf('styles.chartArea'));
+    expect(screen).toContain('historyRow');
+    expect(screen).toContain('forecastRow');
+    expect(screen).toContain('nowSeparator');
+    expect(screen).not.toContain('<SectionCard');
+  });
+
+  it('offers current and manual location paths from Today onboarding', () => {
+    const today = fs.readFileSync('src/screens/TodayScreen.tsx', 'utf8');
+
+    expect(today).toContain("title={t('today.useCurrentLocation')}");
+    expect(today).toContain("title={t('today.chooseManualLocation')}");
+    expect(today).toContain("navigation.navigate('MainTabs', { screen: 'Settings' })");
+  });
+
+  it('uses a timeline-style screen for biological, mortality, and radiation details', () => {
+    const screen = fs.readFileSync('src/screens/HealthSignalDetailScreen.tsx', 'utf8');
+
+    expect(screen).toContain('function HealthTimelineChart');
+    expect(screen).toContain('timelinePoints(signal)');
+    expect(screen).toContain('styles.chartArea');
+    expect(screen).toContain('healthSignalValueLabel(signal)');
+    expect(screen).not.toContain('SectionCard');
+    expect(screen).not.toContain('evidence');
   });
 
   it('keeps domain detail profile cards un-nested', () => {

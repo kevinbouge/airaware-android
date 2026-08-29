@@ -173,7 +173,7 @@ export function DataDetailScreen() {
           {DATA_DETAIL_RANGES.map((item) => (
             <View key={item.id} style={styles.rangeButton}>
               <AppButton
-                title={item.label}
+                title={dataDetailRange(item.id).label}
                 selected={range.id === item.id}
                 onPress={() => setRangeId(item.id)}
               />

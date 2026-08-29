@@ -3,17 +3,49 @@ export type HealthSignalDomain =
 
 export type RadiologicalStatus = 'normal-background' | 'elevated' | 'strongly-elevated' | 'unknown';
 
-export type HealthSignalCategory = 'low' | 'moderate' | 'high' | 'very-high' | RadiologicalStatus;
+export type ThermalStressCategory =
+  | 'extreme-cold-stress'
+  | 'very-strong-cold-stress'
+  | 'strong-cold-stress'
+  | 'moderate-cold-stress'
+  | 'slight-cold-stress'
+  | 'no-thermal-stress'
+  | 'moderate-heat-stress'
+  | 'strong-heat-stress'
+  | 'very-strong-heat-stress'
+  | 'extreme-heat-stress'
+  | 'no-thermal-strain'
+  | 'cold-strain'
+  | 'moderate-heat-strain'
+  | 'high-heat-strain'
+  | 'very-high-heat-strain';
+
+export type HealthSignalCategory =
+  'low' | 'moderate' | 'high' | 'very-high' | RadiologicalStatus | ThermalStressCategory;
 
 export type HealthSignalTrend = 'falling' | 'stable' | 'rising' | 'unknown';
 
 type GeographyLevel = 'local' | 'subregion' | 'region' | 'country' | 'supranational';
 
-export type BiologicalSignalType = 'influenza' | 'covid-19' | 'rsv';
+type RespiratorySignalType = 'influenza' | 'covid-19' | 'rsv';
+
+export type WastewaterSignalType =
+  'wastewater-covid-19' | 'wastewater-influenza' | 'wastewater-rsv';
+
+type VectorDiseaseSignalType = 'dengue' | 'west-nile' | 'malaria' | 'tick-borne-disease';
+
+export type BiologicalSignalType =
+  RespiratorySignalType | WastewaterSignalType | VectorDiseaseSignalType;
 
 type RadiologicalSignalType = 'ambient-dose-rate';
 
-export type HealthSignalType = BiologicalSignalType | 'excess-mortality' | RadiologicalSignalType;
+type EnvironmentalHealthSignalType = 'thermal-stress' | 'measured-mold-spores';
+
+export type HealthSignalType =
+  | BiologicalSignalType
+  | EnvironmentalHealthSignalType
+  | 'excess-mortality'
+  | RadiologicalSignalType;
 
 export type HealthSignalFreshnessStatus = 'fresh' | 'aging' | 'stale';
 
@@ -27,6 +59,10 @@ export type ReportingPeriod =
       type: 'month';
       year: number;
       month: number;
+    }
+  | {
+      type: 'year';
+      year: number;
     };
 
 export interface HealthGeography {

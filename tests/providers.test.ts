@@ -73,6 +73,7 @@ describe('Open-Meteo providers', () => {
   it('requests and normalizes UV without invalidating weather when UV is missing or invalid', () => {
     const url = buildWeatherUrl({ latitude: 50, longitude: 14 });
     expect(url).toContain('uv_index');
+    expect(url).toContain('apparent_temperature');
     expect(url).not.toContain('pressure_msl');
     expect(url).not.toContain('wet_bulb_temperature_2m');
     expect(url).not.toContain('shortwave_radiation');

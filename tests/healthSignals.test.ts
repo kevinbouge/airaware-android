@@ -4,6 +4,16 @@ import {
   normalizeEurostatExcessMortality,
 } from '../src/api/health/eurostatExcessMortality';
 import {
+  cdcWastewaterUrl,
+  normalizeCdcWastewaterSignal,
+  type WastewaterDataset,
+} from '../src/api/health/cdcWastewater';
+import { normalizeRivmWastewaterSignal } from '../src/api/health/rivmWastewater';
+import {
+  normalizeOwidExcessMortality,
+  owidExcessMortalityUrl,
+} from '../src/api/health/owidExcessMortality';
+import {
   normalizeSafecastRadiationMeasurements,
   radiologicalSignalFromSafecast,
   radiologicalSpatialCacheKey,
@@ -17,6 +27,7 @@ import {
   whoRespiratoryProvider,
   whoRespiratoryUrl,
 } from '../src/api/health/whoRespiratory';
+import { normalizeWhoMalariaContext, whoMalariaUrl } from '../src/api/health/whoVectorDisease';
 import {
   healthSignalPeriodLabel,
   healthSignalTrendLabel,
@@ -30,6 +41,12 @@ import {
   normalizeDoseRate,
   selectBestRadiologicalObservation,
 } from '../src/core/radiologicalSignals';
+import {
+  apparentTemperatureThermalCategory,
+  calculateUtci,
+  thermalStressSignalFromEnvironment,
+  utciThermalStressCategory,
+} from '../src/core/thermalStress';
 import { setAppLanguagePreference } from '../src/i18n';
 import type { LocationInfo } from '../src/models/environment';
 import type {
@@ -49,6 +66,7 @@ import {
 } from '../src/services/healthSignalFreshness';
 import { refreshHealthSignalsForLocation } from '../src/services/healthSignalService';
 import { loadHealthSignalsCacheForGeography, saveHealthSignalsCache } from '../src/storage/storage';
+import { environmentFixtureForLocation } from './coverage/coverageFixtures';
 
 const pragueLocation: LocationInfo = {
   activeLocationId: 'manual-prague',
@@ -84,6 +102,13 @@ const czechia: HealthGeography = {
   providerCodes: { eurostat: 'CZ', who: 'CZE', whoEurope: 'CZE' },
 };
 
+const wastewaterCovidDataset: WastewaterDataset = {
+  signalType: 'wastewater-covid-19',
+  datasetId: 'j9g8-acpt',
+  target: 'sars-cov-2',
+  label: 'SARS-CoV-2 wastewater concentration',
+};
+
 function locationAt(name: string, latitude: number, longitude: number): LocationInfo {
   return {
     ...pragueLocation,
@@ -91,6 +116,17 @@ function locationAt(name: string, latitude: number, longitude: number): Location
     activeLocationName: name,
     coordinates: { latitude, longitude },
     placeName: name,
+  };
+}
+
+function cdcWastewaterFixture(rows: Record<string, unknown>[] = []) {
+  return rows;
+}
+
+function whoMalariaFixture(rows: Record<string, unknown>[] = []) {
+  return {
+    '@odata.context': 'https://ghoapi.azureedge.net/api/$metadata#MALARIA_EST_INCIDENCE',
+    value: rows,
   };
 }
 
@@ -127,12 +163,12 @@ function whoFluNetFixture(
 }
 
 function eurostatFixture(
-  values: Record<string, number | null> = { '2026-02': -5.9, '2026-03': 4.2 },
+  values: Record<string, number | null> = { '2026-06': -5.9, '2026-07': 4.2 },
 ) {
   const periods = Object.keys(values);
   return {
     label: 'Excess mortality by month',
-    updated: '2026-06-17T11:00:00+0200',
+    updated: '2026-08-17T11:00:00+0200',
     value: Object.fromEntries(
       periods.flatMap((period, index) =>
         typeof values[period] === 'number' ? [[String(index), values[period]]] : [],
@@ -153,6 +189,20 @@ function eurostatFixture(
       },
     },
   };
+}
+
+function owidFixture(
+  rows: [entity: string, code: string, week: string, value: string | number][] = [
+    ['Czechia', 'CZE', '2026-W30', -5.9],
+    ['Czechia', 'CZE', '2026-W31', 4.2],
+    ['Japan', 'JPN', '2026-W30', 1.2],
+    ['Japan', 'JPN', '2026-W31', 3.6],
+  ],
+) {
+  return [
+    'entity,code,week,p_avg_all_ages',
+    ...rows.map(([entity, code, week, value]) => `${entity},${code},${week},${value}`),
+  ].join('\n');
 }
 
 function safecastFixture(rows: Record<string, unknown>[]) {
@@ -219,6 +269,362 @@ describe('health signal domain and geography', () => {
     expect(signal.category).toBe('normal-background');
     expect(healthSignalTrendLabel(signal.trend)).toBe('Trend unavailable');
     expect(providerResult.providerId).toBe('test');
+  });
+
+  it('derives thermal stress from Open-Meteo apparent temperature without fabricating UTCI', () => {
+    const environment = environmentFixtureForLocation({
+      id: 'dubai',
+      name: 'Dubai',
+      country: 'AE',
+      continent: 'middle-east',
+      latitude: 25.2048,
+      longitude: 55.2708,
+      coverageTags: ['desert'],
+    });
+    const signal = thermalStressSignalFromEnvironment({
+      environment,
+      now: '2026-08-28T12:00:00Z',
+    });
+
+    expect(apparentTemperatureThermalCategory(34)).toBe('high-heat-strain');
+    expect(signal).toMatchObject({
+      domain: 'environmental',
+      type: 'thermal-stress',
+      source: {
+        provider: 'Open-Meteo',
+        dataset: 'Weather Forecast API',
+        measure: 'apparent_temperature',
+      },
+      metadata: expect.objectContaining({
+        metric: 'apparent-temperature',
+        utciAvailable: false,
+        utciUnavailableReason: 'validated-mean-radiant-temperature-unavailable',
+      }),
+    });
+    expect(
+      signal?.history?.every((entry) => entry.source?.measure === 'apparent_temperature'),
+    ).toBe(true);
+  });
+
+  it('calculates UTCI from validated inputs using published reference examples', () => {
+    expect(
+      calculateUtci({
+        airTemperatureC: 25,
+        relativeHumidityPercent: 50,
+        windSpeed10mMs: 1,
+        meanRadiantTemperatureC: 25,
+      }),
+    ).toBeCloseTo(24.6, 1);
+    expect(
+      calculateUtci({
+        airTemperatureC: 40,
+        relativeHumidityPercent: 50,
+        windSpeed10mMs: 1,
+        meanRadiantTemperatureC: 25,
+      }),
+    ).toBeCloseTo(40.6, 1);
+    expect(utciThermalStressCategory(8.9)).toBe('slight-cold-stress');
+    expect(utciThermalStressCategory(26)).toBe('moderate-heat-stress');
+    expect(
+      calculateUtci({
+        airTemperatureC: 25,
+        relativeHumidityPercent: 50,
+        windSpeed10mMs: 1,
+        meanRadiantTemperatureC: undefined,
+      }),
+    ).toBeNull();
+  });
+
+  it('uses UTCI thermal stress when mean radiant temperature is available', () => {
+    const environment = environmentFixtureForLocation({
+      id: 'paris',
+      name: 'Paris',
+      country: 'FR',
+      continent: 'europe',
+      latitude: 48.8566,
+      longitude: 2.3522,
+      coverageTags: ['europe'],
+    });
+    const withMrt = {
+      ...environment,
+      current: {
+        ...environment.current,
+        extended: {
+          ...environment.current.extended!,
+          weather: {
+            ...environment.current.extended!.weather,
+            meanRadiantTemperature: 30,
+          },
+        },
+      },
+      hourly: environment.hourly.map((hour) => ({
+        ...hour,
+        extended: {
+          ...hour.extended!,
+          weather: {
+            ...hour.extended!.weather,
+            meanRadiantTemperature: 30,
+          },
+        },
+      })),
+    };
+
+    const signal = thermalStressSignalFromEnvironment({
+      environment: withMrt,
+      now: '2026-08-28T12:00:00Z',
+    });
+
+    expect(signal).toMatchObject({
+      source: { measure: 'utci' },
+      metadata: expect.objectContaining({
+        metric: 'utci',
+        calculationMethod: 'utci',
+        utciAvailable: true,
+      }),
+    });
+    expect(signal?.history?.every((entry) => entry.source?.measure === 'utci')).toBe(true);
+  });
+
+  it('omits thermal stress when apparent temperature is unavailable', () => {
+    const environment = environmentFixtureForLocation({
+      id: 'prague',
+      name: 'Prague',
+      country: 'CZ',
+      continent: 'europe',
+      latitude: 50.0755,
+      longitude: 14.4378,
+      coverageTags: ['europe'],
+    });
+    const missingApparentTemperature = {
+      ...environment,
+      current: {
+        ...environment.current,
+        extended: {
+          ...environment.current.extended!,
+          weather: {
+            ...environment.current.extended!.weather,
+            apparentTemperature: null,
+          },
+        },
+      },
+    };
+
+    expect(
+      thermalStressSignalFromEnvironment({
+        environment: missingApparentTemperature,
+        now: '2026-08-28T12:00:00Z',
+      }),
+    ).toBeNull();
+  });
+
+  it('normalizes CDC wastewater observations without clinical-risk categories or coordinates', () => {
+    const signal = normalizeCdcWastewaterSignal({
+      payload: cdcWastewaterFixture([
+        {
+          site: 'site-1',
+          state_territory: 'TX',
+          counties_served: 'Travis',
+          sample_collect_date: '2026-08-11',
+          pcr_target: 'sars-cov-2',
+          pcr_target_avg_conc_lin: '100',
+          pcr_target_units: 'copies/L',
+          date_updated: '2026-08-14T00:00:00.000',
+        },
+        {
+          site: 'site-1',
+          state_territory: 'TX',
+          counties_served: 'Travis',
+          sample_collect_date: '2026-08-18',
+          pcr_target: 'sars-cov-2',
+          pcr_target_avg_conc_lin: '180',
+          pcr_target_units: 'copies/L',
+          date_updated: '2026-08-21T00:00:00.000',
+        },
+      ]),
+      dataset: wastewaterCovidDataset,
+      geography: {
+        level: 'country',
+        code: 'US',
+        name: 'United States',
+        countryCode: 'US',
+        countryName: 'United States',
+        providerCodes: { who: 'USA' },
+      },
+      now: '2026-08-22T00:00:00Z',
+    });
+
+    expect(cdcWastewaterUrl(wastewaterCovidDataset)).toContain('j9g8-acpt');
+    expect(cdcWastewaterUrl(wastewaterCovidDataset)).not.toContain('app_token');
+    expect(signal).toMatchObject({
+      domain: 'biological',
+      type: 'wastewater-covid-19',
+      geography: { level: 'region', code: 'US-TX', countryCode: 'US' },
+      value: 180,
+      unit: 'copies/L',
+      category: 'unknown',
+      trend: 'rising',
+      metadata: expect.objectContaining({
+        surveillanceBasis: 'wastewater concentration',
+        noClinicalPrevalenceInference: true,
+      }),
+    });
+  });
+
+  it('keeps missing CDC wastewater data unavailable rather than Low activity', () => {
+    const signal = normalizeCdcWastewaterSignal({
+      payload: cdcWastewaterFixture([]),
+      dataset: wastewaterCovidDataset,
+      geography: {
+        level: 'country',
+        code: 'US',
+        name: 'United States',
+        countryCode: 'US',
+        countryName: 'United States',
+      },
+      now: '2026-08-22T00:00:00Z',
+    });
+
+    expect(signal.type).toBe('wastewater-covid-19');
+    expect(signal.metadata?.unavailable).toBe(true);
+    expect(signal.category).toBe('unknown');
+    expect(signal.category).not.toBe('low');
+  });
+
+  it('normalizes RIVM national wastewater without treating it as clinical prevalence', () => {
+    const signal = normalizeRivmWastewaterSignal({
+      payload: [
+        {
+          Date_of_report: '2026-08-26',
+          Date_measurement: '2026-08-12',
+          RNA_flow_per_100000: 1000,
+        },
+        {
+          Date_of_report: '2026-08-26',
+          Date_measurement: '2026-08-19',
+          RNA_flow_per_100000: 1500,
+        },
+      ],
+      geography: {
+        level: 'country',
+        code: 'NL',
+        name: 'Netherlands',
+        countryCode: 'NL',
+        countryName: 'Netherlands',
+        providerCodes: { who: 'NLD' },
+      },
+      now: '2026-08-29T00:00:00Z',
+    });
+
+    expect(signal).toMatchObject({
+      domain: 'biological',
+      type: 'wastewater-covid-19',
+      geography: { level: 'country', code: 'NL', countryCode: 'NL' },
+      value: 1500,
+      unit: 'virus particles per 100,000 inhabitants',
+      category: 'unknown',
+      trend: 'rising',
+      source: {
+        provider: 'RIVM',
+        dataset: 'COVID-19_rioolwaterdata_landelijk',
+      },
+      metadata: expect.objectContaining({
+        surveillanceBasis: 'national wastewater concentration',
+        noClinicalPrevalenceInference: true,
+      }),
+    });
+  });
+
+  it('keeps missing RIVM wastewater data unavailable rather than Low activity', () => {
+    const signal = normalizeRivmWastewaterSignal({
+      payload: [],
+      geography: {
+        level: 'country',
+        code: 'NL',
+        name: 'Netherlands',
+        countryCode: 'NL',
+        countryName: 'Netherlands',
+      },
+      now: '2026-08-29T00:00:00Z',
+    });
+
+    expect(signal.metadata?.unavailable).toBe(true);
+    expect(signal.category).toBe('unknown');
+    expect(signal.category).not.toBe('low');
+  });
+
+  it('normalizes WHO malaria as annual context rather than current vector activity', () => {
+    const signal = normalizeWhoMalariaContext({
+      payload: whoMalariaFixture([
+        {
+          IndicatorCode: 'MALARIA_EST_INCIDENCE',
+          SpatialDimType: 'COUNTRY',
+          SpatialDim: 'KEN',
+          TimeDim: 2023,
+          NumericValue: 60,
+          Date: '2024-12-19T00:00:00Z',
+          TimeDimensionBegin: '2023-01-01T00:00:00Z',
+          TimeDimensionEnd: '2023-12-31T23:59:59Z',
+        },
+        {
+          IndicatorCode: 'MALARIA_EST_INCIDENCE',
+          SpatialDimType: 'COUNTRY',
+          SpatialDim: 'KEN',
+          TimeDim: 2024,
+          NumericValue: 74.2,
+          Date: '2025-12-19T00:00:00Z',
+          TimeDimensionBegin: '2024-01-01T00:00:00Z',
+          TimeDimensionEnd: '2024-12-31T23:59:59Z',
+        },
+      ]),
+      geography: {
+        level: 'country',
+        code: 'KE',
+        name: 'Kenya',
+        countryCode: 'KE',
+        countryName: 'Kenya',
+        providerCodes: { who: 'KEN' },
+      },
+      now: '2026-08-28T12:00:00Z',
+    });
+
+    expect(whoMalariaUrl({ ...czechia, providerCodes: { who: 'KEN' } })).toContain(
+      'MALARIA_EST_INCIDENCE',
+    );
+    expect(signal).toMatchObject({
+      domain: 'biological',
+      type: 'malaria',
+      reportingPeriod: { type: 'year', year: 2024 },
+      category: 'unknown',
+      trend: 'rising',
+      source: {
+        provider: 'WHO Global Health Observatory',
+        dataset: 'MALARIA_EST_INCIDENCE',
+      },
+      metadata: expect.objectContaining({
+        surveillanceBasis: 'annual incidence context',
+        notCurrentActivity: true,
+        noPersonalRiskInference: true,
+      }),
+    });
+  });
+
+  it('omits zero-incidence malaria context instead of inventing a Low vector signal', () => {
+    const signal = normalizeWhoMalariaContext({
+      payload: whoMalariaFixture([
+        {
+          IndicatorCode: 'MALARIA_EST_INCIDENCE',
+          SpatialDimType: 'COUNTRY',
+          SpatialDim: 'CZE',
+          TimeDim: 2024,
+          NumericValue: 0,
+          TimeDimensionEnd: '2024-12-31T23:59:59Z',
+        },
+      ]),
+      geography: czechia,
+      now: '2026-08-28T12:00:00Z',
+    });
+
+    expect(signal).toBeNull();
   });
 
   it('resolves global locations to country-level surveillance geography', () => {
@@ -358,6 +764,70 @@ describe('health providers and caches', () => {
 
     expect(url).toContain('demo_mexrt');
     expect(url).toContain('geo=CZ');
+    expect(url).not.toContain('Prague');
+    expect(url).not.toContain('50.0755');
+    expect(url).not.toContain('profile');
+    expect(url).not.toContain('RevenueCat');
+  });
+
+  it('normalizes global OWID excess mortality without converting missing category to Low', () => {
+    const signal = normalizeOwidExcessMortality(owidFixture(), {
+      geography: {
+        level: 'country',
+        code: 'JP',
+        name: 'Japan',
+        countryCode: 'JP',
+        countryName: 'Japan',
+        providerCodes: { who: 'JPN' },
+      },
+      now: '2026-08-25T00:00:00Z',
+    });
+
+    expect(signal).toMatchObject({
+      domain: 'population-health',
+      type: 'excess-mortality',
+      value: 3.6,
+      unit: '%',
+      category: 'unknown',
+      trend: 'rising',
+      source: {
+        provider: 'Our World in Data',
+        dataset: 'excess-mortality-p-scores-average-baseline',
+      },
+      reportingPeriod: { type: 'week', year: 2026, week: 31 },
+    });
+    expect(signal.history).toHaveLength(2);
+    expect(healthSignalValueLabel(signal)).toBe('+3.6%');
+  });
+
+  it('keeps missing OWID mortality observations explicit instead of normal', () => {
+    const signal = normalizeOwidExcessMortality(owidFixture(), {
+      geography: {
+        level: 'country',
+        code: 'KE',
+        name: 'Kenya',
+        countryCode: 'KE',
+        countryName: 'Kenya',
+        providerCodes: { who: 'KEN' },
+      },
+      now: '2026-08-25T00:00:00Z',
+    });
+
+    expect(signal).toMatchObject({
+      type: 'excess-mortality',
+      category: 'unknown',
+      freshness: { status: 'stale' },
+      metadata: expect.objectContaining({ unavailable: true }),
+    });
+    expect(signal.value).toBeUndefined();
+    expect(healthSignalValueLabel(signal)).toBe('No recent data');
+  });
+
+  it('keeps OWID provider requests free of names, coordinates, profile, and RevenueCat data', () => {
+    const url = owidExcessMortalityUrl();
+
+    expect(url).toContain('ourworldindata.org/grapher');
+    expect(url).toContain('excess-mortality-p-scores-average-baseline');
     expect(url).not.toContain('Prague');
     expect(url).not.toContain('50.0755');
     expect(url).not.toContain('profile');
@@ -527,6 +997,63 @@ describe('health providers and caches', () => {
     ]);
     expect(result.signals.every((signal) => signal.category === 'unknown')).toBe(true);
     expect(result.unavailableSignals).toEqual(['influenza', 'covid-19', 'rsv']);
+  });
+
+  it('extends excess mortality to non-Eurostat countries through OWID', async () => {
+    const tokyo = locationAt('Tokyo', 35.6762, 139.6503);
+    const fetchMock = jest.fn().mockImplementation((url: string) => {
+      if (url.includes('FLUMART/VIW_FNT')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () =>
+            whoFluNetFixture([
+              {
+                COUNTRY_CODE: 'JPN',
+                COUNTRY_AREA_TERRITORY: 'Japan',
+                ISO_WEEKSTARTDATE: '2026-08-10',
+                ISO_YEAR: 2026,
+                ISO_WEEK: 33,
+                SPEC_PROCESSED_NB: 100,
+                INF_ALL: 11,
+              },
+            ]),
+        } as Response);
+      }
+      if (url.includes('ourworldindata.org/grapher')) {
+        return Promise.resolve({
+          ok: true,
+          text: async () => owidFixture(),
+        } as Response);
+      }
+
+      return Promise.resolve({
+        ok: true,
+        json: async () => safecastFixture([]),
+      } as Response);
+    });
+    jest.spyOn(global, 'fetch').mockImplementation(fetchMock);
+
+    const result = await refreshHealthSignalsForLocation({
+      location: tokyo,
+      environment: null,
+      force: true,
+      now: '2026-08-25T00:00:00Z',
+    });
+
+    expect(result.geography).toMatchObject({ countryCode: 'JP', name: 'Japan' });
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('demo_mexrt'))).toBe(false);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('ourworldindata'))).toBe(true);
+    expect(result.signals).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'excess-mortality',
+          geography: expect.objectContaining({ countryCode: 'JP' }),
+          source: expect.objectContaining({ provider: 'Our World in Data' }),
+          category: 'unknown',
+          value: 3.6,
+        }),
+      ]),
+    );
   });
 
   it('keeps cached health signals language-neutral across locale changes', async () => {

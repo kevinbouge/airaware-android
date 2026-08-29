@@ -142,6 +142,9 @@ function periodKey(period: ReportingPeriod): string {
   if (period.type === 'week') {
     return `${period.year}-W${period.week.toString().padStart(2, '0')}`;
   }
+  if (period.type === 'year') {
+    return `${period.year}`;
+  }
   return `${period.year}-${period.month.toString().padStart(2, '0')}`;
 }
 

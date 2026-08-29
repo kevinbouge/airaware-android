@@ -82,6 +82,7 @@ export interface ExtendedWeatherReadings {
   dewPoint: number | null;
   wetBulbTemperature: number | null;
   windGusts: number | null;
+  meanRadiantTemperature?: number | null;
   shortwaveRadiation: number | null;
   directNormalIrradiance: number | null;
   diffuseRadiation: number | null;

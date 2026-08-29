@@ -40,7 +40,7 @@ yarn-error.*
 *.tsbuildinfo
 
 # test reports
-coverage/
+/coverage/
 
 # generated native folders
 /ios

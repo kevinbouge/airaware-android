@@ -1,13 +1,6 @@
-import {
-  Modal,
-  Pressable,
-  RefreshControl,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import type { ReactNode } from 'react';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigation } from '@react-navigation/native';
@@ -18,25 +11,26 @@ import { SectionCard } from '../components/SectionCard';
 import { StateView } from '../components/StateView';
 import { ActivityIcon } from '../components/icons/ActivityIcon';
 import { AppIcon } from '../components/icons/AppIcon';
-import { APP_ICON_SIZES } from '../components/icons/appIconTypes';
 import { EnvironmentalIcon } from '../components/icons/EnvironmentalIcon';
+import { APP_ICON_SIZES } from '../components/icons/appIconTypes';
 import { ENVIRONMENTAL_ICON_SIZES } from '../components/icons/environmentalIconTypes';
 import { GasMaskIcon } from '../components/icons/GasMaskIcon';
 import { getEventIconName } from '../components/icons/environmentalIconResolver';
 import {
   environmentalEventBody,
   environmentalEventCategoryLabel,
-  environmentalEventEvidenceLabel,
   environmentalEventTitle,
 } from '../core/environmentalEvents';
 import {
   healthSignalCategoryLabel,
-  healthSignalPeriodLabel,
+  healthSignalFreshnessLabel,
   healthSignalGeographyLabel,
+  healthSignalPeriodLabel,
   healthSignalTrendLabel,
   healthSignalTypeLabel,
   healthSignalValueLabel,
 } from '../core/healthSignals';
+import { todayHealthSectionVisibility } from '../core/healthSignalPresentation';
 import { translate } from '../i18n';
 import { useCapabilities } from '../hooks/useCapabilities';
 import { useDerivedEnvironment } from '../hooks/useDerivedEnvironment';
@@ -51,6 +45,7 @@ import { colors, riskColor, spacing } from '../theme/theme';
 import {
   formatCoordinates,
   formatMeasurement,
+  formatScore,
   formatTimeRangeWithTomorrow,
   formatTimestamp,
 } from '../utils/format';
@@ -168,13 +163,35 @@ function eventTimingLabel(event: EnvironmentalEvent, referenceTime: string | nul
   return formatTimeRangeWithTomorrow(event.startTime, event.endTime, referenceTime);
 }
 
-function evidenceLabel(variable: string): string {
-  return environmentalEventEvidenceLabel(variable);
+function eventSeverityLabel(event: EnvironmentalEvent): string {
+  const category = environmentalEventCategoryLabel(event);
+  const value = eventDataValueLabel(event);
+  if (!value) {
+    return category;
+  }
+
+  return `${category} · ${value}`;
 }
 
-function formatEvidenceValue(value: number | null | undefined, unit: string | undefined): string {
-  if (unit === undefined) return formatMeasurement(value ?? null, '', 1);
-  return formatMeasurement(value ?? null, unit, unit === 'µg/m³' || unit === 'grains/m³' ? 0 : 1);
+function eventDataValueLabel(event: EnvironmentalEvent): string | null {
+  const value = event.peakValue ?? event.currentValue;
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+
+  const primaryEvidence = event.evidence.find((evidence) => evidence.role === 'primary');
+  const unit =
+    primaryEvidence?.unit ?? (event.type === 'headline-risk' || event.type === 'mold' ? '%' : '');
+
+  if (unit === '%') return formatScore(value);
+
+  if (event.type === 'aerosol' || event.factor === 'aerosol_optical_depth') {
+    return formatMeasurement(value, unit, 2);
+  }
+
+  if (event.type === 'uv') {
+    return formatMeasurement(value, unit, 1);
+  }
+
+  return formatMeasurement(value, unit);
 }
 
 function healthSignalIcon(
@@ -190,6 +207,29 @@ function healthTrendIcon(signal: HealthSignal): 'trend-rising' | 'trend-falling'
   return 'trend-stable';
 }
 
+function healthSecondaryLabel(signal: HealthSignal): string {
+  if (signal.domain === 'radiological' || signal.type === 'thermal-stress') {
+    return healthSignalCategoryLabel(signal);
+  }
+
+  return healthSignalTrendLabel(signal.trend);
+}
+
+function isDemotedHealthSignal(signal: HealthSignal): boolean {
+  return signal.metadata?.unavailable === true || signal.freshness.status === 'stale';
+}
+
+function healthSignalSortValue(signal: HealthSignal): number {
+  if (signal.metadata?.unavailable === true) return 3;
+  if (signal.freshness.status === 'stale') return 2;
+  if (signal.freshness.status === 'aging') return 1;
+  return 0;
+}
+
+function sortedHealthSignals(signals: HealthSignal[]): HealthSignal[] {
+  return [...signals].sort((a, b) => healthSignalSortValue(a) - healthSignalSortValue(b));
+}
+
 function HealthSignalRow({
   signal,
   onPress,
@@ -198,11 +238,17 @@ function HealthSignalRow({
   onPress: (signal: HealthSignal) => void;
 }) {
   const label = healthSignalTypeLabel(signal.type);
-  const secondaryLabel =
-    signal.domain === 'radiological'
-      ? healthSignalCategoryLabel(signal)
-      : healthSignalTrendLabel(signal.trend);
-  const showTrendIcon = signal.domain !== 'radiological';
+  const demoted = isDemotedHealthSignal(signal);
+  const freshnessPrefix =
+    signal.metadata?.unavailable === true || signal.freshness.status === 'fresh'
+      ? null
+      : healthSignalFreshnessLabel(signal.freshness.status);
+  const secondaryValue =
+    signal.metadata?.unavailable === true
+      ? healthSignalTrendLabel(signal.trend)
+      : healthSecondaryLabel(signal);
+  const secondaryLabel = [freshnessPrefix, secondaryValue].filter(Boolean).join(' · ');
+  const showTrendIcon = signal.domain !== 'radiological' && signal.type !== 'thermal-stress';
 
   return (
     <Pressable
@@ -211,20 +257,42 @@ function HealthSignalRow({
       })}
       accessibilityRole="button"
       onPress={() => onPress(signal)}
-      style={({ pressed }) => [styles.healthRow, pressed ? styles.pressed : null]}
+      style={({ pressed }) => [
+        styles.healthRow,
+        demoted ? styles.healthRowDemoted : null,
+        pressed ? styles.pressed : null,
+      ]}
     >
-      <AppIcon name={healthSignalIcon(signal)} size="inline" color={colors.muted} />
+      {signal.type === 'thermal-stress' ? (
+        <EnvironmentalIcon
+          name="apparent-temperature"
+          size="event"
+          color={demoted ? colors.unavailable : colors.muted}
+        />
+      ) : (
+        <AppIcon
+          name={healthSignalIcon(signal)}
+          size="inline"
+          color={demoted ? colors.unavailable : colors.muted}
+        />
+      )}
       <View style={styles.healthCopy}>
-        <Text style={styles.healthTitle}>{label}</Text>
+        <Text style={[styles.healthTitle, demoted ? styles.healthTextDemoted : null]}>{label}</Text>
         <Text style={styles.healthMeta}>
           {healthSignalGeographyLabel(signal)} · {healthSignalPeriodLabel(signal)}
         </Text>
       </View>
       <View style={styles.healthValueBlock}>
-        <Text style={styles.healthValue}>{healthSignalValueLabel(signal)}</Text>
+        <Text style={[styles.healthValue, demoted ? styles.healthTextDemoted : null]}>
+          {healthSignalValueLabel(signal)}
+        </Text>
         <View style={styles.healthTrend}>
           {showTrendIcon ? (
-            <AppIcon name={healthTrendIcon(signal)} size={14} color={colors.muted} />
+            <AppIcon
+              name={healthTrendIcon(signal)}
+              size={14}
+              color={demoted ? colors.unavailable : colors.muted}
+            />
           ) : null}
           <Text style={styles.healthMeta}>{secondaryLabel}</Text>
         </View>
@@ -234,11 +302,30 @@ function HealthSignalRow({
   );
 }
 
+function HealthSignalGroup({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string;
+  subtitle?: string | undefined;
+  children: ReactNode;
+}) {
+  return (
+    <View style={styles.healthGroup}>
+      <View style={styles.healthGroupHeader}>
+        <Text style={styles.healthGroupTitle}>{title}</Text>
+        {subtitle ? <Text style={styles.healthGroupSubtitle}>{subtitle}</Text> : null}
+      </View>
+      {children}
+    </View>
+  );
+}
+
 export function TodayScreen() {
   const navigation = useNavigation<TodayNavigation>();
   const { t } = useTranslation();
   const [locationSelectorVisible, setLocationSelectorVisible] = useState(false);
-  const [selectedEvent, setSelectedEvent] = useState<EnvironmentalEvent | null>(null);
   const hydrated = useAppStore((state) => state.hydrated);
   const loading = useAppStore((state) => state.loading);
   const stale = useAppStore((state) => state.stale);
@@ -276,6 +363,10 @@ export function TodayScreen() {
   const startLocationRefresh = async () => {
     await updateSettings({ locationOnboardingComplete: true });
     await refresh({ force: true });
+  };
+  const openManualLocationSettings = async () => {
+    await updateSettings({ locationOnboardingComplete: true });
+    navigation.navigate('MainTabs', { screen: 'Settings' });
   };
 
   if (!hydrated) return <StateView loading message={t('common.loading')} />;
@@ -315,20 +406,45 @@ export function TodayScreen() {
     personalizedBestOutdoorWindow,
     referenceTime,
   );
-  const biologicalSignals = healthSignals.signals.filter(
-    (signal) => signal.domain === 'biological',
+  const thermalSignals = sortedHealthSignals(
+    healthSignals.signals.filter((signal) => signal.type === 'thermal-stress'),
   );
-  const populationSignals = healthSignals.signals.filter(
-    (signal) => signal.domain === 'population-health',
+  const respiratorySignals = sortedHealthSignals(
+    healthSignals.signals.filter((signal) =>
+      ['influenza', 'covid-19', 'rsv'].includes(signal.type),
+    ),
   );
-  const radiologicalSignals = healthSignals.signals.filter(
-    (signal) => signal.domain === 'radiological',
+  const wastewaterSignals = sortedHealthSignals(
+    healthSignals.signals.filter((signal) =>
+      ['wastewater-covid-19', 'wastewater-influenza', 'wastewater-rsv'].includes(signal.type),
+    ),
   );
+  const vectorSignals = sortedHealthSignals(
+    healthSignals.signals.filter((signal) =>
+      ['dengue', 'west-nile', 'malaria', 'tick-borne-disease'].includes(signal.type),
+    ),
+  );
+  const populationSignals = sortedHealthSignals(
+    healthSignals.signals.filter((signal) => signal.domain === 'population-health'),
+  );
+  const radiologicalSignals = sortedHealthSignals(
+    healthSignals.signals.filter((signal) => signal.domain === 'radiological'),
+  );
+  const contextualHealthSignalCount =
+    respiratorySignals.length +
+    wastewaterSignals.length +
+    vectorSignals.length +
+    populationSignals.length +
+    radiologicalSignals.length;
   const hasHealthSignalLocationContext =
     settings.locationOnboardingComplete || location.coordinates !== null || environment !== null;
-  const shouldShowHealthSignals =
-    hasHealthSignalLocationContext &&
-    (healthSignals.loading || healthSignals.error !== null || healthSignals.signals.length > 0);
+  const { shouldShowHealthSignals, shouldShowThermalSignals } = todayHealthSectionVisibility({
+    contextualHealthSignalCount,
+    hasHealthSignalLocationContext,
+    healthSignalsError: healthSignals.error,
+    healthSignalsLoading: healthSignals.loading,
+    thermalSignalCount: thermalSignals.length,
+  });
   const openHealthSignal = (signal: HealthSignal) => {
     navigation.navigate('HealthSignalDetail', { signalId: signal.id });
   };
@@ -337,10 +453,10 @@ export function TodayScreen() {
   );
   if (healthSignals.loading) {
     respiratoryContent = <Text style={styles.body}>{t('today.loadingRespiratory')}</Text>;
-  } else if (biologicalSignals.length > 0) {
+  } else if (respiratorySignals.length > 0) {
     respiratoryContent = (
       <>
-        {biologicalSignals.map((signal) => (
+        {respiratorySignals.map((signal) => (
           <HealthSignalRow key={signal.id} signal={signal} onPress={openHealthSignal} />
         ))}
       </>
@@ -408,15 +524,10 @@ export function TodayScreen() {
             {environmentalEvents.slice(0, 4).map((event) => {
               const title = environmentalEventTitle(event);
               const body = environmentalEventBody(event, referenceTime);
-              const category = environmentalEventCategoryLabel(event);
+              const category = eventSeverityLabel(event);
 
               return (
-                <Pressable
-                  key={event.id}
-                  accessibilityRole="button"
-                  onPress={() => setSelectedEvent(event)}
-                  style={({ pressed }) => [styles.eventCard, pressed ? styles.pressed : null]}
-                >
+                <View key={event.id} style={styles.eventCard}>
                   <View style={styles.eventRow}>
                     <View
                       style={[
@@ -444,40 +555,73 @@ export function TodayScreen() {
                       <Text style={styles.eventBody}>{body}</Text>
                     </View>
                   </View>
-                </Pressable>
+                </View>
               );
             })}
           </View>
         ) : null}
 
+        {shouldShowThermalSignals ? (
+          <SectionCard title={t('today.thermalStress')} subtitle={t('today.thermalSource')}>
+            {thermalSignals.map((signal) => (
+              <HealthSignalRow key={signal.id} signal={signal} onPress={openHealthSignal} />
+            ))}
+          </SectionCard>
+        ) : null}
+
         {shouldShowHealthSignals ? (
-          <>
-            <SectionCard
+          <SectionCard title={t('today.healthSignals')} subtitle={t('today.healthSignalsSubtitle')}>
+            <HealthSignalGroup
               title={t('today.respiratoryActivity')}
               subtitle={healthSignals.geography?.name ?? t('today.latestSurveillance')}
             >
               {respiratoryContent}
-            </SectionCard>
+            </HealthSignalGroup>
+
+            {wastewaterSignals.length > 0 ? (
+              <HealthSignalGroup
+                title={t('today.wastewaterSurveillance')}
+                subtitle={t('today.wastewaterSource')}
+              >
+                {wastewaterSignals.map((signal) => (
+                  <HealthSignalRow key={signal.id} signal={signal} onPress={openHealthSignal} />
+                ))}
+              </HealthSignalGroup>
+            ) : null}
+
+            {vectorSignals.length > 0 ? (
+              <HealthSignalGroup
+                title={t('today.vectorBorneActivity')}
+                subtitle={healthSignals.geography?.name}
+              >
+                {vectorSignals.map((signal) => (
+                  <HealthSignalRow key={signal.id} signal={signal} onPress={openHealthSignal} />
+                ))}
+              </HealthSignalGroup>
+            ) : null}
 
             {populationSignals.length > 0 ? (
-              <SectionCard
+              <HealthSignalGroup
                 title={t('today.populationHealth')}
                 subtitle={healthSignals.geography?.name}
               >
                 {populationSignals.map((signal) => (
                   <HealthSignalRow key={signal.id} signal={signal} onPress={openHealthSignal} />
                 ))}
-              </SectionCard>
+              </HealthSignalGroup>
             ) : null}
 
             {radiologicalSignals.length > 0 ? (
-              <SectionCard title={t('today.radiological')} subtitle={t('today.radiologicalSource')}>
+              <HealthSignalGroup
+                title={t('today.radiological')}
+                subtitle={t('today.radiologicalSource')}
+              >
                 {radiologicalSignals.map((signal) => (
                   <HealthSignalRow key={signal.id} signal={signal} onPress={openHealthSignal} />
                 ))}
-              </SectionCard>
+              </HealthSignalGroup>
             ) : null}
-          </>
+          </SectionCard>
         ) : null}
 
         {environment ? (
@@ -563,9 +707,15 @@ export function TodayScreen() {
           <SectionCard title={t('today.locationRequired')}>
             <Text style={styles.body}>{t('today.locationRequiredBody')}</Text>
             <AppButton
-              title={t('today.continueAndRefresh')}
+              title={t('today.useCurrentLocation')}
               iconName="current-location"
               onPress={startLocationRefresh}
+              disabled={loading}
+            />
+            <AppButton
+              title={t('today.chooseManualLocation')}
+              iconName="location"
+              onPress={openManualLocationSettings}
               disabled={loading}
             />
           </SectionCard>
@@ -614,60 +764,6 @@ export function TodayScreen() {
               iconName="close"
               fullWidth
               onPress={() => setLocationSelectorVisible(false)}
-            />
-          </View>
-        </SafeAreaView>
-      </Modal>
-      <Modal
-        animationType="fade"
-        onRequestClose={() => setSelectedEvent(null)}
-        transparent
-        visible={selectedEvent !== null}
-      >
-        <SafeAreaView style={styles.selectorOverlay}>
-          <View style={styles.selectorPanel}>
-            {selectedEvent ? (
-              <>
-                <View style={styles.eventDetailTitleRow}>
-                  <EnvironmentalIcon
-                    accessibilityLabel={t('today.eventIconLabel', {
-                      title: environmentalEventTitle(selectedEvent),
-                    })}
-                    color={eventSeverityColor(selectedEvent)}
-                    name={getEventIconName(selectedEvent.type)}
-                    size="event"
-                  />
-                  <Text style={styles.selectorTitle}>{environmentalEventTitle(selectedEvent)}</Text>
-                </View>
-                <Text style={styles.eventTiming}>
-                  {t('today.eventExpected', {
-                    time: eventTimingLabel(selectedEvent, referenceTime),
-                  })}
-                </Text>
-                {selectedEvent.peakTime ? (
-                  <Text style={styles.eventTiming}>
-                    {t('today.eventPeak', { time: formatTimestamp(selectedEvent.peakTime) })}
-                  </Text>
-                ) : null}
-                <Text style={styles.body}>
-                  {environmentalEventBody(selectedEvent, referenceTime)}
-                </Text>
-                {selectedEvent.evidence.slice(0, 4).map((evidence) => (
-                  <View key={`${evidence.variable}:${evidence.role}`} style={styles.evidenceRow}>
-                    <Text style={styles.evidenceVariable}>{evidenceLabel(evidence.variable)}</Text>
-                    <Text style={styles.evidenceValue}>
-                      {formatEvidenceValue(evidence.value, evidence.unit)}
-                    </Text>
-                  </View>
-                ))}
-                <Text style={styles.notice}>{t('today.eventDataAttribution')}</Text>
-              </>
-            ) : null}
-            <AppButton
-              title={t('common.close')}
-              iconName="close"
-              fullWidth
-              onPress={() => setSelectedEvent(null)}
             />
           </View>
         </SafeAreaView>
@@ -721,11 +817,6 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: spacing.xs,
   },
-  eventDetailTitleRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
   eventIconContainer: {
     alignItems: 'center',
     alignSelf: 'flex-start',
@@ -747,6 +838,8 @@ const styles = StyleSheet.create({
   eventSeverity: {
     fontSize: 13,
     fontWeight: '800',
+    flexShrink: 0,
+    textAlign: 'right',
   },
   eventTiming: {
     color: colors.muted,
@@ -758,23 +851,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '800',
   },
-  evidenceRow: {
-    alignItems: 'center',
-    borderBottomColor: colors.border,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.xs,
-  },
-  evidenceValue: {
-    color: colors.text,
-    fontWeight: '700',
-  },
-  evidenceVariable: {
-    color: colors.muted,
-    flex: 1,
-    marginRight: spacing.md,
-  },
   content: {
     padding: spacing.lg,
   },
@@ -784,6 +860,24 @@ const styles = StyleSheet.create({
   healthCopy: {
     flex: 1,
     minWidth: 0,
+  },
+  healthGroup: {
+    borderTopColor: colors.border,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    gap: spacing.xs,
+    paddingTop: spacing.sm,
+  },
+  healthGroupHeader: {
+    gap: spacing.xs,
+  },
+  healthGroupSubtitle: {
+    color: colors.muted,
+    fontSize: 12,
+  },
+  healthGroupTitle: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '800',
   },
   healthMeta: {
     color: colors.muted,
@@ -795,6 +889,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm,
     minHeight: 52,
+  },
+  healthRowDemoted: {
+    opacity: 0.62,
+  },
+  healthTextDemoted: {
+    color: colors.muted,
   },
   healthTitle: {
     color: colors.text,

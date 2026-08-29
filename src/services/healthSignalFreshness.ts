@@ -14,15 +14,39 @@ export const RESPIRATORY_SURVEILLANCE_FRESHNESS: HealthSignalFreshnessPolicy = {
 };
 
 export const EXCESS_MORTALITY_FRESHNESS: HealthSignalFreshnessPolicy = {
-  expectedUpdateIntervalMs: 90 * 24 * 60 * 60 * 1000,
-  agingAfterMs: 120 * 24 * 60 * 60 * 1000,
-  staleAfterMs: 240 * 24 * 60 * 60 * 1000,
+  expectedUpdateIntervalMs: 30 * 24 * 60 * 60 * 1000,
+  agingAfterMs: 75 * 24 * 60 * 60 * 1000,
+  staleAfterMs: 120 * 24 * 60 * 60 * 1000,
 };
 
 export const RADIATION_MONITORING_FRESHNESS: HealthSignalFreshnessPolicy = {
   expectedUpdateIntervalMs: 6 * 60 * 60 * 1000,
   agingAfterMs: 30 * 24 * 60 * 60 * 1000,
   staleAfterMs: 180 * 24 * 60 * 60 * 1000,
+};
+
+export const THERMAL_STRESS_FRESHNESS: HealthSignalFreshnessPolicy = {
+  expectedUpdateIntervalMs: 3 * 60 * 60 * 1000,
+  agingAfterMs: 12 * 60 * 60 * 1000,
+  staleAfterMs: 36 * 60 * 60 * 1000,
+};
+
+export const WASTEWATER_SURVEILLANCE_FRESHNESS: HealthSignalFreshnessPolicy = {
+  expectedUpdateIntervalMs: 7 * 24 * 60 * 60 * 1000,
+  agingAfterMs: 14 * 24 * 60 * 60 * 1000,
+  staleAfterMs: 35 * 24 * 60 * 60 * 1000,
+};
+
+export const VECTOR_SURVEILLANCE_FRESHNESS: HealthSignalFreshnessPolicy = {
+  expectedUpdateIntervalMs: 365 * 24 * 60 * 60 * 1000,
+  agingAfterMs: 540 * 24 * 60 * 60 * 1000,
+  staleAfterMs: 730 * 24 * 60 * 60 * 1000,
+};
+
+export const MEASURED_SPORE_SURVEILLANCE_FRESHNESS: HealthSignalFreshnessPolicy = {
+  expectedUpdateIntervalMs: 24 * 60 * 60 * 1000,
+  agingAfterMs: 3 * 24 * 60 * 60 * 1000,
+  staleAfterMs: 7 * 24 * 60 * 60 * 1000,
 };
 
 export function calculateHealthSignalFreshness(input: {

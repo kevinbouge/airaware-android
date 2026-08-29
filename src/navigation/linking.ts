@@ -18,6 +18,7 @@ export const linking: LinkingOptions<RootStackParamList> = {
       DataDetail: 'data/:variableId',
       ActivityDomainDetail: 'activities/:domainId',
       ActivityDetail: 'activities/:domainId/:profileId',
+      HealthSignalDetail: 'health/:signalId',
     },
   },
 };

@@ -76,6 +76,10 @@ function periodStart(period: ReportingPeriod): string {
     return `${period.year}-${period.month.toString().padStart(2, '0')}-01`;
   }
 
+  if (period.type === 'year') {
+    return `${period.year}-01-01`;
+  }
+
   return `${period.year}-W${period.week.toString().padStart(2, '0')}`;
 }
 
@@ -83,6 +87,10 @@ function periodEnd(period: ReportingPeriod): string {
   if (period.type === 'month') {
     const end = new Date(Date.UTC(period.year, period.month, 0));
     return end.toISOString().slice(0, 10);
+  }
+
+  if (period.type === 'year') {
+    return `${period.year}-12-31`;
   }
 
   return periodStart(period);
@@ -123,6 +131,9 @@ function sortedExcessMortalityObservations(
 function periodKey(period: ReportingPeriod): string {
   if (period.type === 'week') {
     return `${period.year}-W${period.week.toString().padStart(2, '0')}`;
+  }
+  if (period.type === 'year') {
+    return `${period.year}`;
   }
   return `${period.year}-${period.month.toString().padStart(2, '0')}`;
 }
@@ -174,7 +185,7 @@ export function normalizeEurostatExcessMortality(
       measure: 'Excess mortality by month; percentage relative to the 2016-2019 monthly baseline',
     },
     freshness: calculateHealthSignalFreshness({
-      updatedAt: parsed.data.updated,
+      updatedAt: latest.periodEnd,
       now: input.now,
       policy: EXCESS_MORTALITY_FRESHNESS,
     }),

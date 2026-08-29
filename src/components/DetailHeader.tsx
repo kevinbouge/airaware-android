@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing } from '../theme/theme';
 import { AppIcon } from './icons/AppIcon';
@@ -13,18 +14,19 @@ interface DetailHeaderProps {
 
 export function DetailHeader({ title, subtitle, onBack, icon }: DetailHeaderProps) {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <Pressable
-        accessibilityLabel="Back"
+        accessibilityLabel={t('common.back')}
         accessibilityRole="button"
         hitSlop={spacing.sm}
         onPress={onBack}
         style={({ pressed }) => [styles.backButton, pressed ? styles.pressed : null]}
       >
         <AppIcon name="back" size="action" color={colors.primary} />
-        <Text style={styles.backLabel}>Back</Text>
+        <Text style={styles.backLabel}>{t('common.back')}</Text>
       </Pressable>
       <View style={styles.heading}>
         {icon}

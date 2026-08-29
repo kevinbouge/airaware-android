@@ -10,6 +10,10 @@ import { formatMeasurement } from '../utils/format';
 
 export function healthSignalTypeLabel(type: HealthSignalType): string {
   switch (type) {
+    case 'thermal-stress':
+      return translate('health.thermalStress.title');
+    case 'measured-mold-spores':
+      return translate('health.measuredMoldSpores');
     case 'ambient-dose-rate':
       return translate('health.ambientDoseRate');
     case 'influenza':
@@ -18,6 +22,20 @@ export function healthSignalTypeLabel(type: HealthSignalType): string {
       return translate('health.covid19');
     case 'rsv':
       return translate('health.rsv');
+    case 'wastewater-covid-19':
+      return translate('health.wastewater.covid19');
+    case 'wastewater-influenza':
+      return translate('health.wastewater.influenza');
+    case 'wastewater-rsv':
+      return translate('health.wastewater.rsv');
+    case 'dengue':
+      return translate('health.vector.dengue');
+    case 'west-nile':
+      return translate('health.vector.westNile');
+    case 'malaria':
+      return translate('health.vector.malaria');
+    case 'tick-borne-disease':
+      return translate('health.vector.tickBorneDisease');
     case 'excess-mortality':
       return translate('health.excessMortality');
   }
@@ -31,6 +49,36 @@ export function healthSignalCategoryLabel(signal: HealthSignal): string {
       return translate('health.radiological.status.elevated');
     case 'strongly-elevated':
       return translate('health.radiological.status.stronglyElevated');
+    case 'extreme-cold-stress':
+      return translate('health.thermalStress.status.extremeColdStress');
+    case 'very-strong-cold-stress':
+      return translate('health.thermalStress.status.veryStrongColdStress');
+    case 'strong-cold-stress':
+      return translate('health.thermalStress.status.strongColdStress');
+    case 'moderate-cold-stress':
+      return translate('health.thermalStress.status.moderateColdStress');
+    case 'slight-cold-stress':
+      return translate('health.thermalStress.status.slightColdStress');
+    case 'no-thermal-stress':
+      return translate('health.thermalStress.status.noThermalStress');
+    case 'moderate-heat-stress':
+      return translate('health.thermalStress.status.moderateHeatStress');
+    case 'strong-heat-stress':
+      return translate('health.thermalStress.status.strongHeatStress');
+    case 'very-strong-heat-stress':
+      return translate('health.thermalStress.status.veryStrongHeatStress');
+    case 'extreme-heat-stress':
+      return translate('health.thermalStress.status.extremeHeatStress');
+    case 'no-thermal-strain':
+      return translate('health.thermalStress.status.noThermalStrain');
+    case 'cold-strain':
+      return translate('health.thermalStress.status.coldStrain');
+    case 'moderate-heat-strain':
+      return translate('health.thermalStress.status.moderateHeatStrain');
+    case 'high-heat-strain':
+      return translate('health.thermalStress.status.highHeatStrain');
+    case 'very-high-heat-strain':
+      return translate('health.thermalStress.status.veryHighHeatStrain');
     case 'low':
       return translate('risk.categories.low');
     case 'moderate':
@@ -40,7 +88,9 @@ export function healthSignalCategoryLabel(signal: HealthSignal): string {
     case 'very-high':
       return translate('risk.categories.veryHigh');
     case 'unknown':
-      return translate('health.radiological.status.unknown');
+      return signal.domain === 'radiological'
+        ? translate('health.radiological.status.unknown')
+        : translate('health.categoryUnknown');
   }
 }
 
@@ -68,7 +118,7 @@ export function healthSignalValueLabel(signal: HealthSignal): string {
     return translate('common.unavailable');
   }
 
-  const precision = signal.type === 'ambient-dose-rate' ? 2 : 1;
+  const precision = signal.type === 'ambient-dose-rate' || signal.type === 'thermal-stress' ? 2 : 1;
   const signed =
     signal.type === 'excess-mortality' && signal.value > 0
       ? `+${formatMeasurement(signal.value, signal.unit, precision)}`
@@ -82,6 +132,9 @@ function reportingPeriodLabel(period: ReportingPeriod): string {
       week: period.week,
       year: period.year,
     });
+  }
+  if (period.type === 'year') {
+    return translate('health.reportingYear', { year: period.year });
   }
 
   const date = new Date(Date.UTC(period.year, period.month - 1, 1));
@@ -138,10 +191,16 @@ export function healthSignalGeographyLabel(signal: HealthSignal): string {
 
 function providerDisplayName(provider: string): string {
   if (provider === 'WHO GISRS / FluNet') return `${translate('providers.who')} GISRS / FluNet`;
+  if (provider === 'WHO Global Health Observatory') {
+    return `${translate('providers.who')} Global Health Observatory`;
+  }
   if (provider.toLowerCase() === 'who') return translate('providers.who');
   if (provider.toLowerCase() === 'cdc') return translate('providers.cdc');
+  if (provider.toLowerCase() === 'cdc nwss') return `${translate('providers.cdc')} NWSS`;
   if (provider.toLowerCase() === 'ecdc') return translate('providers.ecdc');
   if (provider.toLowerCase() === 'eurostat') return translate('providers.eurostat');
+  if (provider.toLowerCase() === 'our world in data') return translate('providers.owid');
+  if (provider.toLowerCase() === 'open-meteo') return translate('providers.openMeteo');
   if (provider.toLowerCase() === 'safecast') return translate('providers.safecast');
   if (provider.toLowerCase() === 'epa radnet') return translate('providers.radnet');
   if (provider.toLowerCase() === 'eurdep') return translate('providers.eurdep');

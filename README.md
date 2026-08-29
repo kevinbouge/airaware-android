@@ -75,18 +75,29 @@ nvm use 22.13.1
 
 - Open-Meteo Air Quality and Weather Forecast data, no API key required
 - Health Signal domain model for environmental, biological, population-health, and radiological
-  signals
+  signals, with available, regional, deferred, stale, and no-data states kept distinct
 - Global country-level respiratory surveillance through WHO GISRS / FluNet public FluMart OData
   where suitable influenza, COVID-19, and RSV data exists
-- Country-level population-health signal support for Eurostat excess mortality where Eurostat
-  publishes data for the active location's country
+- Country-level population-health signal support for excess mortality, preferring Eurostat where
+  supported and using Our World in Data's global P-score dataset as a fallback
 - Local ambient-radiation signal support from nearby calibrated Safecast dose-rate measurements
   where suitable recent public measurements exist
 - Robust local radiation baseline comparison from recent nearby history when enough calibrated
   samples are available
 - Explicit radiological no-data states; missing radiation measurements are never interpreted as
   normal background
+- Validated UTCI calculation support using the Bröde/ECMWF thermofeel polynomial when complete
+  air-temperature, humidity, 10 m wind, and mean-radiant-temperature inputs are available; otherwise
+  thermal stress remains explicitly labelled as apparent-temperature fallback
 - Explicit no-data respiratory states; missing surveillance is never interpreted as Low activity
+- Optional US wastewater surveillance evidence for SARS-CoV-2, influenza A, and RSV through public
+  CDC NWSS datasets where suitable recent samples exist
+- Optional Netherlands SARS-CoV-2 wastewater evidence through RIVM's public national wastewater JSON
+  feed where suitable recent samples exist
+- Annual malaria context from WHO Global Health Observatory where the selected country reports
+  estimated malaria incidence; this is not presented as current outbreak activity
+- Typed vector-borne and measured mold/spore signal architecture with explicit deferred/no-data
+  semantics where no suitable keyless structured public provider is integrated
 - Approximate foreground location plus multiple locally saved manual map locations
 - Location permission is requested only after the first-launch explanation is accepted
 - Current location uses Android coarse foreground permission, last-known device coordinates, and the
@@ -111,8 +122,8 @@ nvm use 22.13.1
 - Local cache fallback for offline or failed refreshes, with air-quality, weather, vegetation, and
   assembled environment caches isolated by coordinates
 - Contextual environmental measurement drill-downs from Today detail screens
-- Compact Environmental events section on Today, with event detail evidence and Open-Meteo/CAMS
-  attribution
+- Compact Environmental events section on Today with semantic event icons, timing, concise copy, and
+  score context for headline-risk events
 - Semantic icon system with local static Meteocons for environmental information and Lucide for
   activities, navigation, locations, settings, notifications, and actions
 - Nearby vegetation and land-use context from OpenStreetMap, available to Free and Pro users
@@ -169,9 +180,11 @@ source label.
 
 ## Screens
 
-- **Today**: headline scores, scrollable active location selector, Environmental Events, respiratory
-  surveillance availability, population-health signals, radiological signals, update status, main
-  factor, best outdoor window, refresh, share summary, and enabled Activity summary cards
+- **Today**: headline environmental scores, scrollable active location selector, Environmental
+  Events, thermal stress, a compact health-context section for public surveillance and sparse
+  monitoring signals, update status, main factor, best outdoor window, refresh, share summary, and
+  enabled Activity summary cards. Stale or unavailable health-context rows are visually demoted and
+  keep their reporting geography, latest period, and freshness visible.
 - **Context detail screens**: Environmental burden, Personalized risk, and Activity details with
   Daily forecast graphs, current-to-next-24-hour forecast graphs, and tappable environmental
   measurements. Detail headers are safe-area aware on Android devices with status bars or display
@@ -257,7 +270,12 @@ concentration.
 - OpenStreetMap map tiles for manual location selection
 - WHO GISRS / FluNet public FluMart OData for global country-level respiratory surveillance
 - Eurostat REST Statistics API for official excess mortality by month (`demo_mexrt`)
+- Our World in Data excess-mortality P-score CSV for global country-level mortality context where
+  Eurostat does not cover the active location's country
 - Safecast public radiation API for nearby calibrated ambient dose-rate measurements
+- CDC National Wastewater Surveillance System public datasets for US SARS-CoV-2, influenza A, and
+  RSV wastewater concentration evidence
+- WHO Global Health Observatory OData for annual malaria incidence context
 - CDC and ECDC/ERVISS are optional future enrichment providers only when stable documented
   anonymous machine-readable sources are suitable; they are not required for global baseline
   respiratory coverage
@@ -272,16 +290,50 @@ include visibility, cloud cover, wind gusts, precipitation probability, soil moi
 temperature, ET0, VPD, radiation, temperature, humidity, PM2.5, and ozone where supported. Missing
 values are omitted rather than treated as zero.
 
-Eurostat excess mortality data is substantially slower than Open-Meteo forecasts and is presented as
-latest available population context. AirAware requests only the country-level Eurostat code required
-for the active health geography. It does not send exact coordinates or saved-location names to
-Eurostat.
+Excess mortality data is substantially slower than Open-Meteo forecasts and is presented as latest
+available population context. AirAware prefers Eurostat's monthly `demo_mexrt` indicator where
+Eurostat publishes the selected country, and uses Our World in Data's weekly P-score dataset as a
+global fallback for other countries. Freshness is based on the latest published mortality reporting
+period, not only the dataset update timestamp, so older periods remain visible as aging or stale
+context rather than current data. AirAware requests only the country-level Eurostat code required for
+Eurostat-covered geographies. OWID mortality data is fetched from a public CSV and filtered locally.
+Neither path sends exact coordinates or saved-location names.
 
 WHO respiratory surveillance is delayed public-health surveillance, usually weekly. AirAware
 requests only the WHO country code derived from the active location's country and bounded history
 for that country. It does not send exact coordinates, saved-location names, Personal Allergy
 Profile selections, Activity settings, notification fingerprints, RevenueCat state, or personal
 medical data to WHO.
+
+Thermal stress prefers UTCI only when the normalized weather model contains complete scientifically
+valid UTCI inputs: air temperature, relative humidity, 10 m wind speed, and mean radiant
+temperature. The UTCI implementation uses the Bröde et al. operational polynomial as translated by
+ECMWF `thermofeel` (Apache-2.0), with published UTCI stress-category boundaries. AirAware does not
+derive mean radiant temperature from incomplete Open-Meteo radiation fields in this milestone. When
+validated MRT is unavailable, AirAware keeps the existing Open-Meteo `apparent_temperature`
+fallback and labels it as fallback rather than UTCI.
+
+Wastewater surveillance is delayed community-level biological evidence. AirAware uses public CDC
+NWSS Socrata datasets for SARS-CoV-2 (`j9g8-acpt`), influenza A (`ymmh-divb`), and RSV
+(`45cq-cw4i`) for US locations. It also uses RIVM's public national
+`COVID-19_rioolwaterdata_landelijk.json` feed for SARS-CoV-2 wastewater evidence in the
+Netherlands. RIVM evidence is country-level and is displayed as a provider measurement, not a local
+sewershed reading. Wastewater values are not converted into clinical case counts, prevalence, or
+individual infection risk. No local wastewater data is never treated as Low viral activity.
+
+Vector-borne disease support is conservative. WHO GHO `MALARIA_EST_INCIDENCE` is used only as
+annual malaria context where reported. It is not displayed as current malaria activity or an
+outbreak alert. Dengue remains deferred after provider review: WHO GHO does not expose a dengue
+indicator through the documented OData indicator lookup, PAHO's documented Core Indicators download
+is annual bulk data rather than recent surveillance, and PAHO/WHO weekly dengue dashboard data is
+not exposed as a mobile-suitable documented filtered API. No vector data is not interpreted as no
+vector, no disease, or Low activity.
+
+Measured airborne mold/spore surveillance remains distinct from weather-derived Mold potential.
+AirAware does not currently ship a measured-spore provider because a suitable public anonymous
+structured source with station identity, measurement period, taxon, value, unit, and mobile-suitable
+access was not verified. Existing Mold potential continues to be weather-derived and is not replaced
+or reinterpreted as measured spores.
 
 Safecast radiation monitoring is public community monitoring data from
 `https://simplemap.safecast.org/api/radiation`. AirAware requests nearby measurements for the
@@ -340,16 +392,21 @@ Supported domains are:
 
 - **Environmental**: existing AirAware environmental readings and Environmental Events continue to
   use the mature environmental models and are adapted into health-signal presentation only where
-  useful.
+  useful. Thermal stress is represented here as a distinct apparent-temperature thermal-strain
+  signal. Measured airborne mold/spore surveillance is reserved as a separate environmental evidence
+  type and does not replace weather-derived Mold potential.
 - **Biological**: influenza, COVID-19, and RSV are represented as first-class signal types. WHO
   GISRS / FluNet public FluMart OData is the canonical global baseline provider. Influenza and RSV
   use country-level virological test positivity where the WHO feed reports comparable weekly
   numerator and denominator data. COVID-19 is modeled as SARS-CoV-2 surveillance and remains an
   explicit no-data signal unless supported SARS-CoV-2 country rows are present in the public WHO
-  feed. AirAware does not scrape dashboards or use private dashboard calls.
-- **Population health**: Eurostat excess mortality (`demo_mexrt`) is implemented as a
-  country-level population-health signal where Eurostat publishes the indicator for the active
-  location's country.
+  feed. US wastewater evidence is represented separately from WHO respiratory surveillance. Malaria
+  uses annual WHO GHO incidence context when available; dengue, West Nile virus, and tick-borne
+  disease remain provider-ready but unavailable unless a suitable public source is integrated.
+  AirAware does not scrape dashboards or use private dashboard calls.
+- **Population health**: excess mortality is implemented as a country-level population-health
+  signal. Eurostat `demo_mexrt` is preferred where Eurostat publishes the indicator for the active
+  location's country; Our World in Data's global P-score dataset is used as the fallback elsewhere.
 - **Radiological**: ambient dose rate is represented as a local radiological signal when Safecast
   reports a suitable nearby calibrated measurement. AirAware compares fresh readings with recent
   same-sensor or local-area history when enough samples exist, using a median and MAD-based robust
@@ -365,9 +422,11 @@ geography, and measure. Saved locations in the same reporting country can reuse 
 data. Missing surveillance data is never converted to `Low`.
 
 Eurostat excess mortality uses the official monthly indicator: the percentage difference from
-Eurostat's provider-defined 2016-2019 monthly baseline. It is population context, not live risk
-monitoring and not an individual mortality-risk estimate. The latest available period may lag by
-months because Eurostat mortality data is released on a slower schedule than environmental data.
+Eurostat's provider-defined 2016-2019 monthly baseline. OWID excess mortality uses the documented
+P-score: percentage difference from a five-year average baseline for all ages. Both are population
+context, not live risk monitoring and not individual mortality-risk estimates. The latest available
+period may lag by weeks or months, so AirAware surfaces aging/stale freshness instead of treating
+the value as current.
 
 Health-signal refresh runs independently from the environmental refresh path and follows a
 best-effort provider model. A slow or failed WHO, CDC, ECDC, Eurostat, or Safecast request must not
@@ -451,13 +510,19 @@ location list, Personal Allergy Profile selections, event settings, detected eve
 fingerprints, widget snapshots, or RevenueCat state to Open-Meteo, Overpass, or unrelated services.
 
 Health-signal providers receive only the minimum reporting geography required by the source, such as
-a WHO country code for respiratory surveillance or a Eurostat country code for excess mortality.
-AirAware does not send precise coordinates, saved location names, saved location IDs, Personal
-Allergy Profile selections, Activity settings, notification preferences, notification fingerprints,
-RevenueCat state, infection history, diagnosis information, vaccination status, or medical profile
-data to WHO, CDC, ECDC, Eurostat, or unrelated services. Biological/population health processing
-uses public population-level data and local
-interpretation only.
+a WHO country code for respiratory surveillance or a Eurostat country code for Eurostat excess
+mortality. The OWID mortality fallback is fetched as a public CSV and filtered locally. AirAware does
+not send precise coordinates, saved location names, saved location IDs, Personal Allergy Profile
+selections, Activity settings, notification preferences, notification fingerprints, RevenueCat
+state, infection history, diagnosis information, vaccination status, or medical profile data to WHO,
+CDC, ECDC, Eurostat, OWID, or unrelated services. Biological/population health processing uses
+public population-level data and local interpretation only.
+
+Thermal stress uses the existing Open-Meteo weather coordinate request and adds no new provider.
+WHO malaria context uses only the WHO country code. CDC wastewater requests use public US dataset
+queries and do not include exact coordinates, saved-location names, profile selections, Activity
+settings, RevenueCat identifiers, notification state, or personal medical information. Deferred
+vector-borne and measured-spore integrations are not queried.
 
 Radiological providers may receive the active coordinates and search radius required to find nearby
 monitoring data. AirAware does not send saved-location names, saved-location IDs, Personal Allergy
@@ -538,8 +603,8 @@ AirAware's currently implemented core features remain free.
 
 Free includes Standard Environmental Data, which covers the core pollen, regulated-pollution,
 atmospheric-irritant, Mold potential, UV readings, available Health Signals, respiratory
-surveillance availability states, Eurostat excess mortality where supported, and Safecast ambient
-radiation where suitable nearby measurements exist.
+surveillance availability states, country-level excess mortality where supported by Eurostat or the
+OWID fallback, and Safecast ambient radiation where suitable nearby measurements exist.
 
 AirAware Pro currently adds three modeled capabilities:
 
@@ -779,6 +844,7 @@ Validate:
 npm run typecheck
 npm test -- --runInBand
 npm run test:coverage
+npm run test:global-coverage
 npm run check:unused
 npm run lint
 npm run format:check
@@ -787,11 +853,80 @@ npm run format:check
 The coverage report is written to `coverage/` and includes an `lcov` report for editor or CI
 integrations.
 
+## Global Coverage Testing
+
+AirAware defines global coverage as correct worldwide behavior, not universal data availability.
+Core provider-backed environmental signals should work for representative inhabited locations where
+the upstream model supports them. Regional, seasonal, surveillance-based, delayed, or sparse signals
+may be unavailable. The product contract is that AirAware exposes those gaps honestly rather than
+fabricating zero, Low, Normal, or Safe values.
+
+The global coverage framework separates three concepts:
+
+- **Provider coverage**: whether an upstream provider exposes a signal for a geography.
+- **Data availability**: whether a usable recent observation or forecast exists.
+- **Product behavior**: whether AirAware presents available, partial, aging, stale, unsupported, or
+  no-data states without crashing or leaking data across locations/domains.
+
+Coverage expectations are explicit:
+
+- `required`: part of the global core contract; valid data is expected for representative locations.
+- `expected`: normally available for the geography, but legitimate provider gaps can occur.
+- `optional`: useful when present, but absence is a valid outcome.
+- `unsupported`: absence is expected and must be represented honestly.
+
+The deterministic suite is offline and CI-safe:
+
+```sh
+npm run test:global-coverage
+```
+
+It uses fixtures and mocked providers to cover the representative global location matrix,
+environmental assembly, UTCI-versus-fallback thermal semantics, biological country resolution, CDC
+and RIVM wastewater no-data semantics, WHO malaria annual-context semantics, Eurostat and OWID
+population-health behavior, Safecast radiological no-local-data behavior, partial provider
+failures, same-country health-cache reuse, spatial radiation-cache isolation, stale/no-data
+semantics, and cross-domain Today-state construction. It specifically asserts that missing
+environmental data does not become zero, missing biological surveillance does not become Low
+activity, missing mortality data does not become Normal, missing radiation data does not become
+normal background, no wastewater data does not become Low viral activity, and zero or missing vector
+context is not presented as Low disease activity.
+
+The live suite is opt-in for pre-release, nightly, or manual checks because it calls public upstream
+providers and may be affected by network outages or provider maintenance:
+
+```sh
+npm run test:global-coverage:live
+```
+
+Live coverage uses the same representative location matrix and production-like provider requests for
+Open-Meteo/CAMS, WHO GISRS / FluNet, CDC NWSS, RIVM wastewater, WHO malaria context, Eurostat,
+OWID, and Safecast. Thermal rows distinguish actual UTCI from apparent-temperature fallback. It
+writes generated reports to ignored paths under `coverage/`:
+
+- `coverage/global-coverage-report.json`
+- `coverage/global-coverage-report.md`
+
+Report symbols are:
+
+- `✓`: available
+- `~`: partial
+- `—`: no data or unsupported
+- `A`: aging
+- `S`: stale
+- `!`: provider error
+
+The live report separates fresh availability from aging and stale data for every location. The live
+release gate fails only for required-signal failures and provider errors that affect the required
+contract. Optional sensor sparsity, seasonal pollen absence, unsupported Eurostat geographies with
+OWID fallback, missing COVID-19 surveillance rows, stale mortality reporting periods, and no nearby
+Safecast measurement are reported but are not treated as regressions by themselves.
+
 ## Architecture
 
 ```text
 src/api/          Open-Meteo, OpenStreetMap, WHO respiratory surveillance, Eurostat,
-                  and Safecast network providers and response normalization
+                  OWID, and Safecast network providers and response normalization
 src/capabilities/ Static capability profiles, feature metadata, and availability selectors
 src/core/         Pure scoring, mold, Environmental Events, personalization, forecast, activity,
                   health-signal presentation, trend, and summary logic
@@ -842,7 +977,7 @@ WHO GISRS/FluNet
       ↓
 biological evidence → HealthSignal
 
-Eurostat
+Eurostat → OWID fallback
       ↓
 population-health signals → HealthSignal
 
@@ -872,8 +1007,9 @@ Capabilities describe stable application concepts:
 - Location support, currently automatic foreground Current location plus multiple saved manual
   locations for Free and Pro users
 - Provider availability, currently Open-Meteo
-- Health-signal availability, currently WHO respiratory surveillance, geography-scoped Eurostat
-  excess mortality, and Safecast radiological monitoring where suitable nearby measurements exist
+- Health-signal availability, currently WHO respiratory surveillance, geography-scoped excess
+  mortality through Eurostat or OWID, and Safecast radiological monitoring where suitable nearby
+  measurements exist
 - Sharing support, currently local daily summary sharing through the Android share sheet
 - Notification capabilities, currently Free basic transition notifications and Pro advanced
   Environmental Event alerts
@@ -938,6 +1074,18 @@ checks in event detection.
 - Pollen data may be unavailable outside covered regions or seasons.
 - CAMS/Open-Meteo advanced event evidence varies by region, model domain, and forecast hour.
 - Mold potential is not a measured mold-spore concentration.
+- UTCI requires complete valid inputs including mean radiant temperature. If validated MRT is absent,
+  AirAware uses apparent-temperature fallback and does not label it UTCI.
+- Wastewater surveillance currently supports CDC NWSS in the United States and RIVM national
+  SARS-CoV-2 wastewater evidence in the Netherlands. It is community-level evidence, not diagnosed
+  clinical cases or individual infection probability.
+- Dengue, West Nile virus, and tick-borne disease are typed future vector-borne signals but no
+  provider is active unless a stable public anonymous machine-readable source is verified. PAHO
+  annual dengue indicators are not presented as current dengue surveillance.
+- Malaria is presented as annual WHO incidence context where available, not current malaria
+  activity, outbreak detection, or travel/medical advice.
+- Measured mold/spore surveillance is provider-ready but deferred; no monitoring-station provider
+  is queried in this milestone. No measured-spore data is not interpreted as Low mold.
 - UV can be included in the personalized score when selected, but the environmental burden score
   remains unchanged.
 - The best outdoor window is based only on available selected environmental variables. It does not
@@ -956,11 +1104,13 @@ checks in event detection.
   mean vegetation is absent.
 - Biological respiratory activity uses WHO GISRS / FluNet public FluMart OData as the global
   country-level baseline where suitable data is reported. COVID-19 remains explicit no-data when
-  the public WHO feed does not expose SARS-CoV-2 country rows for the selected geography. CDC and
-  ECDC/ERVISS enrichment is not implemented in this milestone because it is optional and must use
-  stable documented anonymous machine-readable sources.
-- Eurostat excess mortality is a delayed country-level population statistic. It is not live
-  monitoring and is not an individual mortality-risk prediction.
+  the public WHO feed does not expose SARS-CoV-2 country rows for the selected geography. CDC
+  wastewater evidence is implemented for US locations where public NWSS samples are available. ECDC
+  / ERVISS enrichment is not implemented in this milestone because it is optional and must use stable
+  documented anonymous machine-readable sources.
+- Excess mortality is delayed country-level population context from Eurostat where available or
+  OWID's global P-score dataset elsewhere. It is not live monitoring and is not an individual
+  mortality-risk prediction.
 - Radiological monitoring depends on nearby public monitoring-network coverage. A nearby Safecast
   reading may not exist, and community measurements may differ in hardware, calibration, and sensor
   placement.

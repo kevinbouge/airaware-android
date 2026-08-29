@@ -14,6 +14,7 @@ import {
 import { formatRiskTransitionNotification } from '../src/core/riskTransitionNotifications';
 import { categoryLabel } from '../src/core/categories';
 import { activityProfile } from '../src/core/activityDefinitions';
+import { dataDetailRange } from '../src/core/dataVariableMetadata';
 import { formatMeasurement } from '../src/utils/format';
 import { DEFAULT_SETTINGS } from '../src/models/profile';
 import type { EnvironmentalEvent } from '../src/models/environmentalEvents';
@@ -110,6 +111,16 @@ describe('i18n resources', () => {
     setAppLanguagePreference('fr');
     await i18n.changeLanguage('fr');
     expect(formatMeasurement(12.5, '%', 1)).toBe('12,5 %');
+  });
+
+  it('localizes detail range labels', async () => {
+    setAppLanguagePreference('fr');
+    await i18n.changeLanguage('fr');
+
+    expect(dataDetailRange('24h').label).toBe('24 h');
+    expect(dataDetailRange('week').label).toBe('Semaine');
+    expect(dataDetailRange('month').label).toBe('Mois');
+    expect(dataDetailRange('year').label).toBe('Année');
   });
 });
 

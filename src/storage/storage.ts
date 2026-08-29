@@ -668,6 +668,21 @@ function isHealthSignal(value: unknown): value is HealthSignal {
       object.category === 'normal-background' ||
       object.category === 'elevated' ||
       object.category === 'strongly-elevated' ||
+      object.category === 'extreme-cold-stress' ||
+      object.category === 'very-strong-cold-stress' ||
+      object.category === 'strong-cold-stress' ||
+      object.category === 'moderate-cold-stress' ||
+      object.category === 'slight-cold-stress' ||
+      object.category === 'no-thermal-stress' ||
+      object.category === 'moderate-heat-stress' ||
+      object.category === 'strong-heat-stress' ||
+      object.category === 'very-strong-heat-stress' ||
+      object.category === 'extreme-heat-stress' ||
+      object.category === 'no-thermal-strain' ||
+      object.category === 'cold-strain' ||
+      object.category === 'moderate-heat-strain' ||
+      object.category === 'high-heat-strain' ||
+      object.category === 'very-high-heat-strain' ||
       object.category === 'unknown') &&
     (object.trend === 'falling' ||
       object.trend === 'stable' ||
