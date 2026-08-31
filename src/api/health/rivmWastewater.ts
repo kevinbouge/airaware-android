@@ -11,6 +11,12 @@ import {
   calculateHealthSignalFreshness,
 } from '../../services/healthSignalFreshness';
 import { isFiniteNumber } from '../../utils/number';
+import {
+  HealthProviderSchemaError,
+  fetchHealthJson,
+  providerErrorSignal,
+  signalProviderStatus,
+} from './providerFetch';
 
 const RIVM_WASTEWATER_NATIONAL_URL =
   'https://data.rivm.nl/covid-19/COVID-19_rioolwaterdata_landelijk.json';
@@ -33,7 +39,9 @@ function numberFrom(value: string | number | null | undefined): number | null {
 }
 
 function sortedRows(payload: unknown): z.infer<typeof rivmWastewaterRowSchema>[] {
-  if (!Array.isArray(payload)) return [];
+  if (!Array.isArray(payload)) {
+    throw new HealthProviderSchemaError('Invalid RIVM wastewater response');
+  }
 
   return payload
     .flatMap((row) => {
@@ -159,21 +167,42 @@ export const rivmWastewaterProvider: HealthSignalProvider = {
       return { providerId: 'rivm-wastewater', fetchedAt: context.now, signals: [] };
     }
 
-    const response = await fetch(RIVM_WASTEWATER_NATIONAL_URL, {
-      headers: { Accept: 'application/json' },
-    });
-    if (!response.ok) throw new Error(`RIVM wastewater request failed: ${response.status}`);
+    let signal: HealthSignal;
+    try {
+      signal = normalizeRivmWastewaterSignal({
+        payload: await fetchHealthJson(RIVM_WASTEWATER_NATIONAL_URL),
+        geography: context.geography,
+        now: context.now,
+      });
+    } catch (error) {
+      signal = providerErrorSignal({
+        id: 'rivm-wastewater:wastewater-covid-19:NL:provider-error',
+        domain: 'biological',
+        type: 'wastewater-covid-19',
+        geography: {
+          level: 'country',
+          code: 'NL',
+          name: context.geography.countryName ?? 'Netherlands',
+          countryCode: 'NL',
+          countryName: context.geography.countryName ?? 'Netherlands',
+        },
+        now: context.now,
+        source: {
+          provider: 'RIVM',
+          dataset: 'COVID-19_rioolwaterdata_landelijk',
+          measure: 'SARS-CoV-2 national wastewater viral load',
+        },
+        reason: 'rivm-wastewater-provider-error',
+        error,
+      });
+    }
 
     return {
       providerId: 'rivm-wastewater',
       fetchedAt: context.now,
-      signals: [
-        normalizeRivmWastewaterSignal({
-          payload: await response.json(),
-          geography: context.geography,
-          now: context.now,
-        }),
-      ],
+      signals: [signal],
+      unavailableSignals: signal.metadata?.unavailable === true ? ['wastewater-covid-19'] : [],
+      signalStatuses: [signalProviderStatus(signal)],
     };
   },
 };

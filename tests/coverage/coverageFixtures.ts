@@ -3,7 +3,10 @@ import {
   normalizeCdcWastewaterSignal,
   type WastewaterDataset,
 } from '../../src/api/health/cdcWastewater';
+import { normalizeEcdcDengueSignal } from '../../src/api/health/ecdcDengue';
+import { normalizePhacWastewaterSignals } from '../../src/api/health/phacWastewater';
 import { normalizeRivmWastewaterSignal } from '../../src/api/health/rivmWastewater';
+import { normalizeSumeauWastewaterSignal } from '../../src/api/health/sumeauWastewater';
 import { normalizeOwidExcessMortality } from '../../src/api/health/owidExcessMortality';
 import {
   normalizeSafecastRadiationMeasurements,
@@ -239,6 +242,38 @@ function rivmWastewaterRows() {
   ];
 }
 
+function phacWastewaterCsv(noObservation: boolean) {
+  return [
+    'Location,measureid,latestTrend,pruid,t_low,t_high,latestLevel,grouping,city,province,country,Viral_Activity_Level,weekStart',
+    ...(noObservation
+      ? []
+      : [
+          'Metro Vancouver,covN2,Increasing,59,,,,City,Metro Vancouver,British Columbia,Canada,High,2026-08-16',
+          'Metro Vancouver,fluA,No Change,59,,,,City,Metro Vancouver,British Columbia,Canada,Moderate,2026-08-16',
+          'Metro Vancouver,rsv,Decreasing,59,,,,City,Metro Vancouver,British Columbia,Canada,Low,2026-08-16',
+        ]),
+  ].join('\n');
+}
+
+function sumeauWastewaterRows(noObservation: boolean) {
+  return {
+    results: noObservation
+      ? []
+      : [
+          {
+            date_complet: '2026-08-03',
+            semaine: '2026-S32',
+            national_54: 400,
+          },
+          {
+            date_complet: '2026-08-10',
+            semaine: '2026-S33',
+            national_54: 565,
+          },
+        ],
+  };
+}
+
 export function wastewaterSignalsForLocation(
   location: GlobalTestLocation,
   options: { noObservation?: boolean | undefined; stale?: boolean | undefined } = {},
@@ -252,6 +287,25 @@ export function wastewaterSignalsForLocation(
     return [
       normalizeRivmWastewaterSignal({
         payload: rows ?? rivmWastewaterRows(),
+        geography,
+        now,
+      }),
+    ];
+  }
+
+  if (geography.countryCode === 'CA') {
+    return normalizePhacWastewaterSignals({
+      csv: phacWastewaterCsv(options.noObservation === true),
+      geography,
+      locationName: location.name,
+      now,
+    });
+  }
+
+  if (geography.countryCode === 'FR') {
+    return [
+      normalizeSumeauWastewaterSignal({
+        payload: sumeauWastewaterRows(options.noObservation === true),
         geography,
         now,
       }),
@@ -274,6 +328,28 @@ export function wastewaterSignalsForLocation(
       now,
     }),
   );
+}
+
+export function dengueSignalForLocation(
+  location: GlobalTestLocation,
+  options: { noObservation?: boolean | undefined } = {},
+) {
+  const geography = resolveHealthGeography({ location: locationInfoFromGlobalLocation(location) });
+  if (!geography) return null;
+
+  return normalizeEcdcDengueSignal({
+    csv: [
+      '"CountryName","ClusterId","Nuts3Name","LAUName","Status","DateOfOnsetFirst","DateOfOnsetLast","NCases"',
+      ...(options.noObservation === true
+        ? []
+        : [
+            '"France","FR-2026-002","Bouches-du-Rhône","Marseille","Active","2026-08-02","2026-08-05","3"',
+          ]),
+    ].join('\n'),
+    geography,
+    locationName: location.name,
+    now: COVERAGE_NOW,
+  });
 }
 
 function whoMalariaFixture(rows: Record<string, unknown>[]) {
@@ -364,10 +440,10 @@ export function populationSignalForLocation(
 
 function owidExcessMortalityCsv(
   rows: [entity: string, code: string, week: string, value: string | number][] = [
-    ['Japan', 'JPN', '2026-W30', 1.2],
-    ['Japan', 'JPN', '2026-W31', 3.6],
-    ['Brazil', 'BRA', '2026-W30', -1.1],
-    ['Brazil', 'BRA', '2026-W31', 0.2],
+    ['Japan', 'JPN', '2026-W32', 1.2],
+    ['Japan', 'JPN', '2026-W33', 3.6],
+    ['Brazil', 'BRA', '2026-W32', -1.1],
+    ['Brazil', 'BRA', '2026-W33', 0.2],
   ],
 ) {
   return [

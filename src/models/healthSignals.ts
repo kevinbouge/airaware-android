@@ -49,6 +49,10 @@ export type HealthSignalType =
 
 export type HealthSignalFreshnessStatus = 'fresh' | 'aging' | 'stale';
 
+type ProviderAccess = 'anonymous' | 'key-required' | 'unsupported';
+
+type ProviderCoverage = 'global' | 'regional' | 'national' | 'local';
+
 export type ReportingPeriod =
   | {
       type: 'week';
@@ -164,6 +168,7 @@ export interface HealthSignal {
 export interface HealthSignalProviderContext {
   geography: HealthGeography | null;
   coordinates?: HealthSignalCoordinates | undefined;
+  locationName?: string | undefined;
   now: string;
   signalTypes?: HealthSignalType[] | undefined;
 }
@@ -173,10 +178,23 @@ export interface HealthSignalProviderResult {
   fetchedAt: string;
   signals: HealthSignal[];
   unavailableSignals?: HealthSignalType[] | undefined;
+  signalStatuses?:
+    | {
+        type: HealthSignalType;
+        status: 'available' | 'no-data' | 'provider-error';
+        reason?: string | undefined;
+        providerErrorKind?: 'http' | 'timeout' | 'schema' | 'network' | 'unknown' | undefined;
+        providerStatusCode?: number | undefined;
+        providerDiagnostic?: string | undefined;
+      }[]
+    | undefined;
 }
 
 export interface HealthSignalProvider {
   id: string;
+  access?: ProviderAccess | undefined;
+  coverage?: ProviderCoverage | undefined;
+  documentationUrl?: string | undefined;
   supports: (context: HealthSignalProviderContext) => boolean;
   fetchSignals: (context: HealthSignalProviderContext) => Promise<HealthSignalProviderResult>;
 }

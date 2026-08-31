@@ -65,9 +65,14 @@ export function DataDetailScreen() {
   const [error, setError] = useState<string | null>(null);
   const [fallbackNow] = useState(() => new Date().toISOString());
   const params = isDataDetailRouteParams(route.params) ? route.params : null;
-  const variable = params ? dataDetailVariable(params.variableId) : null;
+  const variableId = params?.variableId ?? null;
+  const variable = variableId ? dataDetailVariable(variableId) : null;
+  const hasVariable = variable !== null;
   const range = dataDetailRange(rangeId);
   const now = environment?.current.timestamp ?? environment?.fetchedAt ?? fallbackNow;
+  const coordinates = environment?.coordinates ?? null;
+  const coordinateLatitude = coordinates?.latitude ?? null;
+  const coordinateLongitude = coordinates?.longitude ?? null;
   const environmentCurrentValue =
     environment?.current && variable ? currentDataDetailValue(environment.current, variable) : null;
   const currentValue = visibleCurrentDataDetailValue({
@@ -80,7 +85,12 @@ export function DataDetailScreen() {
     let cancelled = false;
 
     async function load() {
-      if (!environment?.coordinates || !params?.variableId || !variable) {
+      if (
+        coordinateLatitude === null ||
+        coordinateLongitude === null ||
+        !variableId ||
+        !hasVariable
+      ) {
         setTimeline(null);
         return;
       }
@@ -91,8 +101,11 @@ export function DataDetailScreen() {
 
       try {
         const nextTimeline = await loadDataDetailTimeline({
-          coordinates: environment.coordinates,
-          variableId: params.variableId,
+          coordinates: {
+            latitude: coordinateLatitude,
+            longitude: coordinateLongitude,
+          },
+          variableId,
           rangeId,
           now,
         });
@@ -104,7 +117,9 @@ export function DataDetailScreen() {
         if (!cancelled) {
           setTimeline(null);
           setError(
-            loadError instanceof Error ? loadError.message : t('detail.timelineUnavailable'),
+            loadError instanceof Error
+              ? loadError.message
+              : translate('detail.timelineUnavailable'),
           );
         }
       } finally {
@@ -117,7 +132,7 @@ export function DataDetailScreen() {
     return () => {
       cancelled = true;
     };
-  }, [environment?.coordinates, now, params?.variableId, rangeId, t, variable]);
+  }, [coordinateLatitude, coordinateLongitude, hasVariable, now, rangeId, variableId]);
 
   const summaryRows =
     timeline && variable
@@ -129,7 +144,7 @@ export function DataDetailScreen() {
         })
       : [];
 
-  if (!params || !variable || !environment?.coordinates) {
+  if (!params || !variable || !coordinates) {
     return <DetailUnavailable onBack={handleBack} />;
   }
 

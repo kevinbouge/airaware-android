@@ -235,6 +235,8 @@ describe('Google Play policy guardrails', () => {
     expect(disclosure).toContain('OpenStreetMap tile servers');
     expect(disclosure).toContain('OpenStreetMap Overpass API');
     expect(disclosure).toContain('OpenStreetMap contributors');
+    expect(disclosure).toContain('public surveillance and monitoring providers');
+    expect(disclosure).toContain('Safecast');
     expect(disclosure).toContain('RevenueCat');
     expect(disclosure).toContain('Google Play processes payments');
     expect(disclosure).toContain('Personal Allergy Profile');
@@ -248,8 +250,11 @@ describe('Google Play policy guardrails', () => {
     const disclaimers = appDisclaimerText();
 
     expect(APP_DISCLAIMER_LINES.length).toBeGreaterThanOrEqual(4);
-    expect(disclaimers).toContain('reports environmental conditions only');
+    expect(disclaimers).toContain(
+      'reports environmental conditions and public population-level health context only',
+    );
     expect(disclaimers).toContain('does not predict symptoms');
+    expect(disclaimers).toContain('delayed public surveillance or monitoring data');
     expect(disclaimers).toContain('Personal Allergy Profile');
     expect(disclaimers).toContain('Activity profiles provide environmental guidance only');
     expect(disclaimers).toContain('OpenStreetMap context');

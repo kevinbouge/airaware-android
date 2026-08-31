@@ -30,7 +30,11 @@ import {
   healthSignalTypeLabel,
   healthSignalValueLabel,
 } from '../core/healthSignals';
-import { todayHealthSectionVisibility } from '../core/healthSignalPresentation';
+import {
+  healthSignalHasTimelineDetail,
+  healthSignalInlineDetailRows,
+  todayHealthSectionVisibility,
+} from '../core/healthSignalPresentation';
 import { translate } from '../i18n';
 import { useCapabilities } from '../hooks/useCapabilities';
 import { useDerivedEnvironment } from '../hooks/useDerivedEnvironment';
@@ -196,9 +200,32 @@ function eventDataValueLabel(event: EnvironmentalEvent): string | null {
 
 function healthSignalIcon(
   signal: HealthSignal,
-): 'respiratory' | 'population-health' | 'radiological' {
+):
+  | 'respiratory'
+  | 'wastewater'
+  | 'vector-borne'
+  | 'measured-spores'
+  | 'population-health'
+  | 'radiological' {
   if (signal.domain === 'radiological') return 'radiological';
-  return signal.domain === 'population-health' ? 'population-health' : 'respiratory';
+  if (signal.domain === 'population-health') return 'population-health';
+  if (
+    signal.type === 'wastewater-covid-19' ||
+    signal.type === 'wastewater-influenza' ||
+    signal.type === 'wastewater-rsv'
+  ) {
+    return 'wastewater';
+  }
+  if (
+    signal.type === 'dengue' ||
+    signal.type === 'west-nile' ||
+    signal.type === 'malaria' ||
+    signal.type === 'tick-borne-disease'
+  ) {
+    return 'vector-borne';
+  }
+  if (signal.type === 'measured-mold-spores') return 'measured-spores';
+  return 'respiratory';
 }
 
 function healthTrendIcon(signal: HealthSignal): 'trend-rising' | 'trend-falling' | 'trend-stable' {
@@ -208,7 +235,15 @@ function healthTrendIcon(signal: HealthSignal): 'trend-rising' | 'trend-falling'
 }
 
 function healthSecondaryLabel(signal: HealthSignal): string {
-  if (signal.domain === 'radiological' || signal.type === 'thermal-stress') {
+  if (signal.type === 'thermal-stress') {
+    const metric =
+      signal.metadata?.metric === 'utci'
+        ? translate('today.thermalMetric.utci')
+        : translate('today.thermalMetric.apparentTemperature');
+    return `${metric} · ${healthSignalCategoryLabel(signal)}`;
+  }
+
+  if (signal.domain === 'radiological') {
     return healthSignalCategoryLabel(signal);
   }
 
@@ -230,11 +265,51 @@ function sortedHealthSignals(signals: HealthSignal[]): HealthSignal[] {
   return [...signals].sort((a, b) => healthSignalSortValue(a) - healthSignalSortValue(b));
 }
 
-function HealthSignalRow({
+function todayHealthSignalValueLabel(signal: HealthSignal): string {
+  if (signal.freshness.status !== 'stale') return healthSignalValueLabel(signal);
+
+  return signal.type === 'ambient-dose-rate'
+    ? translate('health.radiological.noRecentLocalMeasurement')
+    : translate('health.noRecentData');
+}
+
+function HealthSignalVisualIcon({ demoted, signal }: { demoted: boolean; signal: HealthSignal }) {
+  const color = demoted ? colors.unavailable : colors.muted;
+
+  if (signal.type === 'thermal-stress') {
+    return <EnvironmentalIcon name="apparent-temperature" size="event" color={color} />;
+  }
+
+  return <AppIcon name={healthSignalIcon(signal)} size="inline" color={color} />;
+}
+
+function HealthSignalTrendIndicator({
+  demoted,
   signal,
+}: {
+  demoted: boolean;
+  signal: HealthSignal;
+}) {
+  if (signal.domain === 'radiological' || signal.type === 'thermal-stress') return null;
+
+  return (
+    <AppIcon
+      name={healthTrendIcon(signal)}
+      size={14}
+      color={demoted ? colors.unavailable : colors.muted}
+    />
+  );
+}
+
+function HealthSignalRow({
+  expanded,
+  signal,
+  onToggleInline,
   onPress,
 }: {
+  expanded: boolean;
   signal: HealthSignal;
+  onToggleInline: (signal: HealthSignal) => void;
   onPress: (signal: HealthSignal) => void;
 }) {
   const label = healthSignalTypeLabel(signal.type);
@@ -248,57 +323,69 @@ function HealthSignalRow({
       ? healthSignalTrendLabel(signal.trend)
       : healthSecondaryLabel(signal);
   const secondaryLabel = [freshnessPrefix, secondaryValue].filter(Boolean).join(' · ');
-  const showTrendIcon = signal.domain !== 'radiological' && signal.type !== 'thermal-stress';
+  const hasTimelineDetail = healthSignalHasTimelineDetail(signal);
+  const hasInlineDetail = !hasTimelineDetail;
+  const inlineRows = hasInlineDetail && expanded ? healthSignalInlineDetailRows(signal) : [];
+  const accessibilityLabel = hasTimelineDetail
+    ? translate('today.opensDetails', {
+        label: `${label}: ${todayHealthSignalValueLabel(signal)}`,
+      })
+    : translate('today.expandsDetails', {
+        label: `${label}: ${todayHealthSignalValueLabel(signal)}`,
+      });
+
+  const handlePress = () => {
+    if (hasTimelineDetail) {
+      onPress(signal);
+      return;
+    }
+    onToggleInline(signal);
+  };
 
   return (
-    <Pressable
-      accessibilityLabel={translate('today.opensDetails', {
-        label: `${label}: ${healthSignalValueLabel(signal)}`,
-      })}
-      accessibilityRole="button"
-      onPress={() => onPress(signal)}
-      style={({ pressed }) => [
-        styles.healthRow,
-        demoted ? styles.healthRowDemoted : null,
-        pressed ? styles.pressed : null,
-      ]}
-    >
-      {signal.type === 'thermal-stress' ? (
-        <EnvironmentalIcon
-          name="apparent-temperature"
-          size="event"
-          color={demoted ? colors.unavailable : colors.muted}
-        />
-      ) : (
-        <AppIcon
-          name={healthSignalIcon(signal)}
-          size="inline"
-          color={demoted ? colors.unavailable : colors.muted}
-        />
-      )}
-      <View style={styles.healthCopy}>
-        <Text style={[styles.healthTitle, demoted ? styles.healthTextDemoted : null]}>{label}</Text>
-        <Text style={styles.healthMeta}>
-          {healthSignalGeographyLabel(signal)} · {healthSignalPeriodLabel(signal)}
-        </Text>
-      </View>
-      <View style={styles.healthValueBlock}>
-        <Text style={[styles.healthValue, demoted ? styles.healthTextDemoted : null]}>
-          {healthSignalValueLabel(signal)}
-        </Text>
-        <View style={styles.healthTrend}>
-          {showTrendIcon ? (
-            <AppIcon
-              name={healthTrendIcon(signal)}
-              size={14}
-              color={demoted ? colors.unavailable : colors.muted}
-            />
-          ) : null}
-          <Text style={styles.healthMeta}>{secondaryLabel}</Text>
+    <View style={[styles.healthRowShell, demoted ? styles.healthRowDemoted : null]}>
+      <Pressable
+        accessibilityLabel={accessibilityLabel}
+        accessibilityRole="button"
+        accessibilityState={hasInlineDetail ? { expanded } : undefined}
+        onPress={handlePress}
+        style={({ pressed }) => [styles.healthRow, pressed ? styles.pressed : null]}
+      >
+        <HealthSignalVisualIcon signal={signal} demoted={demoted} />
+        <View style={styles.healthCopy}>
+          <Text style={[styles.healthTitle, demoted ? styles.healthTextDemoted : null]}>
+            {label}
+          </Text>
+          <Text style={styles.healthMeta}>
+            {healthSignalGeographyLabel(signal)} · {healthSignalPeriodLabel(signal)}
+          </Text>
         </View>
-      </View>
-      <AppIcon name="chevron-right" size="inline" color={colors.muted} />
-    </Pressable>
+        <View style={styles.healthValueBlock}>
+          <Text style={[styles.healthValue, demoted ? styles.healthTextDemoted : null]}>
+            {todayHealthSignalValueLabel(signal)}
+          </Text>
+          <View style={styles.healthTrend}>
+            <HealthSignalTrendIndicator signal={signal} demoted={demoted} />
+            <Text style={styles.healthMeta}>{secondaryLabel}</Text>
+          </View>
+        </View>
+        <AppIcon
+          name={hasTimelineDetail ? 'chevron-right' : 'info'}
+          size="inline"
+          color={colors.muted}
+        />
+      </Pressable>
+      {inlineRows.length > 0 ? (
+        <View style={styles.healthInlineDetails}>
+          {inlineRows.map((row) => (
+            <View key={row.label} style={styles.healthInlineDetailRow}>
+              <Text style={styles.healthInlineDetailLabel}>{row.label}</Text>
+              <Text style={styles.healthInlineDetailValue}>{row.value}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -326,6 +413,9 @@ export function TodayScreen() {
   const navigation = useNavigation<TodayNavigation>();
   const { t } = useTranslation();
   const [locationSelectorVisible, setLocationSelectorVisible] = useState(false);
+  const [expandedHealthSignalIds, setExpandedHealthSignalIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const hydrated = useAppStore((state) => state.hydrated);
   const loading = useAppStore((state) => state.loading);
   const stale = useAppStore((state) => state.stale);
@@ -448,6 +538,17 @@ export function TodayScreen() {
   const openHealthSignal = (signal: HealthSignal) => {
     navigation.navigate('HealthSignalDetail', { signalId: signal.id });
   };
+  const toggleHealthSignalInline = (signal: HealthSignal) => {
+    setExpandedHealthSignalIds((current) => {
+      const next = new Set(current);
+      if (next.has(signal.id)) {
+        next.delete(signal.id);
+      } else {
+        next.add(signal.id);
+      }
+      return next;
+    });
+  };
   let respiratoryContent = (
     <Text style={styles.body}>{healthSignals.error ?? t('today.unavailableRespiratory')}</Text>
   );
@@ -457,11 +558,28 @@ export function TodayScreen() {
     respiratoryContent = (
       <>
         {respiratorySignals.map((signal) => (
-          <HealthSignalRow key={signal.id} signal={signal} onPress={openHealthSignal} />
+          <HealthSignalRow
+            key={signal.id}
+            expanded={expandedHealthSignalIds.has(signal.id)}
+            signal={signal}
+            onPress={openHealthSignal}
+            onToggleInline={toggleHealthSignalInline}
+          />
         ))}
       </>
     );
   }
+  const shouldShowRespiratoryGroup =
+    healthSignals.loading || respiratorySignals.length > 0 || contextualHealthSignalCount === 0;
+  const healthSectionNotice =
+    healthSignals.error &&
+    (respiratorySignals.length > 0 ||
+      wastewaterSignals.length > 0 ||
+      vectorSignals.length > 0 ||
+      populationSignals.length > 0 ||
+      radiologicalSignals.length > 0)
+      ? healthSignals.error
+      : null;
 
   return (
     <>
@@ -564,19 +682,29 @@ export function TodayScreen() {
         {shouldShowThermalSignals ? (
           <SectionCard title={t('today.thermalStress')} subtitle={t('today.thermalSource')}>
             {thermalSignals.map((signal) => (
-              <HealthSignalRow key={signal.id} signal={signal} onPress={openHealthSignal} />
+              <HealthSignalRow
+                key={signal.id}
+                expanded={expandedHealthSignalIds.has(signal.id)}
+                signal={signal}
+                onPress={openHealthSignal}
+                onToggleInline={toggleHealthSignalInline}
+              />
             ))}
           </SectionCard>
         ) : null}
 
         {shouldShowHealthSignals ? (
           <SectionCard title={t('today.healthSignals')} subtitle={t('today.healthSignalsSubtitle')}>
-            <HealthSignalGroup
-              title={t('today.respiratoryActivity')}
-              subtitle={healthSignals.geography?.name ?? t('today.latestSurveillance')}
-            >
-              {respiratoryContent}
-            </HealthSignalGroup>
+            {healthSectionNotice ? <Text style={styles.notice}>{healthSectionNotice}</Text> : null}
+
+            {shouldShowRespiratoryGroup ? (
+              <HealthSignalGroup
+                title={t('today.respiratoryActivity')}
+                subtitle={healthSignals.geography?.name ?? t('today.latestSurveillance')}
+              >
+                {respiratoryContent}
+              </HealthSignalGroup>
+            ) : null}
 
             {wastewaterSignals.length > 0 ? (
               <HealthSignalGroup
@@ -584,7 +712,13 @@ export function TodayScreen() {
                 subtitle={t('today.wastewaterSource')}
               >
                 {wastewaterSignals.map((signal) => (
-                  <HealthSignalRow key={signal.id} signal={signal} onPress={openHealthSignal} />
+                  <HealthSignalRow
+                    key={signal.id}
+                    expanded={expandedHealthSignalIds.has(signal.id)}
+                    signal={signal}
+                    onPress={openHealthSignal}
+                    onToggleInline={toggleHealthSignalInline}
+                  />
                 ))}
               </HealthSignalGroup>
             ) : null}
@@ -595,7 +729,13 @@ export function TodayScreen() {
                 subtitle={healthSignals.geography?.name}
               >
                 {vectorSignals.map((signal) => (
-                  <HealthSignalRow key={signal.id} signal={signal} onPress={openHealthSignal} />
+                  <HealthSignalRow
+                    key={signal.id}
+                    expanded={expandedHealthSignalIds.has(signal.id)}
+                    signal={signal}
+                    onPress={openHealthSignal}
+                    onToggleInline={toggleHealthSignalInline}
+                  />
                 ))}
               </HealthSignalGroup>
             ) : null}
@@ -606,7 +746,13 @@ export function TodayScreen() {
                 subtitle={healthSignals.geography?.name}
               >
                 {populationSignals.map((signal) => (
-                  <HealthSignalRow key={signal.id} signal={signal} onPress={openHealthSignal} />
+                  <HealthSignalRow
+                    key={signal.id}
+                    expanded={expandedHealthSignalIds.has(signal.id)}
+                    signal={signal}
+                    onPress={openHealthSignal}
+                    onToggleInline={toggleHealthSignalInline}
+                  />
                 ))}
               </HealthSignalGroup>
             ) : null}
@@ -617,7 +763,13 @@ export function TodayScreen() {
                 subtitle={t('today.radiologicalSource')}
               >
                 {radiologicalSignals.map((signal) => (
-                  <HealthSignalRow key={signal.id} signal={signal} onPress={openHealthSignal} />
+                  <HealthSignalRow
+                    key={signal.id}
+                    expanded={expandedHealthSignalIds.has(signal.id)}
+                    signal={signal}
+                    onPress={openHealthSignal}
+                    onToggleInline={toggleHealthSignalInline}
+                  />
                 ))}
               </HealthSignalGroup>
             ) : null}
@@ -883,15 +1035,45 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 12,
   },
+  healthInlineDetailLabel: {
+    color: colors.muted,
+    flex: 0.9,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  healthInlineDetailRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  healthInlineDetailValue: {
+    color: colors.text,
+    flex: 1.6,
+    fontSize: 12,
+    lineHeight: 17,
+    textAlign: 'right',
+  },
+  healthInlineDetails: {
+    borderTopColor: colors.border,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    gap: spacing.xs,
+    paddingBottom: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.sm,
+  },
   healthRow: {
     alignItems: 'center',
     borderRadius: 8,
     flexDirection: 'row',
     gap: spacing.sm,
     minHeight: 52,
+    paddingHorizontal: spacing.xs,
   },
   healthRowDemoted: {
     opacity: 0.62,
+  },
+  healthRowShell: {
+    borderRadius: 8,
+    overflow: 'hidden',
   },
   healthTextDemoted: {
     color: colors.muted,

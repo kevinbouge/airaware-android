@@ -8,22 +8,24 @@ import { DetailStateView } from '../components/DetailStateView';
 import { AppIcon } from '../components/icons/AppIcon';
 import { EnvironmentalIcon } from '../components/icons/EnvironmentalIcon';
 import {
-  healthSignalCategoryLabel,
-  healthSignalFreshnessLabel,
+  healthSignalFreshnessDetailLabel,
   healthSignalGeographyLabel,
   healthSignalPeriodLabel,
-  healthSignalSourceLabel,
-  healthSignalTrendLabel,
   healthSignalTypeLabel,
   healthSignalValueLabel,
 } from '../core/healthSignals';
 import {
+  healthSignalDetailPrimaryLabel,
+  healthSignalDetailMetadataRows,
+  healthSignalDetailRangeOptions,
+  healthSignalDetailRangeLabel,
+  healthSignalDetailRangeSupported,
   healthTimelineFillStyle,
   healthTimelinePointValueLabel,
+  healthTimelinePointsForRange,
   selectedHealthSignalDetailRange,
   timelinePositionPercent,
 } from '../core/healthSignalPresentation';
-import { DATA_DETAIL_RANGES, dataDetailRange } from '../core/dataVariableMetadata';
 import { appLocale, translate } from '../i18n';
 import type { DataDetailRangeId } from '../models/dataDetail';
 import type { HealthSignal, HealthSignalObservation } from '../models/healthSignals';
@@ -46,6 +48,7 @@ interface HealthTimelinePoint {
   unit: string | null;
   source: 'history' | 'forecast';
   time: number;
+  period?: HealthSignalObservation['period'] | undefined;
 }
 
 interface RangeSelection {
@@ -92,29 +95,9 @@ function observationLabel(observation: HealthSignalObservation): string {
   return formatTimestamp(observation.observedAt ?? observation.updatedAt ?? null);
 }
 
-function currentObservation(signal: HealthSignal): HealthSignalObservation | null {
-  if (!isFiniteNumber(signal.value) || !signal.unit) return null;
-  return {
-    period: signal.reportingPeriod,
-    periodStart: signal.periodStart,
-    periodEnd: signal.periodEnd,
-    observedAt: signal.observedAt,
-    updatedAt: signal.updatedAt,
-    measure: signal.source.measure,
-    value: signal.value,
-    unit: signal.unit,
-    source: signal.source,
-  };
-}
-
 function timelinePoints(signal: HealthSignal): HealthTimelinePoint[] {
   const anchorTime = signalAnchorTime(signal);
-  const observations =
-    signal.history && signal.history.length > 0
-      ? signal.history
-      : [currentObservation(signal)].filter(
-          (item): item is HealthSignalObservation => item !== null,
-        );
+  const observations = signal.history ?? [];
 
   return observations
     .filter((observation) => isFiniteNumber(observation.value))
@@ -134,6 +117,7 @@ function timelinePoints(signal: HealthSignal): HealthTimelinePoint[] {
         unit: observation.unit,
         source: time > anchorTime ? ('forecast' as const) : ('history' as const),
         time,
+        period: observation.period,
       };
     });
 }
@@ -143,67 +127,47 @@ function average(values: number[]): number | null {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
-function filteredPointsForRange(
+function visiblePointsForRange(
   points: HealthTimelinePoint[],
   signal: HealthSignal,
   rangeId: DataDetailRangeId,
 ): HealthTimelinePoint[] {
-  const range = dataDetailRange(rangeId);
-  const anchor = signalAnchorTime(signal);
-  const minTime = anchor - range.historyHours * 60 * 60 * 1000;
-  const maxTime = anchor + range.forecastHours * 60 * 60 * 1000;
-  return points.filter((point) => point.time >= minTime && point.time <= maxTime);
+  return healthTimelinePointsForRange({
+    anchorTime: signalAnchorTime(signal),
+    points,
+    rangeId,
+    signal,
+  });
 }
 
 function summaryRows(signal: HealthSignal, points: HealthTimelinePoint[]) {
   const values = points.map((point) => point.value).filter(isFiniteNumber);
-  if (values.length > 1) {
-    return [
-      {
-        label: translate('detail.minimum'),
-        value: formatMeasurement(
-          Math.min(...values),
-          signal.unit ?? '',
-          signal.type === 'ambient-dose-rate' ? 2 : 1,
-        ),
-      },
-      {
-        label: translate('detail.maximum'),
-        value: formatMeasurement(
-          Math.max(...values),
-          signal.unit ?? '',
-          signal.type === 'ambient-dose-rate' ? 2 : 1,
-        ),
-      },
-      {
-        label: translate('detail.average'),
-        value: formatMeasurement(
-          average(values),
-          signal.unit ?? '',
-          signal.type === 'ambient-dose-rate' ? 2 : 1,
-        ),
-      },
-    ];
-  }
+  if (values.length <= 1) return [];
 
   return [
     {
-      label: translate('health.period'),
-      value: healthSignalPeriodLabel(signal),
+      label: translate('detail.minimum'),
+      value: formatMeasurement(
+        Math.min(...values),
+        signal.unit ?? '',
+        signal.type === 'ambient-dose-rate' ? 2 : 1,
+      ),
     },
     {
-      label: healthSignalSourceLabel(signal),
-      value: healthSignalGeographyLabel(signal),
+      label: translate('detail.maximum'),
+      value: formatMeasurement(
+        Math.max(...values),
+        signal.unit ?? '',
+        signal.type === 'ambient-dose-rate' ? 2 : 1,
+      ),
     },
     {
-      label:
-        signal.domain === 'radiological' || signal.type === 'thermal-stress'
-          ? translate('health.radiological.statusLabel')
-          : translate('health.trendLabel'),
-      value:
-        signal.domain === 'radiological' || signal.type === 'thermal-stress'
-          ? healthSignalCategoryLabel(signal)
-          : healthSignalTrendLabel(signal.trend),
+      label: translate('detail.average'),
+      value: formatMeasurement(
+        average(values),
+        signal.unit ?? '',
+        signal.type === 'ambient-dose-rate' ? 2 : 1,
+      ),
     },
   ];
 }
@@ -222,9 +186,11 @@ function detailHeaderIcon(signal: HealthSignal) {
 }
 
 function HealthTimelineChart({
+  emptyMessage,
   points,
   signal,
 }: {
+  emptyMessage: string;
   points: HealthTimelinePoint[];
   signal: HealthSignal;
 }) {
@@ -260,7 +226,7 @@ function HealthTimelineChart({
   if (points.length === 0) {
     return (
       <View style={styles.emptyChart}>
-        <Text style={styles.emptyText}>{healthSignalValueLabel(signal)}</Text>
+        <Text style={styles.emptyText}>{emptyMessage}</Text>
       </View>
     );
   }
@@ -361,9 +327,35 @@ export function HealthSignalDetailScreen() {
   };
   const points = useMemo(() => (signal ? timelinePoints(signal) : []), [signal]);
   const visiblePoints = useMemo(
-    () => (signal ? filteredPointsForRange(points, signal, rangeId) : []),
+    () => (signal ? visiblePointsForRange(points, signal, rangeId) : []),
     [points, rangeId, signal],
   );
+  const rangeOptions = useMemo(
+    () => (signal ? healthSignalDetailRangeOptions(signal) : []),
+    [signal],
+  );
+  const chartPoints = visiblePoints.length >= 2 ? visiblePoints : [];
+  const chartSummaryRows = signal ? summaryRows(signal, chartPoints) : [];
+  const metadataRows = signal ? healthSignalDetailMetadataRows(signal) : [];
+  const timelineTitle =
+    signal?.type === 'thermal-stress'
+      ? t('health.thermalStress.forecastTitle')
+      : t('health.timelineTitle');
+  const timelineSubtitle = signal ? healthSignalDetailRangeLabel(signal, rangeId) : '';
+  const emptyTimelineMessage = useMemo(() => {
+    if (!signal) return t('health.historyUnavailable');
+    const rangeLabel = healthSignalDetailRangeLabel(signal, rangeId);
+    if (!healthSignalDetailRangeSupported(signal, rangeId)) {
+      return t('health.historyRangeUnavailable', { range: rangeLabel });
+    }
+    if (signal.type === 'thermal-stress') {
+      return points.length === 0
+        ? t('health.thermalStress.forecastUnavailable')
+        : t('health.thermalStress.forecastInsufficientRange', { range: rangeLabel });
+    }
+    if (points.length === 0) return t('health.historyUnavailable');
+    return t('health.historyInsufficientRange', { range: rangeLabel });
+  }, [points.length, rangeId, signal, t]);
 
   if (!signal) {
     return (
@@ -386,44 +378,66 @@ export function HealthSignalDetailScreen() {
       <View style={styles.content}>
         <View style={styles.header}>
           <Text style={styles.currentValue}>
-            {t('detail.current')}: {healthSignalValueLabel(signal)}
+            {healthSignalDetailPrimaryLabel(signal)}: {healthSignalValueLabel(signal)}
           </Text>
           <Text style={styles.status}>
-            {healthSignalFreshnessLabel(signal.freshness.status)} ·{' '}
-            {healthSignalPeriodLabel(signal)}
+            {healthSignalFreshnessDetailLabel(signal)} · {healthSignalPeriodLabel(signal)}
           </Text>
         </View>
 
-        <View style={styles.summary}>
-          {summaryRows(signal, visiblePoints).map((row) => (
-            <View key={row.label} style={styles.summaryItem}>
-              <Text numberOfLines={1} style={styles.summaryLabel}>
-                {row.label}
-              </Text>
-              <Text numberOfLines={2} style={styles.summaryValue}>
-                {row.value}
-              </Text>
-            </View>
-          ))}
-        </View>
+        {metadataRows.length > 0 ? (
+          <View style={styles.metadata}>
+            {metadataRows.map((row) => (
+              <View key={row.label} style={styles.metadataRow}>
+                <Text style={styles.metadataLabel}>{row.label}</Text>
+                <Text style={styles.metadataValue}>{row.value}</Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        {chartSummaryRows.length > 0 ? (
+          <View style={styles.summary}>
+            {chartSummaryRows.map((row) => (
+              <View key={row.label} style={styles.summaryItem}>
+                <Text numberOfLines={1} style={styles.summaryLabel}>
+                  {row.label}
+                </Text>
+                <Text numberOfLines={2} style={styles.summaryValue}>
+                  {row.value}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
       </View>
 
       <View style={styles.chartArea}>
-        <HealthTimelineChart points={visiblePoints} signal={signal} />
-      </View>
-      <View style={styles.footer}>
-        <View style={styles.rangeSelector}>
-          {DATA_DETAIL_RANGES.map((item) => (
-            <View key={item.id} style={styles.rangeButton}>
-              <AppButton
-                title={dataDetailRange(item.id).label}
-                selected={rangeId === item.id}
-                onPress={() => setRangeId(item.id)}
-              />
-            </View>
-          ))}
+        <View style={styles.timelineHeader}>
+          <Text style={styles.timelineTitle}>{timelineTitle}</Text>
+          <Text style={styles.timelineSubtitle}>{timelineSubtitle}</Text>
         </View>
+        <HealthTimelineChart
+          emptyMessage={emptyTimelineMessage}
+          points={chartPoints}
+          signal={signal}
+        />
       </View>
+      {rangeOptions.length > 1 ? (
+        <View style={styles.footer}>
+          <View style={styles.rangeSelector}>
+            {rangeOptions.map((item) => (
+              <View key={item.id} style={styles.rangeButton}>
+                <AppButton
+                  title={item.label}
+                  selected={rangeId === item.id}
+                  onPress={() => setRangeId(item.id)}
+                />
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -484,6 +498,32 @@ const styles = StyleSheet.create({
   },
   historyRow: {
     backgroundColor: '#EEF5F0',
+  },
+  metadata: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: spacing.sm,
+    padding: spacing.md,
+  },
+  metadataLabel: {
+    color: colors.muted,
+    flex: 0.8,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  metadataRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  metadataValue: {
+    color: colors.text,
+    flex: 1.4,
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 18,
+    textAlign: 'right',
   },
   nowLabel: {
     color: colors.primary,
@@ -557,6 +597,20 @@ const styles = StyleSheet.create({
     color: colors.muted,
     flex: 1.1,
     fontSize: 12,
+  },
+  timelineHeader: {
+    gap: spacing.xs,
+    paddingBottom: spacing.sm,
+  },
+  timelineSubtitle: {
+    color: colors.muted,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  timelineTitle: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '800',
   },
   track: {
     backgroundColor: '#E6ECE7',

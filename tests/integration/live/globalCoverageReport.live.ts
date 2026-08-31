@@ -7,10 +7,13 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { cdcWastewaterProvider } from '../../../src/api/health/cdcWastewater';
+import { ecdcDengueProvider } from '../../../src/api/health/ecdcDengue';
 import { eurostatExcessMortalityProvider } from '../../../src/api/health/eurostatExcessMortality';
 import { owidExcessMortalityProvider } from '../../../src/api/health/owidExcessMortality';
+import { phacWastewaterProvider } from '../../../src/api/health/phacWastewater';
 import { rivmWastewaterProvider } from '../../../src/api/health/rivmWastewater';
 import { safecastRadiologicalProvider } from '../../../src/api/health/safecastRadiological';
+import { sumeauWastewaterProvider } from '../../../src/api/health/sumeauWastewater';
 import { whoRespiratoryProvider } from '../../../src/api/health/whoRespiratory';
 import { whoVectorDiseaseProvider } from '../../../src/api/health/whoVectorDisease';
 import { buildAirQualityUrl, normalizeAirQuality } from '../../../src/api/openMeteoAirQuality';
@@ -21,7 +24,6 @@ import {
   environmentalCoverageResults,
   healthSignalCoverageResult,
 } from '../../coverage/coverageAssertions';
-import { expectationForSignal } from '../../coverage/coverageExpectations';
 import type { CoverageResult, GlobalCoverageReport } from '../../coverage/coverageTypes';
 import {
   coverageReportToJson,
@@ -45,7 +47,20 @@ interface LiveResponse {
   text: () => Promise<string>;
 }
 
-async function liveFetch(url: string | URL): Promise<LiveResponse> {
+function acceptHeaderFrom(init: RequestInit | undefined): string {
+  const headers = init?.headers;
+  if (headers instanceof Headers) return headers.get('Accept') ?? 'application/json';
+  if (Array.isArray(headers)) {
+    return headers.find(([key]) => key.toLowerCase() === 'accept')?.[1] ?? 'application/json';
+  }
+  if (headers && typeof headers === 'object') {
+    const record = headers as Record<string, string>;
+    return record.Accept ?? record.accept ?? 'application/json';
+  }
+  return 'application/json';
+}
+
+async function liveFetch(url: string | URL, init?: RequestInit): Promise<LiveResponse> {
   const { stdout } = await execFileAsync(
     'curl',
     [
@@ -56,7 +71,7 @@ async function liveFetch(url: string | URL): Promise<LiveResponse> {
       '--max-time',
       String(Math.ceil(REQUEST_TIMEOUT_MS / 1000)),
       '--header',
-      'Accept: application/json',
+      `Accept: ${acceptHeaderFrom(init)}`,
       url.toString(),
     ],
     { maxBuffer: 20 * 1024 * 1024 },
@@ -162,6 +177,33 @@ function unsupportedProviderResult(providerId: string, locationId: string): Cove
     };
   }
 
+  if (providerId === 'ecdc-dengue') {
+    return {
+      locationId,
+      domain: 'biological',
+      signal: 'dengue',
+      expectation: 'unsupported',
+      status: 'unsupported',
+      provider: providerId,
+    };
+  }
+
+  if (
+    providerId === 'cdc-wastewater' ||
+    providerId === 'phac-wastewater' ||
+    providerId === 'sumeau-wastewater' ||
+    providerId === 'rivm-wastewater'
+  ) {
+    return {
+      locationId,
+      domain: 'biological',
+      signal: 'wastewater',
+      expectation: 'unsupported',
+      status: 'unsupported',
+      provider: providerId,
+    };
+  }
+
   return {
     locationId,
     domain: 'biological',
@@ -186,50 +228,25 @@ function providerExpectation(providerId: string): CoverageResult['expectation'] 
     : 'optional';
 }
 
-function ensureDeferredVectorCoverageRows(input: {
-  location: (typeof GLOBAL_TEST_LOCATIONS)[number];
-  results: CoverageResult[];
-}): void {
-  const deferredVectorSignals = ['dengue'] as const;
-
-  deferredVectorSignals.forEach((signal) => {
-    const alreadyReported = input.results.some(
-      (result) => result.domain === 'biological' && result.signal === signal,
-    );
-    if (alreadyReported) return;
-
-    input.results.push({
-      locationId: input.location.id,
-      domain: 'biological',
-      signal,
-      expectation: expectationForSignal({
-        domain: 'biological',
-        signal,
-        location: input.location,
-      }),
-      status: 'unsupported',
-      notes: 'No suitable documented anonymous dengue provider is currently integrated.',
-    });
-  });
-}
-
 async function healthProviderLiveResults(location: (typeof GLOBAL_TEST_LOCATIONS)[number]) {
   const locationInfo = locationInfoFromGlobalLocation(location);
   const geography = resolveHealthGeography({ location: locationInfo });
   const coordinates = { latitude: location.latitude, longitude: location.longitude };
   const now = new Date().toISOString();
-  const context = { geography, coordinates, now };
+  const context = { geography, coordinates, locationName: location.name, now };
   const results: CoverageResult[] = [];
-  const eurostatSupported = eurostatExcessMortalityProvider.supports(context);
   const providers = [
     whoRespiratoryProvider,
     cdcWastewaterProvider,
+    phacWastewaterProvider,
+    sumeauWastewaterProvider,
     rivmWastewaterProvider,
+    ecdcDengueProvider,
     whoVectorDiseaseProvider,
     eurostatExcessMortalityProvider,
     owidExcessMortalityProvider,
     safecastRadiologicalProvider,
-  ].filter((provider) => provider.id !== owidExcessMortalityProvider.id || !eurostatSupported);
+  ];
 
   for (const provider of providers) {
     if (!provider.supports(context)) {
@@ -262,8 +279,6 @@ async function healthProviderLiveResults(location: (typeof GLOBAL_TEST_LOCATIONS
       );
     }
   }
-
-  ensureDeferredVectorCoverageRows({ location, results });
 
   return results;
 }
@@ -300,7 +315,7 @@ describe('live global coverage report', () => {
       coverageReportToMarkdown(report),
     );
 
-    console.warn(coverageReportToMarkdown(report));
+    process.stdout.write(`${coverageReportToMarkdown(report)}\n`);
     expect(summary.requiredFail).toBe(0);
   });
 });

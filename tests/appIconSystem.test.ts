@@ -26,6 +26,9 @@ describe('app icon system', () => {
     expect(getAppIconDefinition('edit')).toMatchObject({ libraryName: 'Pencil' });
     expect(getAppIconDefinition('delete')).toMatchObject({ libraryName: 'Trash2' });
     expect(getAppIconDefinition('respiratory')).toMatchObject({ libraryName: 'HeartPulse' });
+    expect(getAppIconDefinition('wastewater')).toMatchObject({ libraryName: 'Droplets' });
+    expect(getAppIconDefinition('vector-borne')).toMatchObject({ libraryName: 'Bug' });
+    expect(getAppIconDefinition('measured-spores')).toMatchObject({ libraryName: 'Flower2' });
     expect(getAppIconDefinition('population-health')).toMatchObject({ libraryName: 'UsersRound' });
     expect(getAppIconDefinition('radiological')).toMatchObject({ libraryName: 'Radiation' });
     expect(getAppIconDefinition('trend-rising')).toMatchObject({ libraryName: 'TrendingUp' });

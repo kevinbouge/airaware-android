@@ -8,6 +8,7 @@ import {
 } from './coverageAssertions';
 import {
   biologicalSignalsForLocation,
+  dengueSignalForLocation,
   malariaSignalForLocation,
   wastewaterSignalsForLocation,
 } from './coverageFixtures';
@@ -147,7 +148,7 @@ describe('global biological coverage contracts', () => {
     expect(euSignals.every((signal) => signal.source.provider !== 'ECDC')).toBe(true);
   });
 
-  it('uses CDC wastewater as optional US evidence without coordinates or clinical prevalence claims', () => {
+  it('keeps CDC wastewater raw samples unavailable without clinical prevalence claims', () => {
     const location = GLOBAL_TEST_LOCATIONS.find((entry) => entry.id === 'austin');
     expect(location).toBeDefined();
     const signals = wastewaterSignalsForLocation(location!);
@@ -166,10 +167,16 @@ describe('global biological coverage contracts', () => {
     ]);
     expect(covid).toMatchObject({
       domain: 'biological',
-      geography: { level: 'region', countryCode: 'US' },
+      geography: { level: 'country', code: 'US', countryCode: 'US' },
       category: 'unknown',
-      metadata: expect.objectContaining({ noClinicalPrevalenceInference: true }),
+      metadata: expect.objectContaining({
+        unavailable: true,
+        reason: 'cdc-wastewater-aggregation-unavailable',
+        noClinicalPrevalenceInference: true,
+        surveillanceBasis: 'wastewater surveillance',
+      }),
     });
+    expect(covid?.value).toBeUndefined();
   });
 
   it('uses RIVM wastewater as optional Netherlands evidence without clinical prevalence claims', () => {
@@ -189,6 +196,47 @@ describe('global biological coverage contracts', () => {
       },
       metadata: expect.objectContaining({ noClinicalPrevalenceInference: true }),
     });
+  });
+
+  it('uses PHAC wastewater as optional Canada evidence only when a reporting area matches', () => {
+    const vancouver = GLOBAL_TEST_LOCATIONS.find((entry) => entry.id === 'vancouver');
+    expect(vancouver).toBeDefined();
+    const location = { ...vancouver!, id: 'metro-vancouver', name: 'Metro Vancouver' };
+    const signals = wastewaterSignalsForLocation(location);
+
+    expect(signals.map((signal) => signal.type)).toEqual([
+      'wastewater-covid-19',
+      'wastewater-influenza',
+      'wastewater-rsv',
+    ]);
+    expect(signals[0]).toMatchObject({
+      domain: 'biological',
+      geography: { level: 'subregion', name: 'Metro Vancouver', countryCode: 'CA' },
+      source: { provider: 'PHAC' },
+      metadata: expect.objectContaining({
+        noClinicalPrevalenceInference: true,
+        reportingGeography: 'Metro Vancouver',
+      }),
+    });
+  });
+
+  it('uses SUM’Eau as optional France national wastewater evidence without city-local semantics', () => {
+    const location = GLOBAL_TEST_LOCATIONS.find((entry) => entry.id === 'paris');
+    expect(location).toBeDefined();
+    const signals = wastewaterSignalsForLocation(location!);
+
+    expect(signals).toHaveLength(1);
+    expect(signals[0]).toMatchObject({
+      domain: 'biological',
+      type: 'wastewater-covid-19',
+      geography: { level: 'country', code: 'FR', countryCode: 'FR' },
+      source: { provider: 'Santé publique France', dataset: 'SUM’Eau' },
+      metadata: expect.objectContaining({
+        noClinicalPrevalenceInference: true,
+        reportingGeography: 'France',
+      }),
+    });
+    expect(signals[0]?.geography.name).not.toBe(location!.name);
   });
 
   it('keeps missing wastewater surveillance unavailable instead of Low pathogen activity', () => {
@@ -247,6 +295,40 @@ describe('global biological coverage contracts', () => {
       domain: 'biological',
       signalName: 'dengue',
     })).toMatchObject({ status: 'unsupported' });
+  });
+
+  it('uses ECDC dengue clusters only for matching EU/EEA locations', () => {
+    const marseille = {
+      id: 'marseille',
+      name: 'Marseille',
+      country: 'FR',
+      continent: 'europe',
+      latitude: 43.2965,
+      longitude: 5.3698,
+      coverageTags: ['europe', 'dengue-cluster'],
+    } as const;
+    const paris = GLOBAL_TEST_LOCATIONS.find((entry) => entry.id === 'paris');
+    expect(paris).toBeDefined();
+
+    const marseilleSignal = dengueSignalForLocation(marseille);
+    const parisSignal = dengueSignalForLocation(paris!);
+
+    expect(marseilleSignal).toMatchObject({
+      domain: 'biological',
+      type: 'dengue',
+      geography: { level: 'subregion', name: 'Marseille', countryCode: 'FR' },
+      category: 'unknown',
+      metadata: expect.objectContaining({
+        providerCategory: 'Active',
+        noPersonalRiskInference: true,
+      }),
+    });
+    expect(parisSignal).toMatchObject({
+      type: 'dengue',
+      category: 'unknown',
+      metadata: expect.objectContaining({ unavailable: true }),
+    });
+    expectUnavailableIsNotLowOrNormal(parisSignal!);
   });
 
   it('does not invent a default country when country and coordinates are unresolved', () => {

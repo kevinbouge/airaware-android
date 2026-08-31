@@ -156,6 +156,30 @@ describe('RevenueCat billing gateway boundary', () => {
     );
   });
 
+  it('suppresses benign RevenueCat ui_config remote config warnings in development', async () => {
+    const mock = purchasesMock();
+    const billing = createBillingGateway({
+      apiKey: 'test_public_sdk_key',
+      platformOS: 'android',
+      isDevelopment: true,
+      loadPurchasesModule: async () => mock.module,
+    });
+
+    await billing.initializeBilling();
+    const handler = mock.module.default.setLogHandler.mock.calls[0][0] as (
+      logLevel: unknown,
+      message: string,
+    ) => void;
+    handler(
+      'WARN',
+      "Could not resolve remote config blob(s) for 4 of 4 requested item(s) in topic 'ui_config': [app, localizations, variable_config, custom_variables]. Returning null.",
+    );
+
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining('Could not resolve remote config blob(s)'),
+    );
+  });
+
   it('keeps non-paywall RevenueCat warnings visible in development', async () => {
     const mock = purchasesMock();
     const billing = createBillingGateway({

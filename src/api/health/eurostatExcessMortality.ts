@@ -12,6 +12,12 @@ import {
   calculateComparableTrend,
   calculateHealthSignalFreshness,
 } from '../../services/healthSignalFreshness';
+import {
+  HealthProviderSchemaError,
+  fetchHealthJson,
+  providerErrorSignal,
+  signalProviderStatus,
+} from './providerFetch';
 
 const EUROSTAT_EXCESS_MORTALITY_ENDPOINT =
   'https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/demo_mexrt';
@@ -146,7 +152,9 @@ export function normalizeEurostatExcessMortality(
   },
 ): HealthSignal | null {
   const parsed = eurostatDatasetSchema.safeParse(payload);
-  if (!parsed.success) return null;
+  if (!parsed.success) {
+    throw new HealthProviderSchemaError('Invalid Eurostat excess mortality response');
+  }
 
   const observations = sortedExcessMortalityObservations(parsed.data);
   const latest = observations.at(-1);
@@ -221,21 +229,39 @@ export const eurostatExcessMortalityProvider: HealthSignalProvider = {
       };
     }
 
-    const response = await fetch(url, { headers: { Accept: 'application/json' } });
-    if (!response.ok) {
-      throw new Error(`Eurostat excess mortality request failed: ${response.status}`);
+    let signal: HealthSignal | null;
+    try {
+      signal = normalizeEurostatExcessMortality(await fetchHealthJson(url), {
+        geography: context.geography,
+        now: context.now,
+      });
+    } catch (error) {
+      signal = providerErrorSignal({
+        id: `excess-mortality:${context.geography.countryCode ?? context.geography.code}:eurostat:provider-error`,
+        domain: 'population-health',
+        type: 'excess-mortality',
+        geography: context.geography,
+        now: context.now,
+        source: {
+          provider: 'Eurostat',
+          dataset: 'demo_mexrt',
+          measure:
+            'Excess mortality by month; percentage relative to the 2016-2019 monthly baseline',
+        },
+        reason: 'eurostat-provider-error',
+        error,
+      });
     }
-
-    const signal = normalizeEurostatExcessMortality(await response.json(), {
-      geography: context.geography,
-      now: context.now,
-    });
 
     return {
       providerId: 'eurostat-excess-mortality',
       fetchedAt: context.now,
       signals: signal ? [signal] : [],
-      unavailableSignals: signal ? [] : ['excess-mortality'],
+      unavailableSignals:
+        !signal || signal.metadata?.unavailable === true ? ['excess-mortality'] : [],
+      signalStatuses: signal
+        ? [signalProviderStatus(signal)]
+        : [{ type: 'excess-mortality', status: 'no-data', reason: 'no-eurostat-observation' }],
     };
   },
 };

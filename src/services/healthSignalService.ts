@@ -1,11 +1,17 @@
 import { cdcWastewaterProvider, CDC_WASTEWATER_SIGNAL_TYPES } from '../api/health/cdcWastewater';
+import { ecdcDengueProvider, ECDC_DENGUE_SIGNAL_TYPES } from '../api/health/ecdcDengue';
 import { eurostatExcessMortalityProvider } from '../api/health/eurostatExcessMortality';
 import { owidExcessMortalityProvider } from '../api/health/owidExcessMortality';
+import { phacWastewaterProvider, PHAC_WASTEWATER_SIGNAL_TYPES } from '../api/health/phacWastewater';
 import {
   radiologicalSpatialCacheKey,
   safecastRadiologicalProvider,
 } from '../api/health/safecastRadiological';
 import { RIVM_WASTEWATER_SIGNAL_TYPES, rivmWastewaterProvider } from '../api/health/rivmWastewater';
+import {
+  SUMEAU_WASTEWATER_SIGNAL_TYPES,
+  sumeauWastewaterProvider,
+} from '../api/health/sumeauWastewater';
 import { RESPIRATORY_SIGNAL_TYPES, whoRespiratoryProvider } from '../api/health/whoRespiratory';
 import { whoVectorDiseaseProvider } from '../api/health/whoVectorDisease';
 import { thermalStressSignalFromEnvironment } from '../core/thermalStress';
@@ -22,6 +28,7 @@ import { loadHealthSignalsCacheForGeography, saveHealthSignalsCache } from '../s
 import { healthCacheKey, resolveHealthGeography } from './healthGeography';
 import {
   EXCESS_MORTALITY_FRESHNESS,
+  OWID_EXCESS_MORTALITY_FRESHNESS,
   RADIATION_MONITORING_FRESHNESS,
   RESPIRATORY_SURVEILLANCE_FRESHNESS,
   THERMAL_STRESS_FRESHNESS,
@@ -34,7 +41,10 @@ import {
 const HEALTH_SIGNAL_PROVIDERS: HealthSignalProvider[] = [
   whoRespiratoryProvider,
   cdcWastewaterProvider,
+  phacWastewaterProvider,
+  sumeauWastewaterProvider,
   rivmWastewaterProvider,
+  ecdcDengueProvider,
   whoVectorDiseaseProvider,
   eurostatExcessMortalityProvider,
   owidExcessMortalityProvider,
@@ -46,12 +56,7 @@ function providersForContext(context: {
   coordinates: { latitude: number; longitude: number } | undefined;
   now: string;
 }): HealthSignalProvider[] {
-  const eurostatSupported = eurostatExcessMortalityProvider.supports(context);
-
-  return HEALTH_SIGNAL_PROVIDERS.filter((provider) => {
-    if (provider.id === owidExcessMortalityProvider.id && eurostatSupported) return false;
-    return provider.supports(context);
-  });
+  return HEALTH_SIGNAL_PROVIDERS.filter((provider) => provider.supports(context));
 }
 
 function cacheSavedWithin(
@@ -60,7 +65,11 @@ function cacheSavedWithin(
   maxAgeMs: number,
 ): boolean {
   if (!cache) return false;
-  const savedAt = Date.parse(cache.savedAt);
+  return cacheSavedAtWithin(cache.savedAt, now, maxAgeMs);
+}
+
+function cacheSavedAtWithin(savedAtValue: string, now: string, maxAgeMs: number): boolean {
+  const savedAt = Date.parse(savedAtValue);
   const nowTime = Date.parse(now);
   if (!Number.isFinite(savedAt) || !Number.isFinite(nowTime)) return false;
 
@@ -95,13 +104,20 @@ function providerOwnsSignal(providerId: string, signal: HealthSignal): boolean {
   if (providerId === cdcWastewaterProvider.id) {
     return CDC_WASTEWATER_SIGNAL_TYPES.some((type) => type === signal.type);
   }
+  if (providerId === phacWastewaterProvider.id) {
+    return PHAC_WASTEWATER_SIGNAL_TYPES.some((type) => type === signal.type);
+  }
+  if (providerId === sumeauWastewaterProvider.id) {
+    return SUMEAU_WASTEWATER_SIGNAL_TYPES.some((type) => type === signal.type);
+  }
   if (providerId === rivmWastewaterProvider.id) {
     return RIVM_WASTEWATER_SIGNAL_TYPES.some((type) => type === signal.type);
   }
+  if (providerId === ecdcDengueProvider.id) {
+    return ECDC_DENGUE_SIGNAL_TYPES.some((type) => type === signal.type);
+  }
   if (providerId === whoVectorDiseaseProvider.id) {
-    return ['dengue', 'west-nile', 'malaria', 'tick-borne-disease'].some(
-      (type) => type === signal.type,
-    );
+    return signal.type === 'malaria';
   }
   if (providerId === eurostatExcessMortalityProvider.id) {
     return signal.type === 'excess-mortality' && signal.source.provider === 'Eurostat';
@@ -122,20 +138,61 @@ function signalFreshnessRank(signal: HealthSignal): number {
   return 1;
 }
 
+function signalAvailabilityRank(signal: HealthSignal): number {
+  return signal.metadata?.unavailable === true ? 0 : 1;
+}
+
 function signalProviderRank(signal: HealthSignal): number {
-  if (signal.source.provider === 'Eurostat') return 3;
-  if (signal.source.provider === 'Our World in Data') return 2;
+  if (signal.source.provider === 'Our World in Data') return 3;
+  if (signal.source.provider === 'Eurostat') return 2;
   return 1;
 }
 
+function signalReportingTime(signal: HealthSignal): number {
+  const timestamp = signal.periodEnd ?? signal.observedAt ?? signal.updatedAt;
+  const parsed = Date.parse(timestamp);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function rankedSignal(
+  left: HealthSignal,
+  right: HealthSignal,
+  rank: (signal: HealthSignal) => number,
+): HealthSignal | null {
+  const delta = rank(left) - rank(right);
+  if (delta === 0) return null;
+  return delta > 0 ? left : right;
+}
+
+function nonStaleSignal(left: HealthSignal, right: HealthSignal): HealthSignal | null {
+  const leftStale = left.freshness.status === 'stale';
+  const rightStale = right.freshness.status === 'stale';
+  if (leftStale === rightStale) return null;
+  return leftStale ? right : left;
+}
+
+function betterMortalitySignal(left: HealthSignal, right: HealthSignal): HealthSignal {
+  return (
+    rankedSignal(left, right, signalAvailabilityRank) ??
+    nonStaleSignal(left, right) ??
+    rankedSignal(left, right, signalFreshnessRank) ??
+    rankedSignal(left, right, signalReportingTime) ??
+    rankedSignal(left, right, signalProviderRank) ??
+    left
+  );
+}
+
 function betterSignal(left: HealthSignal, right: HealthSignal): HealthSignal {
-  const freshnessDelta = signalFreshnessRank(left) - signalFreshnessRank(right);
-  if (freshnessDelta !== 0) return freshnessDelta > 0 ? left : right;
+  if (left.type === 'excess-mortality' && right.type === 'excess-mortality') {
+    return betterMortalitySignal(left, right);
+  }
 
-  const providerDelta = signalProviderRank(left) - signalProviderRank(right);
-  if (providerDelta !== 0) return providerDelta > 0 ? left : right;
-
-  return left;
+  return (
+    rankedSignal(left, right, signalFreshnessRank) ??
+    rankedSignal(left, right, signalReportingTime) ??
+    rankedSignal(left, right, signalProviderRank) ??
+    left
+  );
 }
 
 function dedupeSignalsByType(signals: HealthSignal[]): HealthSignal[] {
@@ -168,12 +225,30 @@ function freshnessPolicyForSignal(signal: HealthSignal) {
     return VECTOR_SURVEILLANCE_FRESHNESS;
   }
   if (signal.type === 'measured-mold-spores') return MEASURED_SPORE_SURVEILLANCE_FRESHNESS;
-  return signal.type === 'excess-mortality'
-    ? EXCESS_MORTALITY_FRESHNESS
-    : RESPIRATORY_SURVEILLANCE_FRESHNESS;
+  if (signal.type === 'excess-mortality') {
+    return signal.source.provider === 'Our World in Data'
+      ? OWID_EXCESS_MORTALITY_FRESHNESS
+      : EXCESS_MORTALITY_FRESHNESS;
+  }
+  return RESPIRATORY_SURVEILLANCE_FRESHNESS;
 }
 
-function cachedSignalForNow(signal: HealthSignal, now: string): HealthSignal | null {
+function cachedSignalForNow(
+  signal: HealthSignal,
+  now: string,
+  cacheSavedAt?: string | undefined,
+): HealthSignal | null {
+  if (signalHasProviderError(signal)) return null;
+
+  if (signal.metadata?.unavailable === true) {
+    const policy = freshnessPolicyForSignal(signal);
+    if (cacheSavedAt && cacheSavedAtWithin(cacheSavedAt, now, policy.expectedUpdateIntervalMs)) {
+      return signal;
+    }
+
+    return null;
+  }
+
   const freshness = calculateHealthSignalFreshness({
     updatedAt: signal.periodEnd ?? signal.updatedAt,
     now,
@@ -185,21 +260,47 @@ function cachedSignalForNow(signal: HealthSignal, now: string): HealthSignal | n
 }
 
 function usableCachedSignals(cache: CachedHealthSignals | null, now: string): HealthSignal[] {
-  return cache?.signals.flatMap((signal) => cachedSignalForNow(signal, now) ?? []) ?? [];
+  return (
+    cache?.signals.flatMap((signal) => cachedSignalForNow(signal, now, cache.savedAt) ?? []) ?? []
+  );
 }
 
 function mergeSignalsByType(fresh: HealthSignal[], cached: HealthSignal[]): HealthSignal[] {
-  const freshTypes = new Set(fresh.map((signal) => signal.type));
+  const freshTypes = new Set(
+    fresh.filter((signal) => !signalHasProviderError(signal)).map((signal) => signal.type),
+  );
   return [...fresh, ...cached.filter((signal) => !freshTypes.has(signal.type))];
+}
+
+function normalizedProviderLocationName(locationName: string | undefined): string | null {
+  const normalized = locationName
+    ?.normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .split('-')
+    .filter(Boolean)
+    .join('-');
+
+  return normalized ? normalized : null;
 }
 
 function cacheKeyForProvider(
   provider: HealthSignalProvider,
   geography: HealthGeography | null,
   coordinates: { latitude: number; longitude: number } | undefined,
+  locationName?: string | undefined,
 ): string | null {
   if (provider.id === safecastRadiologicalProvider.id) {
     return coordinates ? radiologicalSpatialCacheKey(coordinates) : null;
+  }
+
+  if (provider.id === phacWastewaterProvider.id || provider.id === ecdcDengueProvider.id) {
+    if (!geography?.countryCode) return null;
+    const normalizedLocation = normalizedProviderLocationName(locationName);
+    return normalizedLocation
+      ? `${provider.id}:${geography.countryCode}:${normalizedLocation}`
+      : null;
   }
 
   return geography ? healthCacheKey(geography) : null;
@@ -209,11 +310,12 @@ async function loadProviderCaches(
   providers: HealthSignalProvider[],
   geography: HealthGeography | null,
   coordinates: { latitude: number; longitude: number } | undefined,
+  locationName?: string | undefined,
 ): Promise<Map<string, CachedHealthSignals | null>> {
   const keys = [
     ...new Set(
       providers.flatMap((provider) => {
-        const key = cacheKeyForProvider(provider, geography, coordinates);
+        const key = cacheKeyForProvider(provider, geography, coordinates, locationName);
         return key ? [key] : [];
       }),
     ),
@@ -233,34 +335,108 @@ function cachedSignalsForFailedProviders(input: {
   );
 }
 
+function providerCachedSignalCandidates(input: {
+  provider: HealthSignalProvider;
+  cache: CachedHealthSignals | null;
+}): HealthSignal[] {
+  const signals = input.cache?.signals ?? [];
+
+  if (input.provider.id === eurostatExcessMortalityProvider.id) {
+    return signals.filter(
+      (signal) => signal.type === 'excess-mortality' && signal.source.provider === 'Eurostat',
+    );
+  }
+
+  return signals.filter((signal) => providerOwnsSignal(input.provider.id, signal));
+}
+
 function providerHasFreshCache(input: {
   provider: HealthSignalProvider;
   cache: CachedHealthSignals | null;
   now: string;
 }): boolean {
-  const ownedSignals =
-    input.cache?.signals.filter((signal) => providerOwnsSignal(input.provider.id, signal)) ?? [];
+  const ownedSignals = providerCachedSignalCandidates({
+    provider: input.provider,
+    cache: input.cache,
+  });
   if (ownedSignals.length === 0) return false;
 
-  return ownedSignals.some(
-    (signal) =>
-      cacheSavedWithin(
-        input.cache,
-        input.now,
-        freshnessPolicyForSignal(signal).expectedUpdateIntervalMs,
-      ) && cachedSignalForNow(signal, input.now) !== null,
+  const expectedTypes = providerSignalTypes(input.provider.id);
+  const cachedResultUsable = (signal: HealthSignal) =>
+    cacheSavedWithin(
+      input.cache,
+      input.now,
+      freshnessPolicyForSignal(signal).expectedUpdateIntervalMs,
+    ) && cachedSignalForNow(signal, input.now, input.cache?.savedAt) !== null;
+
+  if (expectedTypes.length === 0) return ownedSignals.some(cachedResultUsable);
+
+  return expectedTypes.every((type) =>
+    ownedSignals.some((signal) => signal.type === type && cachedResultUsable(signal)),
   );
+}
+
+function providerSignalTypes(providerId: string): HealthSignal['type'][] {
+  if (providerId === whoRespiratoryProvider.id) return [...RESPIRATORY_SIGNAL_TYPES];
+  if (providerId === cdcWastewaterProvider.id) return [...CDC_WASTEWATER_SIGNAL_TYPES];
+  if (providerId === phacWastewaterProvider.id) return [...PHAC_WASTEWATER_SIGNAL_TYPES];
+  if (providerId === sumeauWastewaterProvider.id) return [...SUMEAU_WASTEWATER_SIGNAL_TYPES];
+  if (providerId === rivmWastewaterProvider.id) return [...RIVM_WASTEWATER_SIGNAL_TYPES];
+  if (providerId === ecdcDengueProvider.id) return [...ECDC_DENGUE_SIGNAL_TYPES];
+  if (providerId === whoVectorDiseaseProvider.id) return ['malaria'];
+  if (
+    providerId === eurostatExcessMortalityProvider.id ||
+    providerId === owidExcessMortalityProvider.id
+  ) {
+    return ['excess-mortality'];
+  }
+  if (providerId === safecastRadiologicalProvider.id) return ['ambient-dose-rate'];
+  return [];
+}
+
+function providerFailuresAffectDisplayedState(input: {
+  failedProviderIds: Set<string>;
+  signals: HealthSignal[];
+}): boolean {
+  return [...input.failedProviderIds].some((providerId) =>
+    providerSignalTypes(providerId).some((type) => {
+      const signal = input.signals.find((item) => item.type === type);
+      return (
+        !signal || signal.metadata?.unavailable === true || signal.freshness.status === 'stale'
+      );
+    }),
+  );
+}
+
+function providerErrorTypesAffectDisplayedState(input: {
+  providerErrorTypes: Set<HealthSignal['type']>;
+  signals: HealthSignal[];
+}): boolean {
+  return [...input.providerErrorTypes].some((type) => {
+    const signal = input.signals.find((item) => item.type === type);
+    return !signal || signal.metadata?.unavailable === true || signal.freshness.status === 'stale';
+  });
+}
+
+function signalHasProviderError(signal: HealthSignal): boolean {
+  return signal.metadata?.providerStatus === 'provider-error';
 }
 
 async function saveSignalCaches(input: {
   providers: HealthSignalProvider[];
   geography: HealthGeography | null;
   coordinates: { latitude: number; longitude: number } | undefined;
+  locationName?: string | undefined;
   signals: HealthSignal[];
   now: string;
 }): Promise<void> {
   const providerKeys = input.providers.flatMap((provider) => {
-    const key = cacheKeyForProvider(provider, input.geography, input.coordinates);
+    const key = cacheKeyForProvider(
+      provider,
+      input.geography,
+      input.coordinates,
+      input.locationName,
+    );
     return key ? [{ provider, key }] : [];
   });
   const uniqueKeys = [...new Set(providerKeys.map((entry) => entry.key))];
@@ -269,8 +445,10 @@ async function saveSignalCaches(input: {
     const providersForKey = providerKeys
       .filter((entry) => entry.key === key)
       .map((entry) => entry.provider);
-    const signalsForKey = input.signals.filter((signal) =>
-      providersForKey.some((provider) => providerOwnsSignal(provider.id, signal)),
+    const signalsForKey = input.signals.filter(
+      (signal) =>
+        !signalHasProviderError(signal) &&
+        providersForKey.some((provider) => providerOwnsSignal(provider.id, signal)),
     );
     const cacheGeography = signalsForKey[0]?.geography ?? input.geography;
     if (signalsForKey.length === 0 || !cacheGeography) continue;
@@ -298,7 +476,11 @@ function initialState(geography: HealthGeography | null): HealthSignalsState {
 function partialHealthSignalError(input: {
   respiratoryUnavailable: boolean;
   failed: boolean;
+  allProviderErrors: boolean;
 }): string | null {
+  if (input.allProviderErrors) {
+    return translate('errors.healthUnavailable');
+  }
   if (input.respiratoryUnavailable) {
     return translate('errors.respiratoryUnavailable');
   }
@@ -328,21 +510,36 @@ export async function refreshHealthSignalsForLocation(input: {
     };
   }
 
-  const providerContext = { geography, coordinates, now };
+  const providerContext = {
+    geography,
+    coordinates,
+    locationName: input.location.placeName ?? undefined,
+    now,
+  };
   const environmentSignals = [
     thermalStressSignalFromEnvironment({ environment: input.environment, now }),
   ].filter((signal): signal is HealthSignal => signal !== null);
   const providers = providersForContext(providerContext);
-  const caches = await loadProviderCaches(providers, geography, coordinates);
+  const caches = await loadProviderCaches(
+    providers,
+    geography,
+    coordinates,
+    providerContext.locationName,
+  );
   const cachedSignals = [...caches.values()].flatMap((cache) => usableCachedSignals(cache, now));
   const providersToFetch =
     input.force === true
       ? providers
       : providers.filter((provider) => {
-          const key = cacheKeyForProvider(provider, geography, coordinates);
+          const providerCacheKey = cacheKeyForProvider(
+            provider,
+            geography,
+            coordinates,
+            providerContext.locationName,
+          );
           return !providerHasFreshCache({
             provider,
-            cache: key ? (caches.get(key) ?? null) : null,
+            cache: providerCacheKey ? (caches.get(providerCacheKey) ?? null) : null,
             now,
           });
         });
@@ -360,18 +557,28 @@ export async function refreshHealthSignalsForLocation(input: {
   const results = await Promise.allSettled(
     providersToFetch.map((provider) => provider.fetchSignals(providerContext)),
   );
-  const freshSignals = sortSignals(
-    dedupeSignalsByType([
-      ...environmentSignals,
-      ...results.flatMap((result) => (result.status === 'fulfilled' ? result.value.signals : [])),
-    ]),
+  const fetchedSignals = results.flatMap((result) =>
+    result.status === 'fulfilled' ? result.value.signals : [],
   );
+  const freshSignals = sortSignals(dedupeSignalsByType([...environmentSignals, ...fetchedSignals]));
   const failed = results.some((result) => result.status === 'rejected');
   const failedProviderIds = new Set(
     results.flatMap((result, index) =>
       result.status === 'rejected' && providersToFetch[index] ? [providersToFetch[index].id] : [],
     ),
   );
+  const providerErrorTypes = new Set<HealthSignal['type']>();
+  results.forEach((result) => {
+    if (result.status !== 'fulfilled') return;
+    result.value.signalStatuses
+      ?.filter((status) => status.status === 'provider-error')
+      .forEach((status) => {
+        providerErrorTypes.add(status.type);
+      });
+    result.value.signals.filter(signalHasProviderError).forEach((signal) => {
+      providerErrorTypes.add(signal.type);
+    });
+  });
   const fetchedProviderIds = new Set(providersToFetch.map((provider) => provider.id));
   const skippedCachedSignals = cachedSignals.filter((signal) =>
     providers.some(
@@ -379,21 +586,44 @@ export async function refreshHealthSignalsForLocation(input: {
     ),
   );
   const fallbackSignals = cachedSignalsForFailedProviders({ cachedSignals, failedProviderIds });
+  const providerErrorFallbackSignals = cachedSignals.filter((signal) =>
+    providerErrorTypes.has(signal.type),
+  );
   const signals = sortSignals(
     dedupeSignalsByType(
-      mergeSignalsByType(freshSignals, [...skippedCachedSignals, ...fallbackSignals]),
+      mergeSignalsByType(freshSignals, [
+        ...skippedCachedSignals,
+        ...fallbackSignals,
+        ...providerErrorFallbackSignals,
+      ]),
     ),
   );
+  const providerErrorCacheFallbackUsed = providerErrorFallbackSignals.some((fallbackSignal) =>
+    signals.some((signal) => signal.id === fallbackSignal.id),
+  );
+  const displayAffectingFailure =
+    providerFailuresAffectDisplayedState({
+      failedProviderIds,
+      signals,
+    }) ||
+    providerErrorTypesAffectDisplayedState({
+      providerErrorTypes,
+      signals,
+    }) ||
+    providerErrorCacheFallbackUsed ||
+    signals.some(signalHasProviderError);
   const respiratoryUnavailable = !signals.some((signal) =>
     RESPIRATORY_SIGNAL_TYPES.some((type) => type === signal.type),
   );
+  const allProviderErrors = signals.length > 0 && signals.every(signalHasProviderError);
 
   if (signals.length > 0) {
     await saveSignalCaches({
       providers,
       geography,
-      signals,
+      signals: [...environmentSignals, ...fetchedSignals, ...skippedCachedSignals],
       coordinates,
+      locationName: providerContext.locationName,
       now,
     });
 
@@ -401,7 +631,11 @@ export async function refreshHealthSignalsForLocation(input: {
       geography,
       signals,
       loading: false,
-      error: partialHealthSignalError({ respiratoryUnavailable, failed }),
+      error: partialHealthSignalError({
+        respiratoryUnavailable,
+        failed: displayAffectingFailure,
+        allProviderErrors,
+      }),
       updatedAt: now,
     };
   }

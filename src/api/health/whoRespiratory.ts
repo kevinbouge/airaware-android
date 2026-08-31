@@ -15,6 +15,12 @@ import {
   calculateComparableTrend,
   calculateHealthSignalFreshness,
 } from '../../services/healthSignalFreshness';
+import {
+  HealthProviderSchemaError,
+  fetchHealthJson,
+  providerErrorSignal,
+  signalProviderStatus,
+} from './providerFetch';
 
 const WHO_FLUNET_ENDPOINT = 'https://xmart-api-public.who.int/FLUMART/VIW_FNT';
 const WHO_FLUNET_HISTORY_ROWS = 160;
@@ -150,7 +156,9 @@ function periodKey(period: ReportingPeriod): string {
 
 function sortedRows(payload: unknown): z.infer<typeof whoFluNetRowSchema>[] {
   const parsed = whoFluNetResponseSchema.safeParse(payload);
-  if (!parsed.success) return [];
+  if (!parsed.success) {
+    throw new HealthProviderSchemaError('Invalid WHO respiratory surveillance response');
+  }
 
   return parsed.data.value
     .flatMap((row) => {
@@ -300,6 +308,29 @@ function unavailableSignal(input: {
   };
 }
 
+function providerErrorSignals(input: {
+  geography: HealthGeography;
+  now: string;
+  error?: unknown;
+}): HealthSignal[] {
+  return RESPIRATORY_SIGNAL_TYPES.map((pathogen) =>
+    providerErrorSignal({
+      id: `${pathogen}:${input.geography.countryCode ?? input.geography.code}:provider-error`,
+      domain: 'biological',
+      type: pathogen,
+      geography: input.geography,
+      now: input.now,
+      source: {
+        provider: 'WHO GISRS / FluNet',
+        dataset: 'FLUMART/VIW_FNT',
+        measure: 'Country-level respiratory virological surveillance',
+      },
+      reason: 'who-respiratory-provider-error',
+      error: input.error,
+    }),
+  );
+}
+
 function signalFromWeeks(input: {
   measure: PathogenMeasureDefinition;
   weeks: AggregatedWeek[];
@@ -432,16 +463,21 @@ export const whoRespiratoryProvider: HealthSignalProvider = {
       };
     }
 
-    const response = await fetch(url, { headers: { Accept: 'application/json' } });
-    if (!response.ok) {
-      throw new Error(`WHO respiratory surveillance request failed: ${response.status}`);
-    }
-
-    const signals = normalizeWhoRespiratorySignals(await response.json(), {
-      geography: context.geography,
-      now: context.now,
-      signalTypes: context.signalTypes,
-    });
+    const signals = await fetchHealthJson<unknown>(url)
+      .then((payload) =>
+        normalizeWhoRespiratorySignals(payload, {
+          geography: context.geography as HealthGeography,
+          now: context.now,
+          signalTypes: context.signalTypes,
+        }),
+      )
+      .catch((error) =>
+        providerErrorSignals({
+          geography: context.geography as HealthGeography,
+          now: context.now,
+          error,
+        }),
+      );
 
     return {
       providerId: 'who-respiratory',
@@ -450,6 +486,7 @@ export const whoRespiratoryProvider: HealthSignalProvider = {
       unavailableSignals: signals
         .filter((signal) => signal.metadata?.unavailable === true)
         .map((signal) => signal.type),
+      signalStatuses: signals.map(signalProviderStatus),
     };
   },
 };

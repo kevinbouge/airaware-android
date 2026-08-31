@@ -19,6 +19,12 @@ export const EXCESS_MORTALITY_FRESHNESS: HealthSignalFreshnessPolicy = {
   staleAfterMs: 120 * 24 * 60 * 60 * 1000,
 };
 
+export const OWID_EXCESS_MORTALITY_FRESHNESS: HealthSignalFreshnessPolicy = {
+  expectedUpdateIntervalMs: 7 * 24 * 60 * 60 * 1000,
+  agingAfterMs: 21 * 24 * 60 * 60 * 1000,
+  staleAfterMs: 60 * 24 * 60 * 60 * 1000,
+};
+
 export const RADIATION_MONITORING_FRESHNESS: HealthSignalFreshnessPolicy = {
   expectedUpdateIntervalMs: 6 * 60 * 60 * 1000,
   agingAfterMs: 30 * 24 * 60 * 60 * 1000,
@@ -41,6 +47,12 @@ export const VECTOR_SURVEILLANCE_FRESHNESS: HealthSignalFreshnessPolicy = {
   expectedUpdateIntervalMs: 365 * 24 * 60 * 60 * 1000,
   agingAfterMs: 540 * 24 * 60 * 60 * 1000,
   staleAfterMs: 730 * 24 * 60 * 60 * 1000,
+};
+
+export const DENGUE_CLUSTER_SURVEILLANCE_FRESHNESS: HealthSignalFreshnessPolicy = {
+  expectedUpdateIntervalMs: 7 * 24 * 60 * 60 * 1000,
+  agingAfterMs: 14 * 24 * 60 * 60 * 1000,
+  staleAfterMs: 45 * 24 * 60 * 60 * 1000,
 };
 
 export const MEASURED_SPORE_SURVEILLANCE_FRESHNESS: HealthSignalFreshnessPolicy = {

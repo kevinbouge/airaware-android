@@ -181,8 +181,10 @@ function userSafeError(error: unknown): 'offline' | 'error' {
 
 function isKnownPaywallUiConfigLog(message: string): boolean {
   return (
-    message.includes('Failed to ready ui_config before getOfferings') &&
-    message.includes('proceeding without it')
+    (message.includes('Failed to ready ui_config before getOfferings') &&
+      message.includes('proceeding without it')) ||
+    (message.includes('Could not resolve remote config blob(s)') &&
+      message.includes("topic 'ui_config'"))
   );
 }
 

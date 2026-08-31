@@ -8,10 +8,16 @@ import type {
 } from '../../models/healthSignals';
 import { iso3FromIso2 } from '../../services/isoCountries';
 import {
-  EXCESS_MORTALITY_FRESHNESS,
+  OWID_EXCESS_MORTALITY_FRESHNESS,
   calculateComparableTrend,
   calculateHealthSignalFreshness,
 } from '../../services/healthSignalFreshness';
+import {
+  HealthProviderSchemaError,
+  fetchHealthText,
+  providerErrorSignal,
+  signalProviderStatus,
+} from './providerFetch';
 
 const OWID_EXCESS_MORTALITY_URL =
   'https://ourworldindata.org/grapher/excess-mortality-p-scores-average-baseline.csv?csvType=full&useColumnShortNames=true';
@@ -99,7 +105,9 @@ function rowsForCountry(csv: string, iso3: string): OwidExcessMortalityRow[] {
   const codeIndex = header.indexOf('code');
   const weekIndex = header.indexOf('week');
   const valueIndex = header.indexOf('p_avg_all_ages');
-  if ([entityIndex, codeIndex, weekIndex, valueIndex].some((index) => index < 0)) return [];
+  if ([entityIndex, codeIndex, weekIndex, valueIndex].some((index) => index < 0)) {
+    throw new HealthProviderSchemaError('Invalid OWID excess mortality CSV header');
+  }
 
   return rows
     .slice(1)
@@ -215,7 +223,7 @@ export function normalizeOwidExcessMortality(
     freshness: calculateHealthSignalFreshness({
       updatedAt: latest.periodEnd,
       now: input.now,
-      policy: EXCESS_MORTALITY_FRESHNESS,
+      policy: OWID_EXCESS_MORTALITY_FRESHNESS,
     }),
     history: observations.slice(-24),
     metadata: {
@@ -243,23 +251,35 @@ export const owidExcessMortalityProvider: HealthSignalProvider = {
       };
     }
 
-    const response = await fetch(owidExcessMortalityUrl(), {
-      headers: { Accept: 'text/csv' },
-    });
-    if (!response.ok) {
-      throw new Error(`OWID excess mortality request failed: ${response.status}`);
+    let signal: HealthSignal;
+    try {
+      signal = normalizeOwidExcessMortality(await fetchHealthText(owidExcessMortalityUrl()), {
+        geography: context.geography,
+        now: context.now,
+      });
+    } catch (error) {
+      signal = providerErrorSignal({
+        id: `excess-mortality:${context.geography.countryCode ?? context.geography.code}:owid:provider-error`,
+        domain: 'population-health',
+        type: 'excess-mortality',
+        geography: context.geography,
+        now: context.now,
+        source: {
+          provider: 'Our World in Data',
+          dataset: 'excess-mortality-p-scores-average-baseline',
+          measure: 'Excess mortality P-score using a 5-year average baseline',
+        },
+        reason: 'owid-provider-error',
+        error,
+      });
     }
 
     return {
       providerId: 'owid-excess-mortality',
       fetchedAt: context.now,
-      signals: [
-        normalizeOwidExcessMortality(await response.text(), {
-          geography: context.geography,
-          now: context.now,
-        }),
-      ],
-      unavailableSignals: [],
+      signals: [signal],
+      unavailableSignals: signal.metadata?.unavailable === true ? ['excess-mortality'] : [],
+      signalStatuses: [signalProviderStatus(signal)],
     };
   },
 };

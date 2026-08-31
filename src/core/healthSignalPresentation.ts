@@ -1,12 +1,29 @@
 import type { DimensionValue } from 'react-native';
 import type { DataDetailRangeId } from '../models/dataDetail';
-import type { HealthSignal } from '../models/healthSignals';
+import type { HealthSignal, ReportingPeriod } from '../models/healthSignals';
+import { translate } from '../i18n';
 import { colors } from '../theme/theme';
 import { formatMeasurement } from '../utils/format';
+import { DATA_DETAIL_RANGES, dataDetailRange } from './dataVariableMetadata';
+import {
+  healthSignalCategoryLabel,
+  healthSignalFreshnessDetailLabel,
+  healthSignalFreshnessLabel,
+  healthSignalGeographyLabel,
+  healthSignalPeriodLabel,
+  healthSignalSourceLabel,
+  healthSignalTrendLabel,
+  healthSignalValueLabel,
+} from './healthSignals';
 
 interface RangeSelection {
   signalId: string | null;
   rangeId: DataDetailRangeId;
+}
+
+export interface HealthSignalDetailRangeOption {
+  id: DataDetailRangeId;
+  label: string;
 }
 
 export interface TimelineFillStyle {
@@ -14,6 +31,26 @@ export interface TimelineFillStyle {
   left?: DimensionValue | undefined;
   position?: 'absolute' | undefined;
   width: DimensionValue;
+}
+
+export interface HealthTimelineRangePoint {
+  period?: ReportingPeriod | undefined;
+  time: number;
+}
+
+export interface HealthSignalDetailRow {
+  label: string;
+  value: string;
+}
+
+const HOUR_MS = 60 * 60 * 1000;
+
+function signalPeriodType(signal: HealthSignal): ReportingPeriod['type'] | null {
+  return (
+    signal.reportingPeriod?.type ??
+    signal.history?.find((observation) => observation.period !== undefined)?.period?.type ??
+    null
+  );
 }
 
 export function healthSignalDetailDefaultRange(signal: HealthSignal): DataDetailRangeId {
@@ -29,13 +66,214 @@ export function healthSignalDetailDefaultRange(signal: HealthSignal): DataDetail
   return '24h';
 }
 
+export function healthSignalDetailRangeSupported(
+  signal: HealthSignal,
+  rangeId: DataDetailRangeId,
+): boolean {
+  if (signal.type === 'thermal-stress') return rangeId === '24h';
+  if (signal.type === 'ambient-dose-rate') return rangeId !== 'year';
+
+  const periodType = signalPeriodType(signal);
+  if (periodType === 'week') return rangeId === 'month' || rangeId === 'year';
+  if (periodType === 'month') return rangeId === 'year';
+  if (periodType === 'year') return rangeId === 'year';
+
+  return rangeId !== 'year';
+}
+
+function isWastewaterSignal(signal: Pick<HealthSignal, 'type'>): boolean {
+  return (
+    signal.type === 'wastewater-covid-19' ||
+    signal.type === 'wastewater-influenza' ||
+    signal.type === 'wastewater-rsv'
+  );
+}
+
+export function healthSignalDetailPrimaryLabel(
+  signal: Pick<HealthSignal, 'domain' | 'type'>,
+): string {
+  if (signal.type === 'thermal-stress') return translate('health.thermalStress.currentConditions');
+  if (signal.domain === 'radiological') return translate('health.radiological.currentMeasurement');
+  if (signal.domain === 'population-health') return translate('health.latestAvailable');
+  if (signal.type === 'malaria') return translate('health.latestAnnualContext');
+  if (isWastewaterSignal(signal)) return translate('health.latestWastewaterObservation');
+  return translate('health.latestSurveillance');
+}
+
+export function healthSignalDetailRangeLabel(
+  signal: HealthSignal,
+  rangeId: DataDetailRangeId,
+): string {
+  const periodType = signalPeriodType(signal);
+
+  if (signal.type === 'thermal-stress') return translate('health.timelineRanges.next24Hours');
+
+  if (signal.type === 'ambient-dose-rate') {
+    if (rangeId === '24h') return translate('health.timelineRanges.last24Hours');
+    if (rangeId === 'week') return translate('health.timelineRanges.last7Days');
+    if (rangeId === 'month') return translate('health.timelineRanges.last30Days');
+    return dataDetailRange(rangeId).label;
+  }
+
+  if (periodType === 'week') {
+    if (rangeId === 'month') return translate('health.timelineRanges.last5ReportingWeeks');
+    if (rangeId === 'year') return translate('health.timelineRanges.last52ReportingWeeks');
+    return dataDetailRange(rangeId).label;
+  }
+
+  if (periodType === 'month') return translate('health.timelineRanges.last12ReportingMonths');
+  if (periodType === 'year') return translate('health.timelineRanges.last5ReportingYears');
+
+  return dataDetailRange(rangeId).label;
+}
+
+export function healthSignalDetailRangeOptions(
+  signal: HealthSignal,
+): HealthSignalDetailRangeOption[] {
+  return DATA_DETAIL_RANGES.flatMap((range) =>
+    healthSignalDetailRangeSupported(signal, range.id)
+      ? [{ id: range.id, label: healthSignalDetailRangeLabel(signal, range.id) }]
+      : [],
+  );
+}
+
+export function healthSignalHasTimelineDetail(signal: HealthSignal): boolean {
+  if (signal.metadata?.unavailable === true) return false;
+  if (signal.freshness.status === 'stale') return false;
+  const finiteObservationCount =
+    signal.history?.filter((observation) => Number.isFinite(observation.value)).length ?? 0;
+  return finiteObservationCount >= 2;
+}
+
+export function healthSignalInlineDetailRows(signal: HealthSignal): HealthSignalDetailRow[] {
+  const rows: HealthSignalDetailRow[] = [];
+
+  if (signal.metadata?.unavailable === true || signal.freshness.status === 'stale') {
+    rows.push({
+      label: translate('health.reason'),
+      value:
+        signal.metadata?.unavailable === true
+          ? healthSignalValueLabel(signal)
+          : healthSignalFreshnessLabel(signal.freshness.status),
+    });
+  }
+
+  if (signal.metadata?.unavailable !== true) {
+    rows.push({
+      label: healthSignalDetailPrimaryLabel(signal),
+      value: healthSignalValueLabel(signal),
+    });
+  }
+
+  rows.push(
+    {
+      label: translate('common.source'),
+      value: healthSignalSourceLabel(signal),
+    },
+    {
+      label: translate('health.geography'),
+      value: healthSignalGeographyLabel(signal),
+    },
+    {
+      label: translate('health.period'),
+      value: healthSignalPeriodLabel(signal),
+    },
+    {
+      label: translate('health.freshness'),
+      value: healthSignalFreshnessDetailLabel(signal),
+    },
+  );
+
+  if (signal.source.measure) {
+    rows.push({
+      label: translate('health.measure'),
+      value: signal.source.measure,
+    });
+  }
+
+  return rows.filter((row) => row.value.length > 0);
+}
+
+export function healthSignalDetailMetadataRows(signal: HealthSignal): HealthSignalDetailRow[] {
+  const statusLabel =
+    signal.domain === 'radiological' || signal.type === 'thermal-stress'
+      ? translate('health.radiological.statusLabel')
+      : translate('health.trendLabel');
+  const statusValue =
+    signal.domain === 'radiological' || signal.type === 'thermal-stress'
+      ? healthSignalCategoryLabel(signal)
+      : healthSignalTrendLabel(signal.trend);
+
+  return [
+    {
+      label: translate('common.source'),
+      value: healthSignalSourceLabel(signal),
+    },
+    {
+      label: translate('health.geography'),
+      value: healthSignalGeographyLabel(signal),
+    },
+    {
+      label: translate('health.period'),
+      value: healthSignalPeriodLabel(signal),
+    },
+    {
+      label: translate('health.freshness'),
+      value: healthSignalFreshnessDetailLabel(signal),
+    },
+    {
+      label: statusLabel,
+      value: statusValue,
+    },
+  ];
+}
+
 export function selectedHealthSignalDetailRange(
   signal: HealthSignal | undefined,
   rangeSelection: RangeSelection,
 ): DataDetailRangeId {
   if (!signal) return '24h';
-  if (rangeSelection.signalId === signal.id) return rangeSelection.rangeId;
+  if (
+    rangeSelection.signalId === signal.id &&
+    healthSignalDetailRangeSupported(signal, rangeSelection.rangeId)
+  ) {
+    return rangeSelection.rangeId;
+  }
   return healthSignalDetailDefaultRange(signal);
+}
+
+export function healthTimelinePointsForRange<TPoint extends HealthTimelineRangePoint>(input: {
+  points: TPoint[];
+  signal: HealthSignal;
+  rangeId: DataDetailRangeId;
+  anchorTime: number;
+}): TPoint[] {
+  if (!healthSignalDetailRangeSupported(input.signal, input.rangeId)) return [];
+
+  const periodType = signalPeriodType(input.signal);
+  const orderedPoints = [...input.points].sort((left, right) => left.time - right.time);
+
+  if (input.signal.type === 'thermal-stress') {
+    const maxTime = input.anchorTime + 24 * HOUR_MS;
+    return orderedPoints.filter((point) => point.time >= input.anchorTime && point.time <= maxTime);
+  }
+
+  if (periodType === 'week') {
+    return orderedPoints.slice(input.rangeId === 'month' ? -5 : -52);
+  }
+
+  if (periodType === 'month') {
+    return orderedPoints.slice(-12);
+  }
+
+  if (periodType === 'year') {
+    return orderedPoints.slice(-5);
+  }
+
+  const range = dataDetailRange(input.rangeId);
+  const minTime = input.anchorTime - range.historyHours * HOUR_MS;
+  const maxTime = input.anchorTime + range.forecastHours * HOUR_MS;
+  return orderedPoints.filter((point) => point.time >= minTime && point.time <= maxTime);
 }
 
 export function timelinePositionPercent(value: number, min: number, max: number): number {

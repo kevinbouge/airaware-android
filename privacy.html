@@ -142,10 +142,9 @@
     <main>
       <header>
         <h1>AirAware Privacy Policy</h1>
-        <p class="updated">Effective date: August 4, 2026</p>
+        <p class="updated">Effective date: August 31, 2026</p>
       </header>
 
-      ```
       <section class="summary" aria-label="Privacy summary">
         <strong>Privacy summary:</strong>
         AirAware does not use analytics, advertising identifiers, user accounts, telemetry, cloud
@@ -163,8 +162,8 @@
 
         <p>
           AirAware provides environmental information related to pollen, air quality, weather-based
-          mold potential, ultraviolet conditions, nearby vegetation, and related environmental
-          measurements.
+          mold potential, ultraviolet conditions, nearby vegetation, public health-context signals,
+          public ambient-radiation monitoring, and related environmental measurements.
         </p>
 
         <p>
@@ -192,6 +191,11 @@
           environmental data for the selected coordinates.
         </p>
 
+        <p>
+          When public ambient-radiation context is available, the active coordinates and search
+          radius are sent to Safecast to request nearby public radiation measurements.
+        </p>
+
         <p>AirAware does not maintain its own server-side location history.</p>
       </section>
 
@@ -216,7 +220,31 @@
       </section>
 
       <section>
-        <h2>4. Personal Allergy Profile</h2>
+        <h2>4. Public health-context providers</h2>
+
+        <p>
+          AirAware may request public surveillance or monitoring data from WHO, CDC, PHAC, Santé
+          publique France, RIVM, ECDC, Eurostat, Our World in Data, and Safecast where suitable data
+          is available.
+        </p>
+
+        <p>
+          Country-level health-context providers receive only the provider-required reporting
+          geography, such as a country code. AirAware does not send precise coordinates, saved
+          location names, saved location IDs, Personal Allergy Profile selections, Activity
+          settings, purchase state, notification preferences, or personal medical information to
+          these providers.
+        </p>
+
+        <p>
+          Safecast receives active coordinates and a search radius only when AirAware checks for
+          nearby public ambient-radiation measurements. AirAware does not use Safecast measurements
+          to calculate personal radiation dose or infer incidents.
+        </p>
+      </section>
+
+      <section>
+        <h2>5. Personal Allergy Profile</h2>
 
         <p>Personal Allergy Profile selections are stored locally on the user's device.</p>
 
@@ -232,7 +260,7 @@
       </section>
 
       <section>
-        <h2>5. Purchases and RevenueCat</h2>
+        <h2>6. Purchases and RevenueCat</h2>
 
         <p>
           AirAware uses RevenueCat to manage AirAware Pro purchase entitlement. Google Play
@@ -257,6 +285,7 @@
         <ul>
           <li>Location coordinates</li>
           <li>Environmental readings</li>
+          <li>Health-context readings</li>
           <li>Personal Allergy Profile selections</li>
           <li>Nearby vegetation data</li>
           <li>Shared summaries</li>
@@ -265,7 +294,7 @@
       </section>
 
       <section>
-        <h2>6. Shared summaries</h2>
+        <h2>7. Shared summaries</h2>
 
         <p>
           Shared summaries are generated locally and passed to the Android share sheet. AirAware
@@ -287,7 +316,7 @@
       </section>
 
       <section>
-        <h2>7. Android widgets</h2>
+        <h2>8. Android widgets</h2>
 
         <p>Android widgets display locally cached AirAware snapshot data.</p>
 
@@ -307,7 +336,7 @@
       </section>
 
       <section>
-        <h2>8. Notifications</h2>
+        <h2>9. Notifications</h2>
 
         <p>
           Notification permission is requested only if the user enables risk transition
@@ -323,7 +352,7 @@
       </section>
 
       <section>
-        <h2>9. Permissions AirAware does not request</h2>
+        <h2>10. Permissions AirAware does not request</h2>
 
         <p>AirAware does not request access to:</p>
 
@@ -342,7 +371,7 @@
       </section>
 
       <section>
-        <h2>10. Local storage and cached data</h2>
+        <h2>11. Local storage and cached data</h2>
 
         <p>
           AirAware stores application settings and operational data locally on the user's device.
@@ -352,6 +381,7 @@
         <ul>
           <li>Application settings</li>
           <li>Cached environmental provider responses</li>
+          <li>Cached public health-context signals</li>
           <li>Selected coordinates</li>
           <li>Manual location selections</li>
           <li>Personal Allergy Profile selections</li>
@@ -366,13 +396,13 @@
       </section>
 
       <section>
-        <h2>11. Data retention and deletion</h2>
+        <h2>12. Data retention and deletion</h2>
 
         <p>
           Because AirAware has no account system and no server-side user profile, clearing the
           application's storage or uninstalling the application removes locally stored settings,
-          cached provider responses, selected coordinates, Personal Allergy Profile selections, and
-          other locally stored application data.
+          cached provider responses, cached health-context signals, selected coordinates, Personal
+          Allergy Profile selections, and other locally stored application data.
         </p>
 
         <p>
@@ -382,14 +412,14 @@
         </p>
 
         <p>
-          Data processed independently by Google Play, RevenueCat, Open-Meteo, OpenStreetMap, or an
-          Overpass API provider is subject to the retention and deletion practices of those
-          respective services.
+          Data processed independently by Google Play, RevenueCat, Open-Meteo, OpenStreetMap, an
+          Overpass API provider, public health-context providers, or Safecast is subject to the
+          retention and deletion practices of those respective services.
         </p>
       </section>
 
       <section>
-        <h2>12. Third-party services</h2>
+        <h2>13. Third-party services</h2>
 
         <p>AirAware may interact with the following third-party services:</p>
 
@@ -406,6 +436,16 @@
 
           <li>
             An OpenStreetMap Overpass API provider for nearby vegetation and land-use queries.
+          </li>
+
+          <li>
+            WHO, CDC, PHAC, Santé publique France, RIVM, ECDC, Eurostat, and Our World in Data for
+            public population-level surveillance or statistical health-context data.
+          </li>
+
+          <li>
+            <a href="https://safecast.org/" rel="noopener noreferrer"> Safecast </a>
+            for nearby public ambient-radiation measurements.
           </li>
 
           <li>
@@ -431,7 +471,7 @@
       </section>
 
       <section>
-        <h2>13. Advertising, analytics, and sale of data</h2>
+        <h2>14. Advertising, analytics, and sale of data</h2>
 
         <p>
           AirAware does not display advertising, use advertising identifiers, or use analytics or
@@ -447,7 +487,7 @@
       </section>
 
       <section>
-        <h2>14. Children's privacy</h2>
+        <h2>15. Children's privacy</h2>
 
         <p>
           AirAware is not designed to collect personal information from children. The application
@@ -461,7 +501,7 @@
       </section>
 
       <section>
-        <h2>15. Security</h2>
+        <h2>16. Security</h2>
 
         <p>
           AirAware minimizes data collection and stores personal configuration locally wherever
@@ -471,12 +511,12 @@
         <p>
           No method of electronic storage or internet transmission is completely secure. AirAware
           therefore cannot guarantee absolute security, particularly for information transmitted to
-          third-party environmental or purchase-management services.
+          third-party environmental, health-context, radiological, or purchase-management services.
         </p>
       </section>
 
       <section>
-        <h2>16. Changes to this policy</h2>
+        <h2>17. Changes to this policy</h2>
 
         <p>
           This Privacy Policy may be updated when AirAware's features, data practices, third-party
@@ -490,7 +530,7 @@
       </section>
 
       <section>
-        <h2>17. Contact</h2>
+        <h2>18. Contact</h2>
 
         <p>For privacy questions, requests, or concerns, contact:</p>
 
@@ -504,7 +544,6 @@
       <footer>
         <p>This privacy policy applies to the AirAware Android application.</p>
       </footer>
-      ```
     </main>
   </body>
 </html>

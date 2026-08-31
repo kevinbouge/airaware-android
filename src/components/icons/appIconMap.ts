@@ -8,11 +8,14 @@ import ChartColumn from 'lucide-react-native/icons/chart-column';
 import ChevronRight from 'lucide-react-native/icons/chevron-right';
 import Clock from 'lucide-react-native/icons/clock';
 import Drone from 'lucide-react-native/icons/drone';
+import Droplets from 'lucide-react-native/icons/droplets';
 import ExternalLink from 'lucide-react-native/icons/external-link';
+import Bug from 'lucide-react-native/icons/bug';
 import Gauge from 'lucide-react-native/icons/gauge';
 import Gem from 'lucide-react-native/icons/gem';
 import HardHat from 'lucide-react-native/icons/hard-hat';
 import HeartPulse from 'lucide-react-native/icons/heart-pulse';
+import Flower2 from 'lucide-react-native/icons/flower-2';
 import Info from 'lucide-react-native/icons/info';
 import LocateFixed from 'lucide-react-native/icons/locate-fixed';
 import MapPin from 'lucide-react-native/icons/map-pin';
@@ -71,6 +74,9 @@ export const APP_ICON_MAP: Record<AppIconName, AppIconDefinition> = {
   clock: { component: Clock, libraryName: 'Clock' },
   privacy: { component: Shield, libraryName: 'Shield' },
   respiratory: { component: HeartPulse, libraryName: 'HeartPulse' },
+  wastewater: { component: Droplets, libraryName: 'Droplets' },
+  'vector-borne': { component: Bug, libraryName: 'Bug' },
+  'measured-spores': { component: Flower2, libraryName: 'Flower2' },
   'population-health': { component: UsersRound, libraryName: 'UsersRound' },
   radiological: { component: Radiation, libraryName: 'Radiation' },
   'trend-rising': { component: TrendingUp, libraryName: 'TrendingUp' },

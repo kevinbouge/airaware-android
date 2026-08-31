@@ -101,11 +101,30 @@ export function expectCoreEnvironmentalCoverage(environment: NormalizedEnvironme
 
 function signalCoverageStatus(signal: HealthSignal | null | undefined): CoverageStatus {
   if (!signal) return 'unsupported';
+  if (signal.metadata?.providerStatus === 'provider-error') return 'provider-error';
   if (signal.metadata?.unavailable === true) return 'no-data';
   if (signal.freshness.status === 'aging') return 'aging';
   if (signal.freshness.status === 'stale') return 'stale';
   if (signal.value === undefined || signal.value === null) return 'partial';
   return 'available';
+}
+
+function signalCoverageNotes(signal: HealthSignal | null | undefined): string | undefined {
+  if (signal?.metadata?.providerStatus === 'provider-error') {
+    const kind =
+      typeof signal.metadata.providerErrorKind === 'string'
+        ? ` kind=${signal.metadata.providerErrorKind}`
+        : '';
+    const statusCode =
+      typeof signal.metadata.providerStatusCode === 'number'
+        ? ` status=${signal.metadata.providerStatusCode}`
+        : '';
+    return `Provider returned an explicit provider-error signal.${kind}${statusCode}`;
+  }
+  if (signal?.metadata?.unavailable === true) {
+    return 'Provider returned an explicit unavailable/no-data signal.';
+  }
+  return undefined;
 }
 
 export function healthSignalCoverageResult(input: {
@@ -132,10 +151,7 @@ export function healthSignalCoverageResult(input: {
         ? input.signal.metadata.calculationMethod
         : undefined,
     reportingGeography: input.signal?.geography.name,
-    notes:
-      input.signal?.metadata?.unavailable === true
-        ? 'Provider returned an explicit unavailable/no-data signal.'
-        : undefined,
+    notes: signalCoverageNotes(input.signal),
   };
 }
 

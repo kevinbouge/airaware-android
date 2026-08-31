@@ -12,6 +12,12 @@ import {
   calculateHealthSignalFreshness,
 } from '../../services/healthSignalFreshness';
 import { isFiniteNumber } from '../../utils/number';
+import {
+  HealthProviderSchemaError,
+  fetchHealthJson,
+  providerErrorSignal,
+  signalProviderStatus,
+} from './providerFetch';
 
 const WHO_MALARIA_ENDPOINT = 'https://ghoapi.azureedge.net/api/MALARIA_EST_INCIDENCE';
 const WHO_MALARIA_HISTORY_ROWS = 12;
@@ -48,7 +54,9 @@ export function whoMalariaUrl(geography: HealthGeography): string {
 
 function sortedMalariaRows(payload: unknown): z.infer<typeof whoMalariaRowSchema>[] {
   const parsed = whoGhoResponseSchema.safeParse(payload);
-  if (!parsed.success) return [];
+  if (!parsed.success) {
+    throw new HealthProviderSchemaError('Invalid WHO malaria response');
+  }
 
   return parsed.data.value
     .flatMap((row) => {
@@ -165,21 +173,39 @@ export const whoVectorDiseaseProvider: HealthSignalProvider = {
       return { providerId: 'who-vector-disease', fetchedAt: context.now, signals: [] };
     }
 
-    const response = await fetch(whoMalariaUrl(context.geography), {
-      headers: { Accept: 'application/json' },
-    });
-    if (!response.ok) throw new Error(`WHO malaria request failed: ${response.status}`);
-    const malaria = normalizeWhoMalariaContext({
-      payload: await response.json(),
-      geography: context.geography,
-      now: context.now,
-    });
+    let malaria: HealthSignal | null;
+    try {
+      malaria = normalizeWhoMalariaContext({
+        payload: await fetchHealthJson(whoMalariaUrl(context.geography)),
+        geography: context.geography,
+        now: context.now,
+      });
+    } catch (error) {
+      malaria = providerErrorSignal({
+        id: `who-gho:malaria:${context.geography.providerCodes?.who ?? context.geography.code}:provider-error`,
+        domain: 'biological',
+        type: 'malaria',
+        geography: context.geography,
+        now: context.now,
+        source: {
+          provider: 'WHO Global Health Observatory',
+          dataset: 'MALARIA_EST_INCIDENCE',
+          measure: 'Estimated malaria incidence per 1,000 population at risk',
+        },
+        reason: 'who-malaria-provider-error',
+        error,
+      });
+    }
 
     return {
       providerId: 'who-vector-disease',
       fetchedAt: context.now,
       signals: malaria ? [malaria] : [],
-      unavailableSignals: malaria ? undefined : ['malaria'],
+      unavailableSignals:
+        malaria && malaria.metadata?.unavailable !== true ? undefined : ['malaria'],
+      signalStatuses: malaria
+        ? [signalProviderStatus(malaria)]
+        : [{ type: 'malaria', status: 'no-data', reason: 'no-malaria-context-observation' }],
     };
   },
 };

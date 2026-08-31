@@ -171,6 +171,46 @@ export function healthSignalFreshnessLabel(status: HealthSignalFreshnessStatus):
   }
 }
 
+function healthSignalAgeLabel(ageMs: number | undefined): string | null {
+  if (ageMs === undefined || !Number.isFinite(ageMs) || ageMs < 0) return null;
+
+  const minuteMs = 60 * 1000;
+  const hourMs = 60 * minuteMs;
+  const dayMs = 24 * hourMs;
+  const monthMs = 30 * dayMs;
+  const yearMs = 365 * dayMs;
+  const absoluteAge = Math.max(0, ageMs);
+  let unit: Intl.RelativeTimeFormatUnit = 'minute';
+  let divisor = minuteMs;
+
+  if (absoluteAge >= yearMs) {
+    unit = 'year';
+    divisor = yearMs;
+  } else if (absoluteAge >= monthMs) {
+    unit = 'month';
+    divisor = monthMs;
+  } else if (absoluteAge >= dayMs) {
+    unit = 'day';
+    divisor = dayMs;
+  } else if (absoluteAge >= hourMs) {
+    unit = 'hour';
+    divisor = hourMs;
+  }
+  const value = Math.max(1, Math.round(absoluteAge / divisor));
+
+  try {
+    return new Intl.RelativeTimeFormat(appLocale(), { numeric: 'always' }).format(-value, unit);
+  } catch {
+    return translate('health.updatedAgo', { count: value, unit });
+  }
+}
+
+export function healthSignalFreshnessDetailLabel(signal: Pick<HealthSignal, 'freshness'>): string {
+  const freshness = healthSignalFreshnessLabel(signal.freshness.status);
+  const age = healthSignalAgeLabel(signal.freshness.ageMs);
+  return age ? translate('health.freshnessWithAge', { freshness, age }) : freshness;
+}
+
 export function healthSignalSourceLabel(signal: HealthSignal): string {
   return [providerDisplayName(signal.source.provider), signal.source.dataset]
     .filter(Boolean)
@@ -201,6 +241,10 @@ function providerDisplayName(provider: string): string {
   if (provider.toLowerCase() === 'eurostat') return translate('providers.eurostat');
   if (provider.toLowerCase() === 'our world in data') return translate('providers.owid');
   if (provider.toLowerCase() === 'open-meteo') return translate('providers.openMeteo');
+  if (provider.toLowerCase() === 'phac') return translate('providers.phac');
+  if (provider.toLowerCase() === 'santé publique france') {
+    return translate('providers.santePubliqueFrance');
+  }
   if (provider.toLowerCase() === 'safecast') return translate('providers.safecast');
   if (provider.toLowerCase() === 'epa radnet') return translate('providers.radnet');
   if (provider.toLowerCase() === 'eurdep') return translate('providers.eurdep');

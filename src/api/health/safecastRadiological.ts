@@ -26,6 +26,12 @@ import {
   calculateHealthSignalFreshness,
 } from '../../services/healthSignalFreshness';
 import { distanceMeters as distanceBetweenCoordinates } from '../../utils/geo';
+import {
+  HealthProviderSchemaError,
+  fetchHealthJson,
+  providerErrorSignal,
+  signalProviderStatus,
+} from './providerFetch';
 
 const SAFECAST_RADIATION_ENDPOINT = 'https://simplemap.safecast.org/api/radiation';
 const SAFECAST_SENSOR_ENDPOINT = 'https://simplemap.safecast.org/api/sensor';
@@ -128,7 +134,10 @@ export function normalizeSafecastRadiationMeasurements(
   options: { originCoordinates?: Coordinates | undefined } = {},
 ): RadiologicalObservation[] {
   const parsed = safecastRadiationResponseSchema.safeParse(payload);
-  if (!parsed.success || !Array.isArray(parsed.data.measurements)) return [];
+  if (!parsed.success) {
+    throw new HealthProviderSchemaError('Invalid Safecast radiation response');
+  }
+  if (!Array.isArray(parsed.data.measurements)) return [];
 
   return parsed.data.measurements.flatMap((rawMeasurement) => {
     const measurement = safecastMeasurementSchema.safeParse(rawMeasurement);
@@ -181,12 +190,9 @@ async function fetchSafecastSensorHistory(input: {
   now: string;
 }): Promise<RadiologicalObservation[]> {
   try {
-    const response = await fetch(safecastSensorHistoryUrl(input), {
-      headers: { Accept: 'application/json' },
-    });
-    if (!response.ok) return [];
-
-    return normalizeSafecastRadiationMeasurements(await response.json());
+    return normalizeSafecastRadiationMeasurements(
+      await fetchHealthJson(safecastSensorHistoryUrl(input)),
+    );
   } catch {
     return [];
   }
@@ -218,6 +224,30 @@ function noRecentRadiologicalSignal(input: {
       reason: 'no-recent-local-radiological-measurement',
     },
   };
+}
+
+function radiologicalProviderErrorSignal(input: {
+  coordinates: Coordinates;
+  now: string;
+  locationName?: string | null | undefined;
+  error?: unknown;
+}): HealthSignal {
+  const geography = localRadiologicalGeography(input);
+
+  return providerErrorSignal({
+    id: `${geography.code}:ambient-dose-rate:provider-error`,
+    domain: 'radiological',
+    type: 'ambient-dose-rate',
+    geography,
+    now: input.now,
+    source: {
+      provider: 'Safecast',
+      dataset: 'Safecast radiation measurements',
+      measure: 'Nearby calibrated ambient dose-rate measurements',
+    },
+    reason: 'safecast-provider-error',
+    error: input.error,
+  });
 }
 
 export function radiologicalSignalFromSafecast(input: {
@@ -315,18 +345,31 @@ export const safecastRadiologicalProvider: HealthSignalProvider = {
 
     const payloads = [];
     for (const radiusMeters of RADIATION_SEARCH_RADII_METERS) {
-      const response = await fetch(
-        safecastRadiationUrl({
+      let payload: unknown;
+      try {
+        payload = await fetchHealthJson(
+          safecastRadiationUrl({
+            coordinates: context.coordinates,
+            radiusMeters,
+          }),
+        );
+      } catch (error) {
+        const signal = radiologicalProviderErrorSignal({
           coordinates: context.coordinates,
-          radiusMeters,
-        }),
-        { headers: { Accept: 'application/json' } },
-      );
-      if (!response.ok) {
-        throw new Error(`Safecast radiation request failed: ${response.status}`);
+          now: context.now,
+          locationName: context.geography?.name,
+          error,
+        });
+
+        return {
+          providerId: 'safecast-radiological',
+          fetchedAt: context.now,
+          signals: [signal],
+          unavailableSignals: ['ambient-dose-rate'],
+          signalStatuses: [signalProviderStatus(signal)],
+        };
       }
 
-      const payload = await response.json();
       payloads.push(payload);
       const observations = payloads.flatMap((item) =>
         normalizeSafecastRadiationMeasurements(item, { originCoordinates: context.coordinates }),
@@ -355,6 +398,7 @@ export const safecastRadiologicalProvider: HealthSignalProvider = {
               locationName: context.geography?.name,
             }),
           ],
+          signalStatuses: [{ type: 'ambient-dose-rate', status: 'available' }],
         };
       }
     }
@@ -370,6 +414,13 @@ export const safecastRadiologicalProvider: HealthSignalProvider = {
         }),
       ],
       unavailableSignals: ['ambient-dose-rate'],
+      signalStatuses: [
+        {
+          type: 'ambient-dose-rate',
+          status: 'no-data',
+          reason: 'no-recent-local-radiological-measurement',
+        },
+      ],
     };
   },
 };

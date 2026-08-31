@@ -64,7 +64,7 @@ describe('global population-health coverage contracts', () => {
         provider: 'Our World in Data',
         dataset: 'excess-mortality-p-scores-average-baseline',
       }),
-      reportingPeriod: { type: 'week', year: 2026, week: 31 },
+      reportingPeriod: { type: 'week', year: 2026, week: 33 },
       unit: '%',
       value: 3.6,
     });

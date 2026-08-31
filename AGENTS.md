@@ -1,498 +1,323 @@
 # AirAware — Agent Development Instructions
 
-AirAware is an Android application that helps users understand health-relevant external conditions around them.
+AirAware is an Android app for health-relevant external conditions: environmental data/events, public biological/population-health surveillance, and public ambient-radiation context.
 
-The application currently combines:
+It is privacy-first, deterministic, lightweight, offline-first where practical, worldwide, and conservative in health interpretation. Never diagnose disease, estimate individual infection/mortality risk, infer nuclear incidents, or calculate personal radiation dose.
 
-- environmental data such as pollen, air pollution, weather, vegetation, UV, mold potential, Saharan dust, wildfire-related particulate pollution, and related environmental events
-- biological/public-health signals such as respiratory surveillance and excess mortality where supported
-- radiological context from public ambient-radiation monitoring where supported
+## Engineering principles
 
-AirAware must remain conservative about health-related interpretation. It does not diagnose disease, estimate individual infection probability, calculate personal mortality risk, infer nuclear incidents, or calculate personal cumulative radiation dose.
+Before changing code, inspect the relevant implementation, architecture, conventions, shared components, and tests. Do not infer behavior from the task alone.
 
-The application is:
+Prefer simple, explicit, deterministic code; existing patterns; small focused diffs; platform/project capabilities; reusable primitives. Avoid unnecessary abstractions/dependencies, speculation, premature generalization, duplicate functionality, unrelated refactors/renames/reorganization, and formatting-only churn.
 
-- privacy-first
-- deterministic
-- lightweight
-- offline-first where practical
-- designed for worldwide use
-- conservative about environmental and health-related claims
+Implement the smallest reasonable change. Preserve externally observable behavior unless explicitly changed. Maintain compatibility for persisted user data, settings, caches, purchases, and external behavior; obsolete internal abstractions may be safely migrated.
 
-## Core engineering principles
+Do not create documentation unless requested. Update existing docs only when the change makes them materially wrong and docs are in scope.
 
-Prefer:
+## Toolchain
 
-- simple code over clever code
-- existing patterns over new abstractions
-- explicit behavior over implicit behavior
-- deterministic calculations over heuristics
-- small focused changes over broad refactors
-- platform capabilities over additional dependencies
-- reusable application primitives over feature-specific implementations
+Use the repo Node version (`nvm use` / `.nvmrc`) before Node/npm commands.
 
-Avoid:
+Do not change Node, lockfile format, Expo SDK, or native build tooling unless required.
 
-- unnecessary abstractions
-- unnecessary dependencies
-- speculative features
-- premature generalization
-- unrelated refactoring
-- large formatting-only diffs
-- duplicating existing functionality
+## Authoritative references
 
-Before implementing a change, inspect the relevant existing code and understand the current architecture and conventions.
+Use these references when touching the related integration. Verify current provider behavior before implementation; do not rely on memory.
 
-Do not assume how the application works from the task description alone.
+### Platform / Android
 
----
+- [Expo SDK 57](https://docs.expo.dev/versions/v57.0.0/)
+- [Expo Location](https://docs.expo.dev/versions/v57.0.0/sdk/location/)
+- [Expo Notifications](https://docs.expo.dev/versions/v57.0.0/sdk/notifications/)
+- [Expo config plugins](https://docs.expo.dev/config-plugins/introduction/)
+- [React Native](https://reactnative.dev/docs/getting-started)
+- [Android App Widgets](https://developer.android.com/develop/ui/views/appwidgets)
+- [Google Play Billing](https://developer.android.com/google/play/billing)
 
-# Local toolchain
+### Environmental / mapping
 
-Use the repository Node version before running Node/npm commands.
+- [Open-Meteo Weather Forecast API](https://open-meteo.com/en/docs)
+- [Open-Meteo Air Quality API](https://open-meteo.com/en/docs/air-quality-api)
+- [OpenStreetMap Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API)
+- [Overpass QL](https://wiki.openstreetmap.org/wiki/Overpass_API/Overpass_QL)
+- [OSM Map Features](https://wiki.openstreetmap.org/wiki/Map_features)
+- [Taginfo API](https://taginfo.openstreetmap.org/taginfo/apidoc)
+- [OSM Tile Usage Policy](https://operations.osmfoundation.org/policies/tiles/)
+- [OSM Attribution Guidelines](https://osmfoundation.org/wiki/Licence/Attribution_Guidelines)
 
-Prefer:
+### Public health / surveillance
 
-```sh
-nvm use
-```
+- [WHO GISRS](https://www.who.int/initiatives/global-influenza-surveillance-and-response-system)
+- [WHO RespiMart](https://www.who.int/tools/respimart)
+- [WHO influenza / COVID-19 data reporting](https://www.who.int/teams/global-influenza-programme/influenza-covid19/data-reporting)
+- [WHO Global Health Observatory OData API](https://www.who.int/data/gho/info/gho-odata-api)
+- [WHO Athena API examples](https://www.who.int/data/gho/info/athena-api-examples)
+- [CDC NWSS](https://www.cdc.gov/nwss/)
+- [Socrata SODA query documentation](https://dev.socrata.com/docs/queries/)
+- [CDC wastewater SARS-CoV-2 dataset `j9g8-acpt`](https://dev.socrata.com/foundry/data.cdc.gov/j9g8-acpt)
+- [CDC wastewater Influenza A dataset `ymmh-divb`](https://dev.socrata.com/foundry/data.cdc.gov/ymmh-divb)
+- [CDC wastewater RSV dataset `45cq-cw4i`](https://dev.socrata.com/foundry/data.cdc.gov/45cq-cw4i)
+- [PHAC National Wastewater Monitoring of Pathogens](https://health-infobase.canada.ca/wastewater/)
+- [PHAC wastewater viral load CSV](https://health-infobase.canada.ca/src/data/wastewater/wastewater_aggregate.csv)
+- [PHAC wastewater trend CSV](https://health-infobase.canada.ca/src/data/wastewater/wastewater_trend.csv)
+- [Santé publique France SUM'Eau open-data notice](https://www.data.gouv.fr/datasets/surveillance-du-sars-cov-2-dans-les-eaux-usees-sumeau)
+- [Santé publique France Odissé SUM'Eau indicators API](https://odisse.santepubliquefrance.fr/api/explore/v2.1/catalog/datasets/sum-eau-indicateurs/records)
+- [Santé publique France Odissé SUM'Eau stations API](https://odisse.santepubliquefrance.fr/api/explore/v2.1/catalog/datasets/sumeau_stations/records)
+- [RIVM COVID-19 open data](https://data.rivm.nl/covid-19/)
+- [RIVM national wastewater JSON](https://data.rivm.nl/covid-19/COVID-19_rioolwaterdata_landelijk.json)
+- [ECDC seasonal dengue weekly report](https://dengue-weekly.ecdc.europa.eu/)
+- [ECDC dengue case summary CSV](https://dengue-weekly.ecdc.europa.eu/case_summary.csv)
+- [PAHO dengue indicators](https://opendata.paho.org/en/dengue-indicators)
+- [PAHO Core Indicators dataset](https://opendata.paho.org/en/core-indicators/download-dataset)
 
-or the explicit version from `.nvmrc` when needed.
+PAHO dengue weekly surveillance is not currently integrated: PAHO documents weekly reporting, but a stable filtered operational API suitable for AirAware was not verified. Do not substitute the annual Core Indicators bulk download for current dengue surveillance.
 
-Do not update the Node version, npm lockfile format, Expo SDK, or native build tooling unless the task explicitly requires it.
+### Population health
 
----
+- [Eurostat API — getting started](https://ec.europa.eu/eurostat/web/user-guides/data-browser/api-data-access/api-getting-started/api)
+- [Eurostat API documentation](https://ec.europa.eu/eurostat/web/user-guides/data-browser/api-data-access)
+- [Eurostat dissemination API Swagger](https://ec.europa.eu/eurostat/api/dissemination/swagger-ui)
+- [Our World in Data — data access FAQ](https://ourworldindata.org/faqs)
 
-# Scope discipline
+### Radiological
 
-Implement the requested change with the smallest reasonable diff.
+- [Safecast Map API](https://simplemap.safecast.org/map-api/index.html)
+- [Safecast openness and data access](https://safecast.org/frequently-asked-questions/openness-and-data-access/)
+- [EPA RadNet CSV file downloads](https://www.epa.gov/radnet/radnet-csv-file-downloads)
+- [EURDEP public website](https://remap.jrc.ec.europa.eu/)
 
-Do not:
+EPA RadNet is deferred until station metadata and measurement semantics can be integrated without scraping. EURDEP is deferred unless a stable anonymous documented machine-readable endpoint is verified.
 
-- redesign unrelated UI
-- rename unrelated files, functions, types, or variables
-- reorganize directories without a concrete need
-- refactor working code merely because another implementation appears cleaner
-- change public/internal contracts unrelated to the task
-- introduce a new architectural pattern when an existing pattern is sufficient
-- create documentation unless explicitly requested
+### Official warnings / hazards
 
-If a broader refactor appears necessary, first determine whether the requested feature can reasonably be implemented without it.
+- [NOAA/NWS API Web Service](https://www.weather.gov/documentation/services-web-api)
+- [NOAA/NWS Alerts Web Service](https://www.weather.gov/documentation/services-web-alerts)
+- [NOAA/NWS OpenAPI specification](https://api.weather.gov/openapi.json)
+- [MeteoAlarm OGC API EDR authentication](https://api.meteoalarm.org/edr/v1/authentication)
+- [MeteoAlarm OGC API EDR collections](https://api.meteoalarm.org/edr/v1/collections)
+- [GDACS Swagger / OpenAPI](https://www.gdacs.org/gdacsapi/swagger/index.html)
+- [GDACS event search endpoint](https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH)
 
-Preserve externally observable behavior unless the task explicitly changes it.
+NOAA/NWS is a keyless US official-warning candidate. Keep agency-issued alerts separate from AirAware-derived Environmental Events. MeteoAlarm public metadata is keyless, but operational warning-location endpoints require a token; classify it as key-required/deferred for production warning lookups.
 
-Backward compatibility is important for persisted user data, settings, caches, purchases, and externally visible behavior. Do not preserve obsolete internal abstractions solely for compatibility when they can safely be migrated.
+### Water / bathing quality
 
----
+- [EEA BathingWater ArcGIS REST folder](https://water.discomap.eea.europa.eu/arcgis/rest/services/BathingWater)
+- [EEA BathingWater dynamic map service](https://water.discomap.eea.europa.eu/arcgis/rest/services/BathingWater/BathingWater_Dyna_WM/MapServer)
 
-# Expo / React Native
+EEA BathingWater is an official periodic classification candidate, not a real-time safe-to-swim signal. Verify the latest season/layer semantics before integrating.
 
-## Expo SDK 57
+### Regional environmental enrichment
 
-Expo APIs change between SDK releases.
+- [DWD health alerts open data](https://opendata.dwd.de/climate_environment/health/alerts/)
+- [DWD pollen forecasts open data](https://opendata.dwd.de/climate_environment/health/forecasts/pollen/)
 
-When modifying code involving Expo, React Native integration, native configuration, permissions, builds, or Expo modules, verify the behavior against the exact Expo SDK 57 documentation:
+DWD is a Germany-specific enrichment candidate. Do not replace global Open-Meteo, and do not silently merge unlike model/provider categories.
 
-https://docs.expo.dev/versions/v57.0.0/
+### Key-required / non-default candidates
 
-Do not rely on memory of older Expo SDK versions.
+- [NASA FIRMS API](https://firms.modaps.eosdis.nasa.gov/api/)
+- [NASA FIRMS MAP_KEY setup](https://firms.modaps.eosdis.nasa.gov/api/map_key/)
+- [OpenAQ API documentation](https://docs.openaq.org/)
+- [OpenAQ API key documentation](https://docs.openaq.org/using-the-api/api-key)
 
-Do not use an API, option, configuration property, or behavior unless it exists in the version used by this project.
+NASA FIRMS requires a MAP_KEY. OpenAQ v3 requires an API key. Keep both out of the default keyless production provider set unless AirAware's key policy explicitly changes.
 
-Before adding a dependency, check whether the required functionality already exists in Expo, React Native, or the project dependencies.
+### Thermal science / UTCI
 
-Prefer Expo-supported solutions when appropriate.
+- [UTCI official calculator](https://utci.org/utci_calc.php)
+- [UTCI scientific documents / COST Action 730](https://utci.org/cost/documents.html)
 
----
+### Billing
 
-# External data sources
+- [RevenueCat React Native SDK](https://www.revenuecat.com/docs/getting-started/installation/reactnative)
+- [RevenueCat SDK configuration](https://www.revenuecat.com/docs/getting-started/configuring-sdk)
+- [RevenueCat SDK reference](https://www.revenuecat.com/docs/platform-resources/sdk-reference)
 
-Never invent API fields, units, capabilities, response structures, limits, or semantics.
+For future warning, wastewater, dengue, radiological, bathing-water, pollen, or measured-spore providers, add the exact official API documentation here only after the provider is verified as public, anonymous or explicitly key-classified, stable, documented, and machine-readable.
 
-When changing provider integration, verify the relevant provider documentation before implementation.
+## Expo / React Native
 
-## Open-Meteo
+Project uses Expo SDK 57. For Expo, React Native/native integration, permissions, builds, config, or Expo modules, verify against the exact SDK 57 docs:
 
-Primary environmental/weather provider:
+Do not rely on older-version memory. Before adding dependencies, check existing dependencies and Expo/React Native capabilities first; prefer Expo-supported solutions.
 
-https://open-meteo.com/en/docs
+## External providers
 
-Verify:
+Never invent API fields, units, capabilities, schemas, limits, or semantics. Verify provider documentation before changing an integration.
 
-- endpoint
-- parameter name
-- units
-- temporal resolution
-- geographical availability
-- missing-value behavior
-- forecast availability
+### Open-Meteo
 
-Do not assume that a variable available from one Open-Meteo API is available from another.
+Verify endpoint, parameter, unit, temporal resolution, geographic coverage, missing-value behavior, and forecast availability. Variables may differ between Open-Meteo APIs.
 
-## OpenStreetMap
+### OpenStreetMap
 
-Relevant references:
+OSM is community-generated and incomplete. Absence of mapped data is not evidence of real-world absence. Keep OSM-derived claims conservative.
 
-https://taginfo.openstreetmap.org/taginfo/apidoc
+### RevenueCat
 
-https://wiki.openstreetmap.org/wiki/Map_features
+Do not implement from memory. Purchase entitlement must not rely on UI state. Preserve current entitlement behavior unless explicitly changed.
 
-OSM data is community-generated and may be incomplete or inconsistent.
+### Public-health / radiological providers
 
-Do not interpret absence of an OSM feature as evidence that the real-world feature does not exist.
+Providers must be public, anonymous, keyless, stable, and machine-readable.
 
-Keep OSM-derived environmental information probabilistic/conservative.
+Never scrape HTML/dashboard pages, use undocumented/private dashboard endpoints, reverse-engineer map XHR calls, add provider credentials, or introduce a backend to hide credentials.
 
-## RevenueCat
+Preserve true reporting geography and period; regional/country surveillance must not appear GPS-local.
 
-Relevant API documentation:
+Radiological measurements represent ambient radiation only. Never infer incident/source/cause/safety/personal dose.
 
-https://www.revenuecat.com/docs/api-v2
+If no suitable stable anonymous interface exists, keep the abstraction ready and represent the provider as unavailable rather than shipping a brittle integration.
 
-Do not implement RevenueCat behavior from memory.
+## Scientific calculations and data semantics
 
-Purchase entitlement must never depend solely on UI state.
+Never invent environmental, medical, meteorological, pollution, pollen, allergy, or health formulas.
 
-Preserve existing entitlement behavior unless the task explicitly changes it.
+For a calculation:
 
-## Public health and radiological providers
-
-Biological, population-health, and radiological providers must be public, anonymous, keyless, and machine-readable.
-
-Do not:
-
-- scrape dashboards or HTML
-- use undocumented/private dashboard endpoints
-- reverse-engineer map XHR calls and hardcode them
-- add provider API keys or credentials
-- introduce a backend to hide credentials
-
-For public-health surveillance, preserve true reporting geography and period. Country-level or regional surveillance must not be presented as GPS-local data.
-
-For radiological data, distinguish measured ambient radiation from incidents. Do not infer a nuclear incident, source, cause, safety guarantee, or personal dose from monitor readings.
-
-If a provider has no suitable stable anonymous interface, keep the abstraction ready and document/handle the provider as unavailable rather than shipping a brittle integration.
-
----
-
-# Health and environmental calculations
-
-Never invent environmental, medical, meteorological, pollution, pollen, or allergy formulas.
-
-When implementing or changing a calculation:
-
-1. Look for an existing implementation first.
-2. Preserve the existing formula unless the task requires changing it.
-3. If a new formula is required, base it on an authoritative or scientific source where practical.
-4. Document the source in code when it materially affects the algorithm.
+1. Reuse an existing implementation if possible.
+2. Preserve the current formula unless the task changes it.
+3. New formulas should use authoritative/scientific sources where practical.
+4. Record material scientific provenance in code.
 5. Keep calculations deterministic and testable.
 
-Do not imply medical diagnosis or predict individual symptoms.
+Do not imply diagnosis or individual symptoms.
 
-AirAware reports external conditions and domain-specific interpretations. Do not create cross-domain pseudo-scores that combine environmental, biological, population-health, and radiological signals unless a future task provides a scientifically justified model.
+Do not create cross-domain pseudo-scores combining environmental, biological, population-health, and radiological signals without a scientifically justified future requirement.
 
-Missing data is not low/normal data. Do not silently convert unavailable measurements, provider gaps, or stale observations into reassuring categories.
+**Missing/stale/unavailable data is not zero, Low, Normal, Safe, or absent.**
 
----
+When providers disagree, compare semantics, units, time, spatial/temporal resolution, freshness, quality/confidence, and missing-data behavior. Prefer Open-Meteo only when relevance/confidence are otherwise equivalent. Avoid false precision; expose meaningful uncertainty rather than guessing.
 
-# Multiple data providers
+## Privacy
 
-When providers disagree, do not silently select whichever value appears preferable.
+Prefer local processing/storage. Do not add analytics, telemetry, tracking, ad IDs, unnecessary remote storage, or unnecessary data transmission.
 
-Consider:
+Transmit only what a provider requires.
 
-1. measurement semantics
-2. units
-3. observation/forecast time
-4. spatial resolution
-5. temporal resolution
-6. data freshness
-7. provider confidence or quality information
-8. missing-data behavior
+Unless explicitly approved by a future task, never send providers:
 
-When confidence and relevance are equivalent, prefer Open-Meteo to reduce provider complexity.
+- saved-location names/IDs
+- Personal Allergy Profile selections
+- Activity settings
+- notification fingerprints
+- purchase/RevenueCat state
+- language preference
+- personal health information
 
-Otherwise prefer the source that is demonstrably more appropriate for the specific measurement.
+Never send allergy-profile information to environmental providers by default.
 
-Do not create false precision.
+## Localization
 
-Expose uncertainty where it materially affects the user rather than guessing.
+Translations are bundled locally. Internal identifiers, enums, cache/storage keys, notification fingerprints, provider mappings, and tests remain canonical/language-neutral (e.g. `low`, `very-high`, `pollen`, `covid-19`, `ambient-dose-rate`).
 
----
+Translate only at presentation boundaries through existing i18n.
 
-# Privacy
+Do not use translated strings as identifiers, fetch translations remotely, add translation services, concatenate translated fragments where parameterized keys are appropriate, or invalidate provider caches on language changes.
 
-Treat location, environmental preferences, allergy-profile selections, and purchase state according to the application's existing privacy model.
+When touched, localize user-visible strings, notifications, summaries, widgets, errors, empty states, and accessibility labels.
 
-Prefer local processing and local persistence.
+## Brand and icons
 
-Do not introduce:
+**PRESERVE — AIRAWARE BRAND ASSET**
 
-- analytics
-- telemetry
-- tracking
-- advertising identifiers
-- unnecessary remote storage
-- unnecessary transmission of user data
+The AirAware gas mask is brand identity. Never replace, redraw, recolor, restyle, simplify, or migrate it to another icon library.
 
-Do not send Personal Allergy Profile information to environmental providers unless explicitly required by a future feature and explicitly approved.
+Icon roles:
 
-Only transmit the minimum data required by an external service.
-
-Do not send saved-location names, location IDs, Personal Allergy Profile selections, Activity settings, notification fingerprints, purchase state, language preference, or personal health information to environmental, public-health, radiological, or map providers unless a future task explicitly requires and approves it.
-
----
-
-# Localization
-
-AirAware uses local bundled translations.
-
-Keep internal identifiers language-neutral. Domain values, storage keys, cache keys, notification fingerprints, provider mappings, and tests should use canonical identifiers such as:
-
-- `low`, `moderate`, `high`, `very-high`
-- `pollen`, `pollution`, `saharan-dust`, `wildfire-pollution`, `uv`, `mold`
-- `influenza`, `covid-19`, `rsv`
-- `ambient-dose-rate`
-
-Translate only at presentation boundaries using the existing i18n infrastructure.
-
-Do not:
-
-- use translated strings as identifiers
-- fetch translations at runtime
-- add remote translation services
-- concatenate translated fragments when a parameterized translation key is needed
-- invalidate provider caches because the language changed
-
-User-visible strings, notifications, summaries, widgets, errors, empty states, and accessibility labels should be localized when touched.
-
----
-
-# Visual identity and icons
-
-Preserve the AirAware gas-mask artwork as the application brand identity.
-
-Classify it as:
-
-```text
-PRESERVE — AIRAWARE BRAND ASSET
-```
-
-Do not replace, redraw, recolor, restyle, simplify, or convert the gas mask to another icon library.
-
-Use icon roles consistently:
-
-- AirAware gas mask: brand identity only
+- gas mask: brand only
 - Meteocons: environmental/weather semantics
-- Lucide: Activities, navigation, actions, generic UI, and non-environmental health-domain identity where appropriate
+- Lucide: Activities, navigation, actions, generic UI, and suitable non-environmental health-domain identity
 
-Do not use weather icons for generic actions, and do not use the gas mask as a health, infection, radiation, Pro, or navigation substitute unless it is explicitly a brand surface.
+Do not misuse weather icons for generic actions or the gas mask for health/infection/radiation/Pro/navigation concepts.
 
----
+## UI consistency
 
-# UI consistency
+Do not invent a new design.
 
-The application already has an established visual language.
+Before UI work:
 
-**Do not invent a new design.**
+1. inspect the target screen
+2. find the closest existing AirAware screen/interaction
+3. inspect shared components
+4. inspect theme/design tokens
+5. reuse those patterns
 
-Before modifying UI:
+Reuse existing components, tokens, typography, spacing, radii, cards, rows, controls, icons, dialogs, section layouts, loading/empty/error states, and navigation.
 
-1. Inspect the existing screen.
-2. Identify the most similar existing screen or interaction.
-3. Inspect relevant shared UI components.
-4. Inspect existing theme/design tokens.
-5. Reuse those patterns.
+Avoid arbitrary visual constants, duplicated styles, new patterns where an equivalent exists, unrelated redesign, or unnecessary component variants.
 
-Prefer consistency with AirAware over generic React Native or personal design preferences.
+Put genuinely reusable visual primitives in `components/ui/`; do not create shared components just to remove a few simple screen-local lines.
 
-## UI rules
+Preserve navigation and information hierarchy unless requested otherwise.
 
-Reuse existing:
+For substantial UI additions, use the closest existing screen as the canonical visual reference. If existing screens differ, prefer the newer shared-component/theme-based pattern.
 
-- components
-- colors
-- typography
-- spacing
-- radii
-- cards
-- rows
-- buttons
-- icons
-- dialogs
-- section layouts
-- loading states
-- empty states
-- error states
-- navigation patterns
+Before finishing UI work, inspect the diff for duplicated styles, arbitrary constants, inconsistent spacing/typography/controls/alignment/cards, unnecessary variants, and unrelated UI changes.
 
-Do not introduce a new visual pattern when an equivalent pattern already exists.
+## TypeScript
 
-Do not redesign unrelated portions of a screen while implementing a feature.
+Maintain strict typing.
 
-Do not use arbitrary colors, font sizes, spacing, border radii, or other visual constants when an appropriate theme token exists.
+Avoid `any`, unnecessary assertions, TypeScript suppression, `@ts-ignore`, and duplicate types. Derive from existing domain/API models where possible.
 
-Do not duplicate the styling of an existing component inside a screen.
+Treat external API responses as untrusted; handle optional/missing data explicitly.
 
-Prefer extending an existing shared component when the new behavior is conceptually part of that component.
+## Errors and partial data
 
-New reusable visual primitives belong in:
+External data is unreliable. Gracefully handle network failures, timeouts, malformed responses, missing fields/measurements, partial responses, and stale caches.
 
-`components/ui/`
+Prefer partial useful results over failing the whole report. Never convert missing measurements to zero unless zero is semantically correct.
 
-Do not create a shared component solely to avoid a few lines of straightforward screen-specific layout.
+## Dependencies
 
-Preserve navigation structure and information hierarchy unless explicitly requested otherwise.
+Add dependencies only for substantial value.
 
-## Visual reference rule
+Before adding one, check:
 
-When implementing a new screen or substantial UI section:
+1. existing project functionality
+2. Expo / React Native support
+3. whether a small local implementation is simpler
+4. Android/Expo compatibility
+5. maintenance/bundle impact
 
-1. Find the closest existing AirAware screen.
-2. Treat it as the canonical visual reference.
-3. Follow its spacing, hierarchy, typography, component usage, and interaction conventions.
+Do not add dependencies for trivial convenience.
 
-If two existing screens use different patterns, prefer the newer shared-component/theme-based implementation rather than creating a third variation.
+## Testing
 
-## UI change review
+Behavior changes require corresponding tests. Cover calculations, provider parsing, normalization, fallback behavior, persistence, and regressions as applicable.
 
-Before finishing a UI change, inspect the diff specifically for visual divergence.
+Tests must be deterministic. Do not weaken/remove tests to make changes pass. Add regression tests for bug fixes when practical.
 
-Check for:
+## Comments
 
-- duplicated styles
-- new arbitrary constants
-- inconsistent spacing
-- inconsistent typography
-- inconsistent controls
-- unnecessary component variants
-- changed alignment
-- inconsistent card/section structure
-- accidental changes to unrelated UI
+Prefer self-explanatory code. Comments explain **why**, not what is obvious from the code.
 
-Fix divergence before considering the task complete.
+## Definition of done
 
----
+Before finishing:
 
-# TypeScript
+1. review the complete diff
+2. remove accidental/unrelated changes
+3. remove unnecessary abstractions/dependencies
+4. check for duplicated functionality
+5. perform the UI consistency review for UI work
+6. run the repo type-check command
+7. run relevant tests
+8. run the full suite when practical
+9. run existing lint/format checks where applicable
+10. confirm unrelated formatting did not change
 
-Maintain strict type safety.
+Never claim a check passed unless it actually ran successfully. If something could not be run or verified, say so.
 
-Avoid:
+## Final response
 
-- `any`
-- unnecessary type assertions
-- suppressing TypeScript errors
-- `@ts-ignore`
-- duplicating types already defined elsewhere
-
-Prefer deriving types from existing domain models and API interfaces.
-
-External API responses must be treated as untrusted input.
-
-Handle missing or optional provider data explicitly.
-
----
-
-# Error handling
-
-External environmental data is inherently unreliable.
-
-Handle gracefully:
-
-- network failures
-- timeouts
-- malformed responses
-- missing fields
-- unavailable measurements
-- partial provider responses
-- stale cached data
-
-Prefer partial useful results over failing the entire environmental report when individual measurements are unavailable.
-
-Do not silently convert missing measurements to zero unless zero is semantically correct.
-
----
-
-# Dependencies
-
-Avoid adding dependencies unless they provide substantial value.
-
-Before adding one:
-
-1. Check whether the project already contains equivalent functionality.
-2. Check whether Expo or React Native provides it.
-3. Consider whether a small implementation is simpler.
-4. Consider Android/Expo compatibility.
-5. Consider maintenance and bundle impact.
-
-Do not add a dependency merely to simplify a trivial implementation.
-
----
-
-# Testing
-
-Behavior changes require corresponding test changes.
-
-Add or update tests for:
-
-- environmental calculations
-- provider parsing
-- fallback behavior
-- data normalization
-- persistence behavior
-- regressions introduced by the change
-
-Tests should be deterministic.
-
-Do not weaken or remove tests simply to make a change pass.
-
-When fixing a bug, add a regression test when practical.
-
----
-
-# Comments and documentation
-
-Prefer self-explanatory code.
-
-Comments should explain **why**, not restate what the code does.
-
-Do not create new documentation files unless explicitly requested.
-
-Update existing documentation only when the requested change makes it materially incorrect and documentation changes are within scope.
-
----
-
-# Definition of done
-
-Before finishing a task:
-
-1. Review the complete diff.
-2. Remove accidental or unrelated changes.
-3. Check for unnecessary abstractions or dependencies.
-4. Check for duplicated functionality.
-5. For UI work, perform the UI consistency review above.
-6. Run the repository's TypeScript/type-check command.
-7. Run relevant tests.
-8. Run the full test suite when practical.
-9. Run the repository's existing lint/format checks when applicable.
-10. Confirm that formatting outside the intended changes has not changed.
-
-Do not claim that a check passed unless it was actually executed successfully.
-
-If a check cannot be run, state that explicitly in the final response.
-
----
-
-# Final response
-
-Keep the final response concise.
-
-Report:
+Keep it concise. Report:
 
 - what changed
 - important implementation decisions
-- tests/checks executed
-- anything that could not be verified
+- checks/tests executed
+- anything not verified
 
 Do not create a separate summary/documentation file for the work.

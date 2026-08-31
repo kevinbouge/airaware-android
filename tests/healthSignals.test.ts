@@ -4,11 +4,22 @@ import {
   normalizeEurostatExcessMortality,
 } from '../src/api/health/eurostatExcessMortality';
 import {
+  cdcWastewaterProvider,
   cdcWastewaterUrl,
   normalizeCdcWastewaterSignal,
   type WastewaterDataset,
 } from '../src/api/health/cdcWastewater';
+import { ecdcDengueProvider, normalizeEcdcDengueSignal } from '../src/api/health/ecdcDengue';
+import { fetchHealthJson } from '../src/api/health/providerFetch';
+import {
+  normalizePhacWastewaterSignals,
+  phacWastewaterProvider,
+} from '../src/api/health/phacWastewater';
 import { normalizeRivmWastewaterSignal } from '../src/api/health/rivmWastewater';
+import {
+  normalizeSumeauWastewaterSignal,
+  sumeauWastewaterProvider,
+} from '../src/api/health/sumeauWastewater';
 import {
   normalizeOwidExcessMortality,
   owidExcessMortalityUrl,
@@ -22,6 +33,7 @@ import {
   safecastSensorHistoryUrl,
 } from '../src/api/health/safecastRadiological';
 import {
+  RESPIRATORY_SIGNAL_TYPES,
   biologicalProviderCacheKey,
   normalizeWhoRespiratorySignals,
   whoRespiratoryProvider,
@@ -60,6 +72,7 @@ import type {
 import { resolveHealthGeography, healthCacheKey } from '../src/services/healthGeography';
 import {
   EXCESS_MORTALITY_FRESHNESS,
+  OWID_EXCESS_MORTALITY_FRESHNESS,
   RESPIRATORY_SURVEILLANCE_FRESHNESS,
   calculateComparableTrend,
   calculateHealthSignalFreshness,
@@ -121,6 +134,37 @@ function locationAt(name: string, latitude: number, longitude: number): Location
 
 function cdcWastewaterFixture(rows: Record<string, unknown>[] = []) {
   return rows;
+}
+
+function phacWastewaterCsv(rows: string[]) {
+  return [
+    'Location,measureid,latestTrend,pruid,t_low,t_high,latestLevel,grouping,city,province,country,Viral_Activity_Level,weekStart',
+    ...rows,
+  ].join('\n');
+}
+
+function sumeauFixture(rows: Record<string, unknown>[]) {
+  return {
+    total_count: rows.length,
+    results: rows,
+  };
+}
+
+function ecdcDengueCsv(rows: string[]) {
+  return [
+    '"CountryName","ClusterId","Nuts3Name","LAUName","Status","DateOfOnsetFirst","DateOfOnsetLast","NCases"',
+    ...rows,
+  ].join('\n');
+}
+
+function ecdcDengueNoLocalClusterResponse(): Response {
+  return {
+    ok: true,
+    text: async () =>
+      ecdcDengueCsv([
+        '"France","FR-2026-002","Bouches-du-Rhône","Marseille","Active","2026-08-02","2026-08-05","3"',
+      ]),
+  } as Response;
 }
 
 function whoMalariaFixture(rows: Record<string, unknown>[] = []) {
@@ -417,7 +461,7 @@ describe('health signal domain and geography', () => {
     ).toBeNull();
   });
 
-  it('normalizes CDC wastewater observations without clinical-risk categories or coordinates', () => {
+  it('keeps CDC raw wastewater samples unavailable until stable aggregation is integrated', () => {
     const signal = normalizeCdcWastewaterSignal({
       payload: cdcWastewaterFixture([
         {
@@ -458,16 +502,22 @@ describe('health signal domain and geography', () => {
     expect(signal).toMatchObject({
       domain: 'biological',
       type: 'wastewater-covid-19',
-      geography: { level: 'region', code: 'US-TX', countryCode: 'US' },
-      value: 180,
-      unit: 'copies/L',
+      geography: { level: 'country', code: 'US', name: 'United States' },
       category: 'unknown',
-      trend: 'rising',
+      trend: 'unknown',
       metadata: expect.objectContaining({
-        surveillanceBasis: 'wastewater concentration',
+        unavailable: true,
+        reason: 'cdc-wastewater-aggregation-unavailable',
+        surveillanceBasis: 'wastewater surveillance',
+        sourceRows: 2,
+        scopeLimitation:
+          'The public CDC site/sample dataset is not displayed as a national, state, or sewershed signal until a documented stable aggregation is integrated.',
         noClinicalPrevalenceInference: true,
       }),
     });
+    expect(signal.value).toBeUndefined();
+    expect(signal.unit).toBeUndefined();
+    expect(signal.trend).toBe('unknown');
   });
 
   it('keeps missing CDC wastewater data unavailable rather than Low activity', () => {
@@ -485,6 +535,150 @@ describe('health signal domain and geography', () => {
     });
 
     expect(signal.type).toBe('wastewater-covid-19');
+    expect(signal.metadata?.unavailable).toBe(true);
+    expect(signal.metadata?.reason).toBe('cdc-wastewater-aggregation-unavailable');
+    expect(signal.category).toBe('unknown');
+    expect(signal.category).not.toBe('low');
+  });
+
+  it('normalizes PHAC Canada wastewater city rows without fabricating national evidence', () => {
+    const signals = normalizePhacWastewaterSignals({
+      csv: phacWastewaterCsv([
+        'Metro Vancouver,covN2,Increasing,59,,,,City,Metro Vancouver,British Columbia,Canada,High,2026-08-16',
+        'Metro Vancouver,fluA,No Change,59,,,,City,Metro Vancouver,British Columbia,Canada,Moderate,2026-08-16',
+        'Metro Vancouver,rsv,Decreasing,59,,,,City,Metro Vancouver,British Columbia,Canada,Low,2026-08-16',
+      ]),
+      geography: {
+        level: 'country',
+        code: 'CA',
+        name: 'Canada',
+        countryCode: 'CA',
+        countryName: 'Canada',
+      },
+      locationName: 'Metro Vancouver',
+      now: '2026-08-22T00:00:00Z',
+    });
+
+    expect(signals).toHaveLength(3);
+    expect(signals.find((signal) => signal.type === 'wastewater-covid-19')).toMatchObject({
+      geography: {
+        level: 'subregion',
+        name: 'Metro Vancouver',
+        countryCode: 'CA',
+      },
+      category: 'high',
+      trend: 'rising',
+      metadata: expect.objectContaining({
+        reportingGeography: 'Metro Vancouver',
+        noClinicalPrevalenceInference: true,
+      }),
+    });
+    expect(signals.find((signal) => signal.type === 'wastewater-influenza')?.trend).toBe('stable');
+    expect(signals.find((signal) => signal.type === 'wastewater-rsv')?.trend).toBe('falling');
+  });
+
+  it('does not match PHAC wastewater rows by substring-only place names', () => {
+    const signals = normalizePhacWastewaterSignals({
+      csv: phacWastewaterCsv([
+        'Metro Vancouver,covN2,Increasing,59,,,,City,Metro Vancouver,British Columbia,Canada,High,2026-08-16',
+      ]),
+      geography: {
+        level: 'country',
+        code: 'CA',
+        name: 'Canada',
+        countryCode: 'CA',
+        countryName: 'Canada',
+      },
+      locationName: 'Vancouver',
+      now: '2026-08-22T00:00:00Z',
+    });
+
+    expect(signals.find((signal) => signal.type === 'wastewater-covid-19')).toMatchObject({
+      metadata: expect.objectContaining({
+        unavailable: true,
+        reason: 'no-phac-wastewater-observation',
+      }),
+    });
+  });
+
+  it('keeps unmatched PHAC Canada wastewater unavailable rather than Low activity', () => {
+    const signals = normalizePhacWastewaterSignals({
+      csv: phacWastewaterCsv([
+        'Metro Vancouver,covN2,Increasing,59,,,,City,Metro Vancouver,British Columbia,Canada,High,2026-08-16',
+      ]),
+      geography: {
+        level: 'country',
+        code: 'CA',
+        name: 'Canada',
+        countryCode: 'CA',
+        countryName: 'Canada',
+      },
+      locationName: 'Toronto',
+      now: '2026-08-22T00:00:00Z',
+    });
+
+    expect(signals).toHaveLength(3);
+    expect(signals.every((signal) => signal.metadata?.unavailable === true)).toBe(true);
+    expect(signals.every((signal) => signal.category === 'unknown')).toBe(true);
+    expect(signals.every((signal) => signal.category !== 'low')).toBe(true);
+  });
+
+  it('normalizes Santé publique France SUM’Eau national wastewater without localizing it to Paris', () => {
+    const signal = normalizeSumeauWastewaterSignal({
+      payload: sumeauFixture([
+        {
+          date_complet: '2026-08-03',
+          semaine: '2026-S32',
+          national_54: 400,
+        },
+        {
+          date_complet: '2026-08-10',
+          semaine: '2026-S33',
+          national_54: null,
+          national_12: 565,
+        },
+      ]),
+      geography: {
+        level: 'country',
+        code: 'FR',
+        name: 'France',
+        countryCode: 'FR',
+        countryName: 'France',
+      },
+      now: '2026-08-22T00:00:00Z',
+    });
+
+    expect(signal).toMatchObject({
+      domain: 'biological',
+      type: 'wastewater-covid-19',
+      geography: { level: 'country', code: 'FR', countryCode: 'FR' },
+      value: 565,
+      unit: 'normalized indicator',
+      category: 'unknown',
+      trend: 'rising',
+      reportingPeriod: { type: 'week', year: 2026, week: 33 },
+      metadata: expect.objectContaining({
+        reportingGeography: 'France',
+        sourceColumn: 'national_12',
+        noClinicalPrevalenceInference: true,
+      }),
+    });
+    expect(signal.history?.at(-1)?.source?.measure).toBe('national_12');
+  });
+
+  it('keeps missing SUM’Eau data unavailable rather than Low activity', () => {
+    const signal = normalizeSumeauWastewaterSignal({
+      payload: sumeauFixture([]),
+      geography: {
+        level: 'country',
+        code: 'FR',
+        name: 'France',
+        countryCode: 'FR',
+        countryName: 'France',
+      },
+      now: '2026-08-22T00:00:00Z',
+    });
+
     expect(signal.metadata?.unavailable).toBe(true);
     expect(signal.category).toBe('unknown');
     expect(signal.category).not.toBe('low');
@@ -627,6 +821,102 @@ describe('health signal domain and geography', () => {
     expect(signal).toBeNull();
   });
 
+  it('normalizes ECDC dengue clusters without converting them to personal risk', () => {
+    const signal = normalizeEcdcDengueSignal({
+      csv: ecdcDengueCsv([
+        '"France","FR-2026-001","Bouches-du-Rhône","Marseille","Closed","2026-07-15","2026-07-19","2"',
+        '"France","FR-2026-002","Bouches-du-Rhône","Marseille","Active","2026-08-02","2026-08-05","3"',
+      ]),
+      geography: {
+        level: 'country',
+        code: 'FR',
+        name: 'France',
+        countryCode: 'FR',
+        countryName: 'France',
+      },
+      locationName: 'Marseille',
+      now: '2026-08-22T00:00:00Z',
+    });
+
+    expect(signal).toMatchObject({
+      domain: 'biological',
+      type: 'dengue',
+      geography: {
+        level: 'subregion',
+        code: 'FR-2026-002',
+        name: 'Marseille',
+        countryCode: 'FR',
+      },
+      value: 3,
+      unit: 'cases',
+      category: 'unknown',
+      trend: 'rising',
+      updatedAt: '2026-08-05T00:00:00.000Z',
+      freshness: expect.objectContaining({ status: 'aging' }),
+      metadata: expect.objectContaining({
+        providerCategory: 'Active',
+        clusterId: 'FR-2026-002',
+        surveillanceBasis: 'locally acquired dengue cluster surveillance',
+        noPersonalRiskInference: true,
+      }),
+    });
+  });
+
+  it('does not match ECDC dengue clusters by substring-only place names', () => {
+    const signal = normalizeEcdcDengueSignal({
+      csv: ecdcDengueCsv([
+        '"France","FR-2026-002","Bouches-du-Rhône","Marseille","Active","2026-08-02","2026-08-05","3"',
+      ]),
+      geography: {
+        level: 'country',
+        code: 'FR',
+        name: 'France',
+        countryCode: 'FR',
+        countryName: 'France',
+      },
+      locationName: 'Rhône',
+      now: '2026-08-22T00:00:00Z',
+    });
+
+    expect(signal).toMatchObject({
+      type: 'dengue',
+      metadata: expect.objectContaining({
+        unavailable: true,
+        reason: 'no-ecdc-dengue-cluster',
+      }),
+    });
+  });
+
+  it('keeps missing ECDC dengue clusters unavailable rather than Low activity', () => {
+    const signal = normalizeEcdcDengueSignal({
+      csv: ecdcDengueCsv([
+        '"France","FR-2026-002","Bouches-du-Rhône","Marseille","Active","2026-08-02","2026-08-05","3"',
+      ]),
+      geography: czechia,
+      now: '2026-08-22T00:00:00Z',
+    });
+
+    expect(signal.metadata?.unavailable).toBe(true);
+    expect(signal.category).toBe('unknown');
+    expect(signal.category).not.toBe('low');
+    expect(signal.metadata?.reason).toBe('no-ecdc-dengue-cluster');
+  });
+
+  it('supports Greece for ECDC dengue through the provider country-code alias', () => {
+    expect(
+      ecdcDengueProvider.supports({
+        geography: {
+          level: 'country',
+          code: 'GR',
+          name: 'Greece',
+          countryCode: 'GR',
+          countryName: 'Greece',
+        },
+        now: '2026-08-22T00:00:00Z',
+      }),
+    ).toBe(true);
+  });
+
   it('resolves global locations to country-level surveillance geography', () => {
     const prague = resolveHealthGeography({ location: pragueLocation });
     const brno = resolveHealthGeography({ location: brnoLocation });
@@ -719,6 +1009,17 @@ describe('health providers and caches', () => {
     await AsyncStorage.clear();
     jest.restoreAllMocks();
     setAppLanguagePreference('en');
+  });
+
+  it('classifies stalled JSON body reads as provider timeouts', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: () => new Promise(() => undefined),
+    } as Response);
+
+    await expect(fetchHealthJson('https://example.test/health.json', 1)).rejects.toThrow(
+      'Request timed out',
+    );
   });
 
   it('normalizes Eurostat excess mortality without converting missing category to Low', () => {
@@ -999,6 +1300,227 @@ describe('health providers and caches', () => {
     expect(result.unavailableSignals).toEqual(['influenza', 'covid-19', 'rsv']);
   });
 
+  it('returns explicit WHO provider-error signals on schema failures', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ value: 'not-a-row-list' }),
+    } as Response);
+
+    const result = await whoRespiratoryProvider.fetchSignals({
+      geography: czechia,
+      now: '2026-08-25T00:00:00Z',
+    });
+
+    expect(result.signals).toHaveLength(3);
+    expect(result.signals).toEqual(
+      expect.arrayContaining(
+        RESPIRATORY_SIGNAL_TYPES.map((type) =>
+          expect.objectContaining({
+            type,
+            category: 'unknown',
+            metadata: expect.objectContaining({
+              unavailable: true,
+              providerStatus: 'provider-error',
+              reason: 'who-respiratory-provider-error',
+            }),
+          }),
+        ),
+      ),
+    );
+    expect(result.signalStatuses).toEqual(
+      RESPIRATORY_SIGNAL_TYPES.map((type) =>
+        expect.objectContaining({
+          type,
+          status: 'provider-error',
+          reason: 'who-respiratory-provider-error',
+          providerErrorKind: 'schema',
+        }),
+      ),
+    );
+  });
+
+  it('keeps CDC wastewater provider errors isolated per pathogen', async () => {
+    const fetchMock = jest.fn().mockImplementation((url: string) => {
+      if (url.includes('ymmh-divb')) {
+        return Promise.reject(new Error('CDC flu dataset unavailable'));
+      }
+
+      return Promise.resolve({
+        ok: true,
+        json: async () =>
+          cdcWastewaterFixture([
+            {
+              sample_collect_date: '2026-08-11',
+              pcr_target: url.includes('45cq-cw4i') ? 'rsv' : 'sars-cov-2',
+              pcr_target_avg_conc_lin: '100',
+              pcr_target_units: 'copies/L',
+              date_updated: '2026-08-14T00:00:00.000',
+            },
+            {
+              sample_collect_date: '2026-08-18',
+              pcr_target: url.includes('45cq-cw4i') ? 'rsv' : 'sars-cov-2',
+              pcr_target_avg_conc_lin: '120',
+              pcr_target_units: 'copies/L',
+              date_updated: '2026-08-21T00:00:00.000',
+            },
+          ]),
+      } as Response);
+    });
+    jest.spyOn(global, 'fetch').mockImplementation(fetchMock);
+
+    const result = await cdcWastewaterProvider.fetchSignals({
+      geography: {
+        level: 'country',
+        code: 'US',
+        name: 'United States',
+        countryCode: 'US',
+        countryName: 'United States',
+      },
+      now: '2026-08-22T00:00:00Z',
+    });
+
+    expect(result.signals).toHaveLength(3);
+    expect(result.signals.find((signal) => signal.type === 'wastewater-influenza')).toMatchObject({
+      geography: { level: 'country', code: 'US', countryCode: 'US' },
+      metadata: expect.objectContaining({
+        unavailable: true,
+        providerStatus: 'provider-error',
+        reason: 'cdc-wastewater-provider-error',
+        providerErrorKind: 'network',
+      }),
+    });
+    expect(result.signals.find((signal) => signal.type === 'wastewater-covid-19')).toMatchObject({
+      metadata: expect.objectContaining({
+        unavailable: true,
+        reason: 'cdc-wastewater-aggregation-unavailable',
+        surveillanceBasis: 'wastewater surveillance',
+      }),
+    });
+    expect(result.signals.find((signal) => signal.type === 'wastewater-rsv')).toMatchObject({
+      metadata: expect.objectContaining({
+        unavailable: true,
+        reason: 'cdc-wastewater-aggregation-unavailable',
+        surveillanceBasis: 'wastewater surveillance',
+      }),
+    });
+    expect(result.signalStatuses).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'wastewater-covid-19',
+          status: 'no-data',
+          reason: 'cdc-wastewater-aggregation-unavailable',
+        }),
+        expect.objectContaining({
+          type: 'wastewater-influenza',
+          status: 'provider-error',
+          reason: 'cdc-wastewater-provider-error',
+          providerErrorKind: 'network',
+        }),
+        expect.objectContaining({
+          type: 'wastewater-rsv',
+          status: 'no-data',
+          reason: 'cdc-wastewater-aggregation-unavailable',
+        }),
+      ]),
+    );
+  });
+
+  it('returns explicit provider-error signals for PHAC wastewater schema failures', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      text: async () => 'not,the,expected,schema\n1,2,3,4',
+    } as Response);
+
+    const result = await phacWastewaterProvider.fetchSignals({
+      geography: {
+        level: 'country',
+        code: 'CA',
+        name: 'Canada',
+        countryCode: 'CA',
+        countryName: 'Canada',
+      },
+      locationName: 'Vancouver',
+      now: '2026-08-22T00:00:00Z',
+    });
+
+    expect(result.signals).toHaveLength(3);
+    expect(
+      result.signals.every((signal) => signal.metadata?.providerStatus === 'provider-error'),
+    ).toBe(true);
+    expect(result.signalStatuses?.every((status) => status.status === 'provider-error')).toBe(true);
+  });
+
+  it('returns explicit provider-error signals for SUM’Eau schema failures', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ value: [] }),
+    } as Response);
+
+    const result = await sumeauWastewaterProvider.fetchSignals({
+      geography: {
+        level: 'country',
+        code: 'FR',
+        name: 'France',
+        countryCode: 'FR',
+        countryName: 'France',
+      },
+      now: '2026-08-22T00:00:00Z',
+    });
+
+    expect(result.signals).toHaveLength(1);
+    expect(result.signals[0]).toMatchObject({
+      type: 'wastewater-covid-19',
+      metadata: expect.objectContaining({
+        providerStatus: 'provider-error',
+        reason: 'sumeau-wastewater-provider-error',
+      }),
+    });
+    expect(result.signalStatuses).toEqual([
+      expect.objectContaining({
+        type: 'wastewater-covid-19',
+        status: 'provider-error',
+        reason: 'sumeau-wastewater-provider-error',
+        providerErrorKind: 'schema',
+      }),
+    ]);
+  });
+
+  it('returns explicit provider-error signals for ECDC dengue schema failures', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      text: async () => 'not,the,expected,schema\n1,2,3,4',
+    } as Response);
+
+    const result = await ecdcDengueProvider.fetchSignals({
+      geography: {
+        level: 'country',
+        code: 'FR',
+        name: 'France',
+        countryCode: 'FR',
+        countryName: 'France',
+      },
+      now: '2026-08-22T00:00:00Z',
+    });
+
+    expect(result.signals).toHaveLength(1);
+    expect(result.signals[0]).toMatchObject({
+      type: 'dengue',
+      metadata: expect.objectContaining({
+        providerStatus: 'provider-error',
+        reason: 'ecdc-dengue-provider-error',
+        providerErrorKind: 'schema',
+      }),
+    });
+    expect(result.signalStatuses).toEqual([
+      expect.objectContaining({
+        type: 'dengue',
+        status: 'provider-error',
+        reason: 'ecdc-dengue-provider-error',
+        providerErrorKind: 'schema',
+      }),
+    ]);
+  });
+
   it('extends excess mortality to non-Eurostat countries through OWID', async () => {
     const tokyo = locationAt('Tokyo', 35.6762, 139.6503);
     const fetchMock = jest.fn().mockImplementation((url: string) => {
@@ -1022,7 +1544,13 @@ describe('health providers and caches', () => {
       if (url.includes('ourworldindata.org/grapher')) {
         return Promise.resolve({
           ok: true,
-          text: async () => owidFixture(),
+          text: async () =>
+            owidFixture([
+              ['Czechia', 'CZE', '2026-W30', -5.9],
+              ['Czechia', 'CZE', '2026-W31', 4.2],
+              ['Japan', 'JPN', '2026-W30', 1.2],
+              ['Japan', 'JPN', '2026-W31', 3.6],
+            ]),
         } as Response);
       }
 
@@ -1091,6 +1619,276 @@ describe('health providers and caches', () => {
         measure: 'positivity',
       }),
     ).toBe('who:influenza:CZ:positivity');
+  });
+
+  it('does not let a partial multi-signal provider cache suppress refreshes', async () => {
+    const [cachedInfluenza] = normalizeWhoRespiratorySignals(whoFluNetFixture(), {
+      geography: czechia,
+      now: '2026-08-25T00:00:00Z',
+      signalTypes: ['influenza'],
+    });
+    await saveHealthSignalsCache({
+      version: 1,
+      savedAt: '2026-08-25T00:00:00Z',
+      cacheKey: 'country:CZ',
+      geography: czechia,
+      signals: [cachedInfluenza as HealthSignal],
+    });
+
+    const fetchMock = jest.fn().mockImplementation((url: string) => {
+      if (url.includes('FLUMART/VIW_FNT')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => whoFluNetFixture(),
+        } as Response);
+      }
+      if (url.includes('demo_mexrt')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => eurostatFixture(),
+        } as Response);
+      }
+      if (url.includes('ourworldindata.org/grapher')) {
+        return Promise.resolve({
+          ok: true,
+          text: async () => owidFixture([['Czechia', 'CZE', '2026-W33', 4.2]]),
+        } as Response);
+      }
+      if (url.includes('MALARIA_EST_INCIDENCE')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => whoMalariaFixture([]),
+        } as Response);
+      }
+      if (url.includes('dengue-weekly.ecdc.europa.eu')) {
+        return Promise.resolve(ecdcDengueNoLocalClusterResponse());
+      }
+
+      return Promise.resolve({
+        ok: true,
+        json: async () => safecastFixture([]),
+      } as Response);
+    });
+    jest.spyOn(global, 'fetch').mockImplementation(fetchMock);
+
+    const state = await refreshHealthSignalsForLocation({
+      location: pragueLocation,
+      environment: null,
+      now: '2026-08-25T01:00:00Z',
+    });
+
+    expect(
+      fetchMock.mock.calls.filter(([url]) => String(url).includes('FLUMART/VIW_FNT')),
+    ).toHaveLength(1);
+    const respiratoryTypes = new Set<string>(RESPIRATORY_SIGNAL_TYPES);
+    expect(
+      state.signals
+        .filter((signal) => respiratoryTypes.has(signal.type))
+        .map((signal) => signal.type),
+    ).toEqual(['influenza', 'covid-19', 'rsv']);
+  });
+
+  it('does not let a fresh Eurostat cache suppress the preferred OWID mortality fetch', async () => {
+    const cachedEurostatSignal = normalizeEurostatExcessMortality(
+      eurostatFixture({ '2026-07': 2.4 }),
+      {
+        geography: czechia,
+        now: '2026-08-25T00:00:00Z',
+      },
+    ) as HealthSignal;
+    await saveHealthSignalsCache({
+      version: 1,
+      savedAt: '2026-08-24T00:00:00Z',
+      cacheKey: 'country:CZ',
+      geography: czechia,
+      signals: [cachedEurostatSignal],
+    });
+
+    const fetchMock = jest.fn().mockImplementation((url: string) => {
+      if (url.includes('FLUMART/VIW_FNT')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => whoFluNetFixture(),
+        } as Response);
+      }
+      if (url.includes('ourworldindata.org/grapher')) {
+        return Promise.resolve({
+          ok: true,
+          text: async () =>
+            owidFixture([
+              ['Czechia', 'CZE', '2026-W33', 4.2],
+              ['Czechia', 'CZE', '2026-W34', 5.1],
+            ]),
+        } as Response);
+      }
+      if (url.includes('MALARIA_EST_INCIDENCE')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => whoMalariaFixture([]),
+        } as Response);
+      }
+      if (url.includes('dengue-weekly.ecdc.europa.eu')) {
+        return Promise.resolve(ecdcDengueNoLocalClusterResponse());
+      }
+
+      return Promise.resolve({
+        ok: true,
+        json: async () => safecastFixture([]),
+      } as Response);
+    });
+    jest.spyOn(global, 'fetch').mockImplementation(fetchMock);
+
+    const state = await refreshHealthSignalsForLocation({
+      location: pragueLocation,
+      environment: null,
+      now: '2026-08-25T00:00:00Z',
+    });
+
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('demo_mexrt'))).toBe(false);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('ourworldindata'))).toBe(true);
+    expect(state.signals.find((signal) => signal.type === 'excess-mortality')).toMatchObject({
+      source: expect.objectContaining({ provider: 'Our World in Data' }),
+      reportingPeriod: { type: 'week', year: 2026, week: 34 },
+      value: 5.1,
+    });
+    await expect(loadHealthSignalsCacheForGeography('country:CZ')).resolves.toMatchObject({
+      signals: expect.arrayContaining([
+        expect.objectContaining({
+          type: 'excess-mortality',
+          source: expect.objectContaining({ provider: 'Eurostat' }),
+        }),
+        expect.objectContaining({
+          type: 'excess-mortality',
+          source: expect.objectContaining({ provider: 'Our World in Data' }),
+        }),
+      ]),
+    });
+  });
+
+  it('does not reuse PHAC wastewater evidence across Canadian saved locations', async () => {
+    const vancouver: LocationInfo = {
+      ...pragueLocation,
+      activeLocationId: 'manual-vancouver',
+      activeLocationName: 'Vancouver',
+      coordinates: { latitude: 49.2827, longitude: -123.1207 },
+      placeName: 'Metro Vancouver',
+      countryCode: 'CA',
+      countryName: 'Canada',
+    };
+    const toronto: LocationInfo = {
+      ...vancouver,
+      activeLocationId: 'manual-toronto',
+      activeLocationName: 'Toronto',
+      coordinates: { latitude: 43.6532, longitude: -79.3832 },
+      placeName: 'Toronto',
+    };
+    const userNamedMetroVancouver: LocationInfo = {
+      ...vancouver,
+      activeLocationId: 'manual-home',
+      activeLocationName: 'Metro Vancouver',
+      placeName: null,
+    };
+    const fetchMock = jest.fn().mockImplementation((url: string) => {
+      if (url.includes('FLUMART/VIW_FNT')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () =>
+            whoFluNetFixture([
+              {
+                COUNTRY_CODE: 'CAN',
+                COUNTRY_AREA_TERRITORY: 'Canada',
+                ISO_WEEKSTARTDATE: '2026-08-10',
+                ISO_YEAR: 2026,
+                ISO_WEEK: 33,
+                SPEC_PROCESSED_NB: 100,
+                INF_ALL: 14,
+                RSV_PROCESSED: 80,
+                RSV: 2,
+              },
+            ]),
+        } as Response);
+      }
+      if (url.includes('health-infobase.canada.ca')) {
+        return Promise.resolve({
+          ok: true,
+          text: async () =>
+            phacWastewaterCsv([
+              'Metro Vancouver,covN2,Increasing,59,,,,City,Metro Vancouver,British Columbia,Canada,High,2026-08-16',
+              'Metro Vancouver,fluA,No Change,59,,,,City,Metro Vancouver,British Columbia,Canada,Moderate,2026-08-16',
+              'Metro Vancouver,rsv,Decreasing,59,,,,City,Metro Vancouver,British Columbia,Canada,Low,2026-08-16',
+            ]),
+        } as Response);
+      }
+      if (url.includes('ourworldindata.org/grapher')) {
+        return Promise.resolve({
+          ok: true,
+          text: async () =>
+            owidFixture([
+              ['Canada', 'CAN', '2026-W33', 1.2],
+              ['Canada', 'CAN', '2026-W34', 1.4],
+            ]),
+        } as Response);
+      }
+      if (url.includes('MALARIA_EST_INCIDENCE')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => whoMalariaFixture([]),
+        } as Response);
+      }
+
+      return Promise.resolve({
+        ok: true,
+        json: async () => safecastFixture([]),
+      } as Response);
+    });
+    jest.spyOn(global, 'fetch').mockImplementation(fetchMock);
+
+    const userNamedState = await refreshHealthSignalsForLocation({
+      location: userNamedMetroVancouver,
+      environment: null,
+      now: '2026-08-25T00:00:00Z',
+    });
+    const vancouverState = await refreshHealthSignalsForLocation({
+      location: vancouver,
+      environment: null,
+      now: '2026-08-25T01:00:00Z',
+    });
+    const torontoState = await refreshHealthSignalsForLocation({
+      location: toronto,
+      environment: null,
+      now: '2026-08-25T02:00:00Z',
+    });
+
+    expect(
+      fetchMock.mock.calls.filter(([url]) => String(url).includes('health-infobase.canada.ca')),
+    ).toHaveLength(3);
+    const userNamedCovid = userNamedState.signals.find(
+      (signal) => signal.type === 'wastewater-covid-19',
+    );
+    const vancouverCovid = vancouverState.signals.find(
+      (signal) => signal.type === 'wastewater-covid-19',
+    );
+    const torontoCovid = torontoState.signals.find(
+      (signal) => signal.type === 'wastewater-covid-19',
+    );
+
+    expect(userNamedCovid).toMatchObject({
+      metadata: expect.objectContaining({
+        unavailable: true,
+        reason: 'no-phac-wastewater-observation',
+      }),
+    });
+    expect(vancouverCovid).toMatchObject({
+      geography: expect.objectContaining({ name: 'Metro Vancouver' }),
+    });
+    expect(vancouverCovid?.metadata?.unavailable).not.toBe(true);
+    expect(torontoCovid).toMatchObject({
+      geography: expect.objectContaining({ countryCode: 'CA' }),
+      metadata: expect.objectContaining({
+        unavailable: true,
+        reason: 'no-phac-wastewater-observation',
+      }),
+    });
   });
 
   it('normalizes only calibrated Safecast dose-rate measurements', () => {
@@ -1443,6 +2241,16 @@ describe('health providers and caches', () => {
           json: async () => eurostatFixture(),
         } as Response);
       }
+      if (url.includes('ourworldindata.org/grapher')) {
+        return Promise.resolve({
+          ok: true,
+          text: async () =>
+            owidFixture([
+              ['Czechia', 'CZE', '2026-W33', 3.1],
+              ['Czechia', 'CZE', '2026-W34', 3.4],
+            ]),
+        } as Response);
+      }
 
       return Promise.resolve({
         ok: true,
@@ -1469,6 +2277,9 @@ describe('health providers and caches', () => {
       1,
     );
     expect(
+      fetchMock.mock.calls.filter(([url]) => String(url).includes('ourworldindata.org/grapher')),
+    ).toHaveLength(1);
+    expect(
       fetchMock.mock.calls.filter(([url]) => String(url).includes('simplemap.safecast.org')),
     ).toHaveLength(6);
     expect(prague.geography?.countryCode).toBe('CZ');
@@ -1480,6 +2291,364 @@ describe('health providers and caches', () => {
         .filter((signal) => signal.domain !== 'radiological')
         .map((signal) => signal.id),
     );
+  });
+
+  it('prefers fresher OWID mortality data over delayed Eurostat data for Eurostat countries', async () => {
+    const fetchMock = jest.fn().mockImplementation((url: string) => {
+      if (url.includes('FLUMART/VIW_FNT')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => whoFluNetFixture(),
+        } as Response);
+      }
+      if (url.includes('demo_mexrt')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => eurostatFixture({ '2026-02': 0.2, '2026-03': 1.1 }),
+        } as Response);
+      }
+      if (url.includes('ourworldindata.org/grapher')) {
+        return Promise.resolve({
+          ok: true,
+          text: async () =>
+            owidFixture([
+              ['Czechia', 'CZE', '2026-W30', -5.9],
+              ['Czechia', 'CZE', '2026-W31', 4.2],
+            ]),
+        } as Response);
+      }
+      if (url.includes('dengue-weekly.ecdc.europa.eu')) {
+        return Promise.resolve(ecdcDengueNoLocalClusterResponse());
+      }
+
+      return Promise.resolve({
+        ok: true,
+        json: async () => safecastFixture([]),
+      } as Response);
+    });
+    jest.spyOn(global, 'fetch').mockImplementation(fetchMock);
+
+    const state = await refreshHealthSignalsForLocation({
+      location: pragueLocation,
+      environment: null,
+      force: true,
+      now: '2026-08-25T00:00:00Z',
+    });
+    const mortality = state.signals.find((signal) => signal.type === 'excess-mortality');
+
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('demo_mexrt'))).toBe(true);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('ourworldindata'))).toBe(true);
+    expect(mortality).toMatchObject({
+      source: expect.objectContaining({ provider: 'Our World in Data' }),
+      reportingPeriod: { type: 'week', year: 2026, week: 31 },
+      value: 4.2,
+    });
+  });
+
+  it('does not prefer stale OWID mortality over fresher Eurostat data', async () => {
+    const fetchMock = jest.fn().mockImplementation((url: string) => {
+      if (url.includes('FLUMART/VIW_FNT')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => whoFluNetFixture(),
+        } as Response);
+      }
+      if (url.includes('demo_mexrt')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => eurostatFixture({ '2026-07': 2.4 }),
+        } as Response);
+      }
+      if (url.includes('ourworldindata.org/grapher')) {
+        return Promise.resolve({
+          ok: true,
+          text: async () =>
+            owidFixture([
+              ['Czechia', 'CZE', '2023-W51', 10.7],
+              ['Czechia', 'CZE', '2023-W52', 9.8],
+            ]),
+        } as Response);
+      }
+
+      return Promise.resolve({
+        ok: true,
+        json: async () => safecastFixture([]),
+      } as Response);
+    });
+    jest.spyOn(global, 'fetch').mockImplementation(fetchMock);
+
+    const state = await refreshHealthSignalsForLocation({
+      location: pragueLocation,
+      environment: null,
+      force: true,
+      now: '2026-08-25T00:00:00Z',
+    });
+
+    expect(state.signals.find((signal) => signal.type === 'excess-mortality')).toMatchObject({
+      source: expect.objectContaining({ provider: 'Eurostat' }),
+      reportingPeriod: { type: 'month', year: 2026, month: 7 },
+      value: 2.4,
+    });
+  });
+
+  it('refreshes OWID mortality cache on a weekly cadence', async () => {
+    const cachedOwidSignal = normalizeOwidExcessMortality(owidFixture(), {
+      geography: czechia,
+      now: '2026-08-25T00:00:00Z',
+    });
+    await saveHealthSignalsCache({
+      version: 1,
+      savedAt: '2026-08-17T00:00:00Z',
+      cacheKey: 'country:CZ',
+      geography: czechia,
+      signals: [cachedOwidSignal],
+    });
+
+    const fetchMock = jest.fn().mockImplementation((url: string) => {
+      if (url.includes('FLUMART/VIW_FNT')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => whoFluNetFixture(),
+        } as Response);
+      }
+      if (url.includes('demo_mexrt')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => eurostatFixture({ '2026-07': 2.4 }),
+        } as Response);
+      }
+      if (url.includes('ourworldindata.org/grapher')) {
+        return Promise.resolve({
+          ok: true,
+          text: async () =>
+            owidFixture([
+              ['Czechia', 'CZE', '2026-W31', 4.2],
+              ['Czechia', 'CZE', '2026-W32', 5.1],
+            ]),
+        } as Response);
+      }
+
+      return Promise.resolve({
+        ok: true,
+        json: async () => safecastFixture([]),
+      } as Response);
+    });
+    jest.spyOn(global, 'fetch').mockImplementation(fetchMock);
+
+    const state = await refreshHealthSignalsForLocation({
+      location: pragueLocation,
+      environment: null,
+      now: '2026-08-25T00:00:00Z',
+    });
+
+    expect(OWID_EXCESS_MORTALITY_FRESHNESS.expectedUpdateIntervalMs).toBe(7 * 24 * 60 * 60 * 1000);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('ourworldindata'))).toBe(true);
+    expect(state.signals.find((signal) => signal.type === 'excess-mortality')).toMatchObject({
+      source: expect.objectContaining({ provider: 'Our World in Data' }),
+      value: 5.1,
+    });
+  });
+
+  it('suppresses alternate mortality provider failures when OWID supplies usable data', async () => {
+    jest.spyOn(global, 'fetch').mockImplementation((async (url: string) => {
+      if (url.includes('FLUMART/VIW_FNT')) {
+        return {
+          ok: true,
+          json: async () => whoFluNetFixture(),
+        } as Response;
+      }
+      if (url.includes('demo_mexrt')) {
+        throw new Error('Eurostat unavailable');
+      }
+      if (url.includes('ourworldindata.org/grapher')) {
+        return {
+          ok: true,
+          text: async () =>
+            owidFixture([
+              ['Czechia', 'CZE', '2026-W30', -5.9],
+              ['Czechia', 'CZE', '2026-W31', 4.2],
+            ]),
+        } as Response;
+      }
+      if (url.includes('MALARIA_EST_INCIDENCE')) {
+        return {
+          ok: true,
+          json: async () => whoMalariaFixture([]),
+        } as Response;
+      }
+      if (url.includes('dengue-weekly.ecdc.europa.eu')) {
+        return ecdcDengueNoLocalClusterResponse();
+      }
+
+      return {
+        ok: true,
+        json: async () => safecastFixture([]),
+      } as Response;
+    }) as typeof fetch);
+
+    const state = await refreshHealthSignalsForLocation({
+      location: pragueLocation,
+      environment: null,
+      force: true,
+      now: '2026-08-25T00:00:00Z',
+    });
+
+    expect(state.error).toBeNull();
+    expect(state.signals.find((signal) => signal.type === 'excess-mortality')).toMatchObject({
+      source: expect.objectContaining({ provider: 'Our World in Data' }),
+    });
+  });
+
+  it('suppresses preferred mortality provider failures when Eurostat fallback supplies usable data', async () => {
+    jest.spyOn(global, 'fetch').mockImplementation((async (url: string) => {
+      if (url.includes('FLUMART/VIW_FNT')) {
+        return {
+          ok: true,
+          json: async () => whoFluNetFixture(),
+        } as Response;
+      }
+      if (url.includes('demo_mexrt')) {
+        return {
+          ok: true,
+          json: async () => eurostatFixture({ '2026-07': 2.4 }),
+        } as Response;
+      }
+      if (url.includes('ourworldindata.org/grapher')) {
+        throw new Error('OWID unavailable');
+      }
+      if (url.includes('MALARIA_EST_INCIDENCE')) {
+        return {
+          ok: true,
+          json: async () => whoMalariaFixture([]),
+        } as Response;
+      }
+      if (url.includes('dengue-weekly.ecdc.europa.eu')) {
+        return ecdcDengueNoLocalClusterResponse();
+      }
+
+      return {
+        ok: true,
+        json: async () => safecastFixture([]),
+      } as Response;
+    }) as typeof fetch);
+
+    const state = await refreshHealthSignalsForLocation({
+      location: pragueLocation,
+      environment: null,
+      force: true,
+      now: '2026-08-25T00:00:00Z',
+    });
+
+    expect(state.error).toBeNull();
+    expect(state.signals.find((signal) => signal.type === 'excess-mortality')).toMatchObject({
+      source: expect.objectContaining({ provider: 'Eurostat' }),
+      value: 2.4,
+    });
+  });
+
+  it('surfaces provider-error signals even when providers resolve successfully', async () => {
+    jest.spyOn(global, 'fetch').mockImplementation((async (url: string) => {
+      if (url.includes('FLUMART/VIW_FNT')) {
+        return {
+          ok: true,
+          json: async () => whoFluNetFixture(),
+        } as Response;
+      }
+      if (url.includes('demo_mexrt')) {
+        return {
+          ok: true,
+          json: async () => eurostatFixture({ '2026-07': 2.4 }),
+        } as Response;
+      }
+      if (url.includes('ourworldindata.org/grapher')) {
+        return {
+          ok: true,
+          text: async () =>
+            owidFixture([
+              ['Czechia', 'CZE', '2026-W30', -5.9],
+              ['Czechia', 'CZE', '2026-W31', 4.2],
+            ]),
+        } as Response;
+      }
+      if (url.includes('simplemap.safecast.org')) {
+        throw new Error('Safecast unavailable');
+      }
+      if (url.includes('MALARIA_EST_INCIDENCE')) {
+        return {
+          ok: true,
+          json: async () => whoMalariaFixture([]),
+        } as Response;
+      }
+
+      return {
+        ok: true,
+        json: async () => [],
+      } as Response;
+    }) as typeof fetch);
+
+    const state = await refreshHealthSignalsForLocation({
+      location: pragueLocation,
+      environment: null,
+      force: true,
+      now: '2026-08-25T00:00:00Z',
+    });
+
+    expect(state.error).toBe('Some health surveillance signals are temporarily unavailable.');
+    expect(state.signals.find((signal) => signal.type === 'ambient-dose-rate')).toMatchObject({
+      metadata: expect.objectContaining({
+        unavailable: true,
+        providerStatus: 'provider-error',
+        reason: 'safecast-provider-error',
+      }),
+    });
+  });
+
+  it('surfaces alternate mortality provider failures when the remaining mortality signal is stale', async () => {
+    jest.spyOn(global, 'fetch').mockImplementation((async (url: string) => {
+      if (url.includes('FLUMART/VIW_FNT')) {
+        return {
+          ok: true,
+          json: async () => whoFluNetFixture(),
+        } as Response;
+      }
+      if (url.includes('demo_mexrt')) {
+        throw new Error('Eurostat unavailable');
+      }
+      if (url.includes('ourworldindata.org/grapher')) {
+        return {
+          ok: true,
+          text: async () =>
+            owidFixture([
+              ['Czechia', 'CZE', '2023-W51', 10.7],
+              ['Czechia', 'CZE', '2023-W52', 9.8],
+            ]),
+        } as Response;
+      }
+      if (url.includes('MALARIA_EST_INCIDENCE')) {
+        return {
+          ok: true,
+          json: async () => whoMalariaFixture([]),
+        } as Response;
+      }
+
+      return {
+        ok: true,
+        json: async () => safecastFixture([]),
+      } as Response;
+    }) as typeof fetch);
+
+    const state = await refreshHealthSignalsForLocation({
+      location: pragueLocation,
+      environment: null,
+      force: true,
+      now: '2026-08-25T00:00:00Z',
+    });
+
+    expect(state.error).toBe('Some health surveillance signals are temporarily unavailable.');
+    expect(state.signals.find((signal) => signal.type === 'excess-mortality')).toMatchObject({
+      source: expect.objectContaining({ provider: 'Our World in Data' }),
+      freshness: { status: 'stale' },
+    });
   });
 
   it('merges successful health providers with non-stale cache from failed providers', async () => {
@@ -1507,6 +2676,18 @@ describe('health providers and caches', () => {
           json: async () => whoFluNetFixture(),
         } as Response;
       }
+      if (url.includes('MALARIA_EST_INCIDENCE')) {
+        return {
+          ok: true,
+          json: async () => whoMalariaFixture([]),
+        } as Response;
+      }
+      if (url.includes('simplemap.safecast.org')) {
+        return {
+          ok: true,
+          json: async () => safecastFixture([]),
+        } as Response;
+      }
 
       throw new Error('Eurostat unavailable');
     }) as typeof fetch);
@@ -1519,12 +2700,14 @@ describe('health providers and caches', () => {
     });
 
     expect(state.error).toBe('Some health surveillance signals are temporarily unavailable.');
-    expect(state.signals.map((signal) => signal.type)).toEqual([
-      'influenza',
-      'covid-19',
-      'rsv',
-      'excess-mortality',
-    ]);
+    expect(state.signals).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'influenza' }),
+        expect.objectContaining({ type: 'covid-19' }),
+        expect.objectContaining({ type: 'rsv' }),
+        expect.objectContaining({ type: 'excess-mortality' }),
+      ]),
+    );
     expect(state.signals.find((signal) => signal.type === 'excess-mortality')?.value).toBeCloseTo(
       4.2,
     );
@@ -1559,7 +2742,12 @@ describe('health providers and caches', () => {
       now: '2026-08-25T00:00:00Z',
     });
 
-    expect(state.signals).toEqual([]);
+    expect(
+      state.signals.some((signal) => signal.type === 'influenza' && signal.id === staleSignal.id),
+    ).toBe(false);
+    expect(
+      state.signals.every((signal) => signal.metadata?.providerStatus === 'provider-error'),
+    ).toBe(true);
     expect(state.error).toBe('Health surveillance is temporarily unavailable.');
   });
 
@@ -1572,7 +2760,9 @@ describe('health providers and caches', () => {
       now: '2026-08-25T00:00:00Z',
     });
 
-    expect(state.signals).toEqual([]);
+    expect(
+      state.signals.every((signal) => signal.metadata?.providerStatus === 'provider-error'),
+    ).toBe(true);
     expect(state.error).toBe('Health surveillance is temporarily unavailable.');
   });
 });

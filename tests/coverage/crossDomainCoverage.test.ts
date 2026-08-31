@@ -57,8 +57,12 @@ describe('global cross-domain coverage behavior', () => {
 
     expect(environment.current.weather.temperature).toBe(21);
     expect(health.signals.some((signal) => signal.type === 'influenza')).toBe(true);
-    expect(health.signals.some((signal) => signal.type === 'excess-mortality')).toBe(false);
-    expect(health.signals.some((signal) => signal.type === 'ambient-dose-rate')).toBe(false);
+    expect(health.signals.find((signal) => signal.type === 'excess-mortality')).toMatchObject({
+      metadata: expect.objectContaining({ providerStatus: 'provider-error' }),
+    });
+    expect(health.signals.find((signal) => signal.type === 'ambient-dose-rate')).toMatchObject({
+      metadata: expect.objectContaining({ providerStatus: 'provider-error' }),
+    });
     expect(health.error).toBeTruthy();
   });
 
@@ -104,7 +108,9 @@ describe('global cross-domain coverage behavior', () => {
         }),
       ]),
     );
-    expect(health.signals.some((signal) => signal.type === 'influenza')).toBe(false);
+    expect(health.signals.find((signal) => signal.type === 'influenza')).toMatchObject({
+      metadata: expect.objectContaining({ providerStatus: 'provider-error' }),
+    });
     expect(health.error).toBeTruthy();
   });
 

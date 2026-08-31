@@ -79,6 +79,18 @@ describe('navigation', () => {
     expect(screen).toContain('setTimeline(null);\n      setLoading(true);');
   });
 
+  it('does not reload variable detail timelines from localized object identity changes', () => {
+    const screen = fs.readFileSync('src/screens/DataDetailScreen.tsx', 'utf8');
+
+    expect(screen).toContain('const variableId = params?.variableId ?? null');
+    expect(screen).toContain('const variable = variableId ? dataDetailVariable(variableId) : null');
+    expect(screen).toContain('hasVariable');
+    expect(screen).toContain(
+      '[coordinateLatitude, coordinateLongitude, hasVariable, now, rangeId, variableId]',
+    );
+    expect(screen).not.toContain('params?.variableId, rangeId, t, variable');
+  });
+
   it('routes Today summary cards into contextual detail screens', () => {
     const today = fs.readFileSync('src/screens/TodayScreen.tsx', 'utf8');
 
@@ -208,20 +220,39 @@ describe('navigation', () => {
     expect(today).toContain('function HealthSignalGroup');
     expect(today).toContain('name="apparent-temperature"');
     expect(today).toContain('size="event"');
+    expect(today).toContain("translate('today.thermalMetric.utci')");
+    expect(today).toContain("translate('today.thermalMetric.apparentTemperature')");
+    expect(today).toContain('const healthSectionNotice =');
+    expect(today).toContain('healthSectionNotice ? <Text style={styles.notice}>');
+    expect(today).toContain("return 'wastewater'");
+    expect(today).toContain("return 'vector-borne'");
+    expect(today).toContain("return 'measured-spores'");
     expect(today).toContain('function isDemotedHealthSignal(signal: HealthSignal): boolean');
     expect(today).toContain(
       "signal.metadata?.unavailable === true || signal.freshness.status === 'stale'",
     );
     expect(today).toContain('sortedHealthSignals(');
+    expect(today).toContain('healthSignalInlineDetailRows(signal)');
+    expect(today).toContain('accessibilityState={hasInlineDetail ? { expanded } : undefined}');
+    expect(today).toContain("name={hasTimelineDetail ? 'chevron-right' : 'info'}");
   });
 
   it('keeps health-signal detail pages aligned with the pollen timeline layout', () => {
     const screen = fs.readFileSync('src/screens/HealthSignalDetailScreen.tsx', 'utf8');
 
-    expect(screen).toContain('DATA_DETAIL_RANGES.map');
+    expect(screen).toContain('healthSignalDetailRangeOptions(signal)');
+    expect(screen).toContain('rangeOptions.length > 1');
+    expect(screen).not.toContain('disabled={!healthSignalDetailRangeSupported(signal, item.id)}');
+    expect(screen).toContain('healthSignalDetailPrimaryLabel(signal)');
+    expect(screen).toContain('healthSignalDetailMetadataRows(signal)');
+    expect(screen).toContain('chartSummaryRows.length > 0 ?');
+    expect(screen).toContain('emptyMessage={emptyTimelineMessage}');
+    expect(screen).toContain('timelineTitle');
+    expect(screen).toContain('timelineSubtitle');
+    expect(screen).toContain('styles.metadata');
     expect(screen).toContain('styles.summary');
     expect(screen).toContain('styles.chartArea');
-    expect(screen.indexOf('styles.summary')).toBeLessThan(screen.indexOf('styles.chartArea'));
+    expect(screen.indexOf('styles.metadata')).toBeLessThan(screen.indexOf('styles.chartArea'));
     expect(screen).toContain('historyRow');
     expect(screen).toContain('forecastRow');
     expect(screen).toContain('nowSeparator');
@@ -244,7 +275,6 @@ describe('navigation', () => {
     expect(screen).toContain('styles.chartArea');
     expect(screen).toContain('healthSignalValueLabel(signal)');
     expect(screen).not.toContain('SectionCard');
-    expect(screen).not.toContain('evidence');
   });
 
   it('keeps domain detail profile cards un-nested', () => {
