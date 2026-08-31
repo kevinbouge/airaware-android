@@ -7,6 +7,10 @@ import {
   healthSignalDetailRangeSupported,
   healthSignalHasTimelineDetail,
   healthSignalInlineDetailRows,
+  healthSignalReportingScopeLabel,
+  isDemotedPublicHealthSignal,
+  publicHealthContextRow,
+  publicHealthContextSummary,
   healthTimelineFillStyle,
   healthTimelinePointsForRange,
   healthTimelinePointValueLabel,
@@ -322,6 +326,134 @@ describe('health signal presentation behavior', () => {
       { label: 'Freshness', value: 'Aging · 8 days ago' },
       { label: 'Trend', value: 'Rising' },
     ]);
+  });
+
+  it('shows country-level scope and freshness in Public Health Context rows', () => {
+    const row = publicHealthContextRow(
+      healthSignal({
+        reportingPeriod: { type: 'week', year: 2026, week: 34 },
+        trend: 'rising',
+        freshness: { status: 'aging', ageMs: 5 * 24 * 60 * 60 * 1000 },
+      }),
+    );
+
+    expect(row).toMatchObject({
+      label: 'Influenza',
+      scopeLabel: 'Country-level',
+      contextLabel: 'Czechia · Week 34, 2026 · Aging · 5 days ago',
+      sourceLabel: 'WHO GISRS / FluNet',
+      secondaryLabel: 'Rising',
+      demoted: true,
+    });
+  });
+
+  it('shows local sensor context for radiological Public Health Context rows', () => {
+    const row = publicHealthContextRow(
+      healthSignal({
+        domain: 'radiological',
+        type: 'ambient-dose-rate',
+        geography: { level: 'local', code: 'radiological:safecast:50.1:14.4', name: 'Prague' },
+        observedAt: '2026-08-25T12:00:00Z',
+        periodEnd: '2026-08-25T12:00:00Z',
+        value: 0.08,
+        unit: 'µSv/h',
+        category: 'normal-background',
+        source: { provider: 'Safecast' },
+        metadata: { nearestSensorDistanceKm: 0.8 },
+      }),
+    );
+
+    expect(healthSignalReportingScopeLabel(row.signal)).toBe('Local sensor');
+    expect(row.contextLabel).toContain('Prague · 800 m');
+    expect(row.value).toBe('0.08 µSv/h');
+  });
+
+  it('demotes aging, stale, and unavailable Public Health Context rows', () => {
+    expect(isDemotedPublicHealthSignal(healthSignal({ freshness: { status: 'fresh' } }))).toBe(
+      false,
+    );
+    expect(isDemotedPublicHealthSignal(healthSignal({ freshness: { status: 'aging' } }))).toBe(
+      true,
+    );
+    expect(isDemotedPublicHealthSignal(healthSignal({ freshness: { status: 'stale' } }))).toBe(
+      true,
+    );
+    expect(
+      isDemotedPublicHealthSignal(
+        healthSignal({ freshness: { status: 'fresh' }, metadata: { unavailable: true } }),
+      ),
+    ).toBe(true);
+  });
+
+  it('keeps unavailable Public Health Context rows from becoming reassuring values', () => {
+    const unavailableSignals = [
+      healthSignal({
+        type: 'influenza',
+        value: undefined,
+        unit: undefined,
+        category: 'unknown',
+        metadata: { unavailable: true },
+      }),
+      healthSignal({
+        domain: 'population-health',
+        type: 'excess-mortality',
+        value: undefined,
+        unit: undefined,
+        category: 'unknown',
+        metadata: { unavailable: true },
+      }),
+      healthSignal({
+        domain: 'radiological',
+        type: 'ambient-dose-rate',
+        value: undefined,
+        unit: undefined,
+        category: 'unknown',
+        metadata: { unavailable: true },
+      }),
+      healthSignal({
+        type: 'wastewater-covid-19',
+        value: undefined,
+        unit: undefined,
+        category: 'unknown',
+        metadata: { unavailable: true },
+      }),
+      healthSignal({
+        type: 'dengue',
+        value: undefined,
+        unit: undefined,
+        category: 'unknown',
+        metadata: { unavailable: true },
+      }),
+    ];
+    const labels = unavailableSignals.map((signal) => publicHealthContextRow(signal).value);
+
+    expect(labels).toEqual([
+      'No recent data',
+      'No recent data',
+      'No recent local measurement',
+      'No local wastewater data',
+      'No recent data',
+    ]);
+    labels.forEach((label) => {
+      expect(label).not.toMatch(/Low|Normal|background|No dengue|no disease/i);
+    });
+  });
+
+  it('summarizes mixed fresh and unavailable Public Health Context coverage coherently', () => {
+    const rows = [
+      publicHealthContextRow(healthSignal({ id: 'fresh' })),
+      publicHealthContextRow(
+        healthSignal({
+          id: 'unavailable',
+          type: 'wastewater-covid-19',
+          value: undefined,
+          unit: undefined,
+          metadata: { unavailable: true },
+        }),
+      ),
+    ];
+
+    expect(publicHealthContextSummary(rows)).toBe('Current signals: 1');
   });
 
   it('filters weekly surveillance by semantic reporting range instead of hourly windows', () => {

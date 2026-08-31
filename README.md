@@ -9,11 +9,14 @@ AirAware reports external conditions and population-level surveillance only. It 
 individual symptoms, estimate infection probability, diagnose illness or allergies, predict
 individual mortality risk, or provide medical advice.
 
-Product presentation is intentionally decision-first. Today prioritizes the active environmental
-score, meaningful Environmental Events, thermal stress, and concise health-context signals. Sparse or
+Product presentation is intentionally decision-first. Today follows a `Now -> Why -> When`
+hierarchy: active location, current headline environmental condition, a short interpretation, the
+main contributing factor, and the best outdoor window. Local environmental conditions remain the
+primary product surface. Biological, population-health, wastewater, vector-borne, and radiological
+signals are presented as secondary **Public Health Context** rather than a synthetic score. Sparse or
 delayed surveillance data is shown with its real geography, reporting period, freshness, and source;
-unsupported history ranges and missing observations are presented as unavailable rather than
-synthetic Low, Normal, or zero values.
+coverage gaps and missing observations are presented as unavailable rather than synthetic Low,
+Normal, or zero values.
 
 ## Technology
 
@@ -187,11 +190,13 @@ source label.
 
 ## Screens
 
-- **Today**: headline environmental scores, scrollable active location selector, Environmental
-  Events, thermal stress, a compact health-context section for public surveillance and sparse
-  monitoring signals, update status, main factor, best outdoor window, refresh, share summary, and
-  enabled Activity summary cards. Stale or unavailable health-context rows are visually demoted and
-  keep their reporting geography, latest period, and freshness visible.
+- **Today**: decision-first `Now -> Why -> When` card with active location, current headline
+  environmental condition, short environmental interpretation, main concern, and best outdoor
+  window. Secondary sections follow the product hierarchy: Environmental Events, thermal
+  conditions, environmental detail entry points, compact Public Health Context, and enabled Activity
+  summary cards. Stale, aging, unavailable, or unsupported Public Health Context rows are visually
+  demoted and keep their reporting scope, geography, latest period, freshness, and source
+  discoverable.
 - **Context detail screens**: Environmental burden, Personalized risk, and Activity details with
   Daily forecast graphs, current-to-next-24-hour forecast graphs, and tappable environmental
   measurements. Detail headers are safe-area aware on Android devices with status bars or display
@@ -203,8 +208,8 @@ source label.
   trend, provider measure, radiological sensor distance/baseline where available, and
   domain-specific non-medical-risk explanations.
 - **Profile**: local Personal Allergy Profile toggles, including Mold potential and UV index
-- **Pro**: AirAware Pro purchase/restore status, development capability preview, and Activity
-  toggles
+- **Pro**: outcome-oriented AirAware Pro purchase/restore status, development capability preview,
+  planning-depth benefits, advanced alert/widget benefits, and Activity toggles
 - **Settings**: saved-location management, manual map selection, notification preferences,
   daily-summary score, privacy and attribution notes, and disclaimers
 
@@ -419,6 +424,14 @@ AirAware now has a provider-independent `HealthSignal` model for external health
 conditions. The model keeps domain, geography, reporting period, source, freshness, value, category,
 and trend separate so different sources are not forced into the environmental-burden score.
 
+On Today, these non-environmental signals are consolidated under **Public Health Context**. The
+section is intentionally secondary to local environmental decision support and summarizes public
+surveillance or monitoring evidence with explicit reporting scope such as country-level,
+regional/local monitoring, or local sensor context. Missing coverage remains a coverage state; it is
+not rendered as Low activity, Normal mortality, normal radiation background, or absence of disease.
+Detailed signal pages continue to expose source, geography, period, freshness, trend, measure, and
+radiological sensor/baseline metadata where available.
+
 Supported domains are:
 
 - **Environmental**: existing AirAware environmental readings and Environmental Events continue to
@@ -518,6 +531,15 @@ flowering or pollen production.
 OpenStreetMap coverage varies by region. Missing mapped features do not mean the vegetation is
 absent. Results are cached locally for slow-changing context and refreshed when the cache expires,
 the selected location changes, or the nearby-vegetation radius changes.
+
+## Onboarding
+
+First launch remains short, privacy-first, and location-first. AirAware explains that it checks
+pollen, pollution, weather, and local environmental conditions before requesting data. The user can
+then choose approximate foreground Current location or add a manual saved location. Android location
+permission is requested only after this explanation and only for approximate foreground location.
+Personal Allergy Profile setup is optional and can be opened later from Today or Profile after the
+user has seen the main decision surface.
 
 ## Privacy
 
@@ -639,7 +661,21 @@ atmospheric-irritant, Mold potential, UV readings, available Health Signals, res
 surveillance availability states, country-level excess mortality where supported by Eurostat or the
 OWID public dataset, and Safecast ambient radiation where suitable nearby measurements exist.
 
-AirAware Pro currently adds three modeled capabilities:
+AirAware Pro is positioned around planning depth and convenience rather than medical or safety
+claims. It keeps core AirAware environmental and Public Health Context capabilities free while
+adding outcome-focused planning tools:
+
+- **Know before conditions change**: configurable Environmental Event alerts for pollen, air
+  pollution, Saharan dust, wildfire-related particulate pollution, UV, Mold potential, and headline
+  environmental risk
+- **Find the best time**: Activity-specific environmental windows for agriculture, drone
+  operations, photography, astronomy, and outdoor work
+- **See further ahead**: up to 7 days of environmental forecast instead of the standard 3-day
+  horizon
+- **See conditions without opening AirAware**: advanced Android home-screen widget with current
+  condition, main factor, best outdoor window, and compact forecast information
+
+The same modeled capabilities are implemented as:
 
 ### Standard Forecast
 

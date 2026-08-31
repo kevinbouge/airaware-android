@@ -3,7 +3,7 @@ import type { DataDetailRangeId } from '../models/dataDetail';
 import type { HealthSignal, ReportingPeriod } from '../models/healthSignals';
 import { translate } from '../i18n';
 import { colors } from '../theme/theme';
-import { formatMeasurement } from '../utils/format';
+import { formatDistanceMeters, formatMeasurement } from '../utils/format';
 import { DATA_DETAIL_RANGES, dataDetailRange } from './dataVariableMetadata';
 import {
   healthSignalCategoryLabel,
@@ -13,6 +13,7 @@ import {
   healthSignalPeriodLabel,
   healthSignalSourceLabel,
   healthSignalTrendLabel,
+  healthSignalTypeLabel,
   healthSignalValueLabel,
 } from './healthSignals';
 
@@ -41,6 +42,17 @@ export interface HealthTimelineRangePoint {
 export interface HealthSignalDetailRow {
   label: string;
   value: string;
+}
+
+export interface PublicHealthContextRow {
+  signal: HealthSignal;
+  label: string;
+  value: string;
+  scopeLabel: string;
+  contextLabel: string;
+  sourceLabel: string;
+  secondaryLabel: string;
+  demoted: boolean;
 }
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -192,6 +204,91 @@ export function healthSignalInlineDetailRows(signal: HealthSignal): HealthSignal
   }
 
   return rows.filter((row) => row.value.length > 0);
+}
+
+export function healthSignalReportingScopeLabel(signal: HealthSignal): string {
+  if (signal.domain === 'radiological') return translate('health.scope.localSensor');
+  if (signal.geography.level === 'country') return translate('health.scope.countryLevel');
+  if (signal.geography.level === 'region') return translate('health.scope.regional');
+  if (signal.geography.level === 'local') return translate('health.scope.localMonitoring');
+  return translate('health.scope.publicMonitoring');
+}
+
+export function isDemotedPublicHealthSignal(signal: HealthSignal): boolean {
+  return signal.metadata?.unavailable === true || signal.freshness.status !== 'fresh';
+}
+
+function publicHealthContextValueLabel(signal: HealthSignal): string {
+  const unavailable = signal.metadata?.unavailable === true;
+
+  if (signal.freshness.status === 'stale') {
+    if (signal.type === 'ambient-dose-rate') {
+      return translate('health.radiological.noRecentLocalMeasurement');
+    }
+    if (isWastewaterSignal(signal)) {
+      return translate('health.wastewater.noLocalData');
+    }
+    return translate('health.noRecentData');
+  }
+
+  if (unavailable && isWastewaterSignal(signal)) {
+    return translate('health.wastewater.noLocalData');
+  }
+
+  return healthSignalValueLabel(signal);
+}
+
+export function publicHealthContextRow(signal: HealthSignal): PublicHealthContextRow {
+  const unavailable = signal.metadata?.unavailable === true;
+  const freshness = healthSignalFreshnessDetailLabel(signal);
+  const nearestSensorDistanceKm = signal.metadata?.nearestSensorDistanceKm;
+  const geography =
+    signal.domain === 'radiological' && typeof nearestSensorDistanceKm === 'number'
+      ? [
+          healthSignalGeographyLabel(signal),
+          formatDistanceMeters(nearestSensorDistanceKm * 1000),
+        ].join(' · ')
+      : healthSignalGeographyLabel(signal);
+  const value = publicHealthContextValueLabel(signal);
+  const secondary =
+    unavailable || signal.domain === 'radiological'
+      ? healthSignalCategoryLabel(signal)
+      : healthSignalTrendLabel(signal.trend);
+
+  return {
+    signal,
+    label: healthSignalTypeLabel(signal.type),
+    value,
+    scopeLabel: healthSignalReportingScopeLabel(signal),
+    contextLabel: [geography, healthSignalPeriodLabel(signal), freshness]
+      .filter(Boolean)
+      .join(' · '),
+    sourceLabel: healthSignalSourceLabel(signal),
+    secondaryLabel: secondary,
+    demoted: isDemotedPublicHealthSignal(signal),
+  };
+}
+
+export function publicHealthContextRows(signals: HealthSignal[]): PublicHealthContextRow[] {
+  return [...signals]
+    .sort((left, right) => {
+      const leftRank = isDemotedPublicHealthSignal(left) ? 1 : 0;
+      const rightRank = isDemotedPublicHealthSignal(right) ? 1 : 0;
+      if (leftRank !== rightRank) return leftRank - rightRank;
+      if (left.freshness.status !== right.freshness.status) {
+        return left.freshness.status.localeCompare(right.freshness.status);
+      }
+      return healthSignalTypeLabel(left.type).localeCompare(healthSignalTypeLabel(right.type));
+    })
+    .map(publicHealthContextRow);
+}
+
+export function publicHealthContextSummary(rows: PublicHealthContextRow[]): string {
+  const currentCount = rows.filter(
+    (row) => !row.demoted && row.signal.metadata?.unavailable !== true,
+  ).length;
+  if (currentCount === 0) return translate('today.publicHealthNoCurrentSignals');
+  return translate('today.publicHealthCurrentSignals', { count: currentCount });
 }
 
 export function healthSignalDetailMetadataRows(signal: HealthSignal): HealthSignalDetailRow[] {

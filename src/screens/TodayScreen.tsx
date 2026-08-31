@@ -1,12 +1,10 @@
 import { Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import type { ReactNode } from 'react';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigation } from '@react-navigation/native';
 import { AppButton } from '../components/AppButton';
 import { InsightCard } from '../components/InsightCard';
-import { ScoreCard } from '../components/ScoreCard';
 import { SectionCard } from '../components/SectionCard';
 import { StateView } from '../components/StateView';
 import { ActivityIcon } from '../components/icons/ActivityIcon';
@@ -33,8 +31,13 @@ import {
 import {
   healthSignalHasTimelineDetail,
   healthSignalInlineDetailRows,
+  isDemotedPublicHealthSignal,
+  publicHealthContextRows,
+  publicHealthContextSummary,
   todayHealthSectionVisibility,
 } from '../core/healthSignalPresentation';
+import { todayDecisionSummary } from '../core/todayDecision';
+import { categoryLabel } from '../core/categories';
 import { translate } from '../i18n';
 import { useCapabilities } from '../hooks/useCapabilities';
 import { useDerivedEnvironment } from '../hooks/useDerivedEnvironment';
@@ -55,6 +58,11 @@ import {
 } from '../utils/format';
 import { contributorFromScore } from '../utils/contributorLabels';
 import type { ActivitySemanticType, ActivitySuitabilityCategory } from '../models/activities';
+import type {
+  EnvironmentalScoreResult,
+  PersonalizedScoreResult,
+  RiskCategoryId,
+} from '../models/environment';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 import { CURRENT_LOCATION_ID, coordinatesForSavedLocation } from '../models/location';
 import type { EnvironmentalEvent } from '../models/environmentalEvents';
@@ -66,6 +74,8 @@ interface TodayNavigation {
     params: RootStackParamList[RouteName],
   ) => void;
 }
+
+type ActivityDomainEvaluation = ReturnType<typeof evaluateActivityDomains>[number];
 
 function formatUpdateStatus(
   fetchedAt: string | null,
@@ -149,6 +159,14 @@ function locationSelectorRightLabel(input: {
   if (input.selected) return translate('common.active');
   if (!input.coordinates) return undefined;
   return formatCoordinates(input.coordinates) ?? undefined;
+}
+
+function todayHeadlineCategory(input: {
+  environmentalScore: EnvironmentalScoreResult | null;
+  personalizedScore: PersonalizedScoreResult;
+}): RiskCategoryId | undefined {
+  if (input.personalizedScore.available) return input.personalizedScore.category;
+  return input.environmentalScore?.category;
 }
 
 function eventSeverityColor(event: EnvironmentalEvent): string {
@@ -251,7 +269,7 @@ function healthSecondaryLabel(signal: HealthSignal): string {
 }
 
 function isDemotedHealthSignal(signal: HealthSignal): boolean {
-  return signal.metadata?.unavailable === true || signal.freshness.status === 'stale';
+  return isDemotedPublicHealthSignal(signal);
 }
 
 function healthSignalSortValue(signal: HealthSignal): number {
@@ -304,11 +322,15 @@ function HealthSignalTrendIndicator({
 function HealthSignalRow({
   expanded,
   signal,
+  valueLabel,
+  secondaryLabel,
   onToggleInline,
   onPress,
 }: {
   expanded: boolean;
   signal: HealthSignal;
+  valueLabel?: string | undefined;
+  secondaryLabel?: string | undefined;
   onToggleInline: (signal: HealthSignal) => void;
   onPress: (signal: HealthSignal) => void;
 }) {
@@ -322,16 +344,18 @@ function HealthSignalRow({
     signal.metadata?.unavailable === true
       ? healthSignalTrendLabel(signal.trend)
       : healthSecondaryLabel(signal);
-  const secondaryLabel = [freshnessPrefix, secondaryValue].filter(Boolean).join(' · ');
+  const rowValueLabel = valueLabel ?? todayHealthSignalValueLabel(signal);
+  const rowSecondaryLabel =
+    secondaryLabel ?? [freshnessPrefix, secondaryValue].filter(Boolean).join(' · ');
   const hasTimelineDetail = healthSignalHasTimelineDetail(signal);
   const hasInlineDetail = !hasTimelineDetail;
   const inlineRows = hasInlineDetail && expanded ? healthSignalInlineDetailRows(signal) : [];
   const accessibilityLabel = hasTimelineDetail
     ? translate('today.opensDetails', {
-        label: `${label}: ${todayHealthSignalValueLabel(signal)}`,
+        label: `${label}: ${rowValueLabel}`,
       })
     : translate('today.expandsDetails', {
-        label: `${label}: ${todayHealthSignalValueLabel(signal)}`,
+        label: `${label}: ${rowValueLabel}`,
       });
 
   const handlePress = () => {
@@ -362,11 +386,11 @@ function HealthSignalRow({
         </View>
         <View style={styles.healthValueBlock}>
           <Text style={[styles.healthValue, demoted ? styles.healthTextDemoted : null]}>
-            {todayHealthSignalValueLabel(signal)}
+            {rowValueLabel}
           </Text>
           <View style={styles.healthTrend}>
             <HealthSignalTrendIndicator signal={signal} demoted={demoted} />
-            <Text style={styles.healthMeta}>{secondaryLabel}</Text>
+            <Text style={styles.healthMeta}>{rowSecondaryLabel}</Text>
           </View>
         </View>
         <AppIcon
@@ -389,23 +413,369 @@ function HealthSignalRow({
   );
 }
 
-function HealthSignalGroup({
-  title,
-  subtitle,
-  children,
+function LocationSelectorButton({
+  locationLabel,
+  locationDetail,
+  onPress,
 }: {
-  title: string;
-  subtitle?: string | undefined;
-  children: ReactNode;
+  locationLabel: string;
+  locationDetail?: string | null | undefined;
+  onPress: () => void;
 }) {
   return (
-    <View style={styles.healthGroup}>
-      <View style={styles.healthGroupHeader}>
-        <Text style={styles.healthGroupTitle}>{title}</Text>
-        {subtitle ? <Text style={styles.healthGroupSubtitle}>{subtitle}</Text> : null}
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [styles.placeButton, pressed ? styles.pressed : null]}
+    >
+      <AppIcon name="location" size="inline" color={colors.muted} />
+      <View style={styles.placeCopy}>
+        <Text style={styles.place}>{locationLabel}</Text>
+        {locationDetail ? <Text style={styles.placeDetail}>{locationDetail}</Text> : null}
       </View>
-      {children}
+      <AppIcon name="chevron-right" size="inline" color={colors.muted} />
+    </Pressable>
+  );
+}
+
+function TodayDecisionCard({
+  locationLabel,
+  locationDetail,
+  decision,
+  onLocationPress,
+}: {
+  locationLabel: string;
+  locationDetail?: string | null | undefined;
+  decision: NonNullable<ReturnType<typeof todayDecisionSummary>>;
+  onLocationPress: () => void;
+}) {
+  const accent = riskColor(decision.score.category);
+
+  return (
+    <View style={[styles.decisionCard, { borderTopColor: accent }]}>
+      <Pressable
+        accessibilityRole="button"
+        onPress={onLocationPress}
+        style={({ pressed }) => [styles.decisionLocation, pressed ? styles.pressed : null]}
+      >
+        <AppIcon name="location" size="inline" color={colors.muted} />
+        <View style={styles.placeCopy}>
+          <Text style={styles.decisionPlace}>{locationLabel}</Text>
+          {locationDetail ? <Text style={styles.placeDetail}>{locationDetail}</Text> : null}
+        </View>
+        <AppIcon name="chevron-right" size="inline" color={colors.muted} />
+      </Pressable>
+      <View style={styles.decisionBody}>
+        <Text style={[styles.decisionTitle, { color: accent }]}>{decision.title}</Text>
+        <Text style={styles.decisionInterpretation}>{decision.interpretation}</Text>
+      </View>
+      <View style={styles.decisionGrid}>
+        <View style={styles.decisionMetric}>
+          <Text style={styles.decisionMetricLabel}>{translate('today.mainConcern')}</Text>
+          <Text style={styles.decisionMetricValue}>{decision.mainConcern}</Text>
+        </View>
+        <View style={styles.decisionMetric}>
+          <Text style={styles.decisionMetricLabel}>{translate('today.bestTimeToday')}</Text>
+          <Text style={styles.decisionMetricValue}>{decision.bestWindow}</Text>
+        </View>
+      </View>
     </View>
+  );
+}
+
+function PublicHealthContextSection({
+  rows,
+  expandedHealthSignalIds,
+  healthSectionNotice,
+  loading,
+  onOpenDetails,
+  onPressSignal,
+  onToggleInline,
+}: {
+  rows: ReturnType<typeof publicHealthContextRows>;
+  expandedHealthSignalIds: Set<string>;
+  healthSectionNotice: string | null;
+  loading: boolean;
+  onOpenDetails: () => void;
+  onPressSignal: (signal: HealthSignal) => void;
+  onToggleInline: (signal: HealthSignal) => void;
+}) {
+  return (
+    <SectionCard
+      title={translate('today.publicHealthContext')}
+      subtitle={translate('today.publicHealthContextSubtitle')}
+    >
+      {healthSectionNotice ? <Text style={styles.notice}>{healthSectionNotice}</Text> : null}
+      {loading ? (
+        <Text style={styles.body}>{translate('today.loadingPublicHealthContext')}</Text>
+      ) : null}
+      {!loading && rows.length === 0 ? (
+        <Text style={styles.body}>{translate('today.publicHealthNoCurrentSignals')}</Text>
+      ) : null}
+      {rows.slice(0, 4).map((row) => (
+        <View
+          key={row.signal.id}
+          style={[styles.publicHealthRowShell, row.demoted ? styles.healthRowDemoted : null]}
+        >
+          <Text style={styles.publicHealthScope}>{row.scopeLabel}</Text>
+          <HealthSignalRow
+            expanded={expandedHealthSignalIds.has(row.signal.id)}
+            signal={row.signal}
+            valueLabel={row.value}
+            secondaryLabel={row.secondaryLabel}
+            onPress={onPressSignal}
+            onToggleInline={onToggleInline}
+          />
+          <Text style={styles.publicHealthContext}>{row.contextLabel}</Text>
+        </View>
+      ))}
+      {rows.length > 0 ? (
+        <Text style={styles.healthSummary}>{publicHealthContextSummary(rows)}</Text>
+      ) : null}
+      {rows.length > 0 ? (
+        <AppButton
+          title={translate('today.publicHealthViewAll')}
+          iconName="chevron-right"
+          fullWidth
+          onPress={onOpenDetails}
+        />
+      ) : null}
+    </SectionCard>
+  );
+}
+
+function EnvironmentalEventsSection({
+  events,
+  referenceTime,
+}: {
+  events: EnvironmentalEvent[];
+  referenceTime: string | null;
+}) {
+  if (events.length === 0) return null;
+
+  return (
+    <View style={styles.eventSection}>
+      <Text style={styles.sectionTitle}>{translate('today.environmentalEvents')}</Text>
+      {events.slice(0, 4).map((event) => {
+        const title = environmentalEventTitle(event);
+        const body = environmentalEventBody(event, referenceTime);
+        const category = eventSeverityLabel(event);
+
+        return (
+          <View key={event.id} style={styles.eventCard}>
+            <View style={styles.eventRow}>
+              <View style={[styles.eventIconContainer, { borderColor: eventSeverityColor(event) }]}>
+                <EnvironmentalIcon
+                  accessibilityLabel={translate('today.eventIconLabel', { title })}
+                  color={eventSeverityColor(event)}
+                  name={getEventIconName(event.type)}
+                  size="event"
+                />
+              </View>
+              <View style={styles.eventCopy}>
+                <View style={styles.eventHeader}>
+                  <Text style={styles.eventTitle}>{title}</Text>
+                  <Text style={[styles.eventSeverity, { color: eventSeverityColor(event) }]}>
+                    {category}
+                  </Text>
+                </View>
+                <Text style={styles.eventTiming}>{eventTimingLabel(event, referenceTime)}</Text>
+                <Text style={styles.eventBody}>{body}</Text>
+              </View>
+            </View>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+function ThermalConditionsSection({
+  expandedHealthSignalIds,
+  signals,
+  visible,
+  onPressSignal,
+  onToggleInline,
+}: {
+  expandedHealthSignalIds: Set<string>;
+  signals: HealthSignal[];
+  visible: boolean;
+  onPressSignal: (signal: HealthSignal) => void;
+  onToggleInline: (signal: HealthSignal) => void;
+}) {
+  if (!visible) return null;
+
+  return (
+    <SectionCard
+      title={translate('today.thermalStress')}
+      subtitle={translate('today.thermalSource')}
+    >
+      {signals.map((signal) => (
+        <HealthSignalRow
+          key={signal.id}
+          expanded={expandedHealthSignalIds.has(signal.id)}
+          signal={signal}
+          onPress={onPressSignal}
+          onToggleInline={onToggleInline}
+        />
+      ))}
+    </SectionCard>
+  );
+}
+
+function EnvironmentalDetailsSection({
+  environmentalDetails,
+  environmentalScore,
+  navigation,
+  personalizedDetails,
+  personalizedScore,
+  visible,
+}: {
+  environmentalDetails: string[];
+  environmentalScore: EnvironmentalScoreResult | null;
+  navigation: TodayNavigation;
+  personalizedDetails: string[];
+  personalizedScore: PersonalizedScoreResult;
+  visible: boolean;
+}) {
+  if (!visible || (!environmentalScore?.available && !personalizedScore.available)) return null;
+
+  return (
+    <SectionCard
+      title={translate('today.environmentalDetails')}
+      subtitle={translate('today.environmentalDetailsSubtitle')}
+    >
+      {environmentalScore?.available ? (
+        <InsightCard
+          title={translate('risk.environmentalBurden')}
+          accent={riskColor(environmentalScore.category)}
+          icon={<EnvironmentalIcon name="environmental-risk" size="card" />}
+          primary={formatScore(environmentalScore.score)}
+          secondary={categoryLabel(environmentalScore.category)}
+          details={environmentalDetails}
+          compact
+          accessibilityLabel={translate('today.opensDetails', {
+            label: translate('risk.environmentalBurden'),
+          })}
+          onPress={() => navigation.navigate('EnvironmentalBurdenDetail', undefined)}
+        />
+      ) : null}
+      {personalizedScore.available ? (
+        <InsightCard
+          title={translate('risk.personalizedRisk')}
+          accent={riskColor(personalizedScore.category)}
+          icon={<EnvironmentalIcon name="environmental-risk" size="card" />}
+          primary={formatScore(personalizedScore.score)}
+          secondary={categoryLabel(personalizedScore.category)}
+          details={personalizedDetails}
+          compact
+          accessibilityLabel={translate('today.opensDetails', {
+            label: translate('risk.personalizedRisk'),
+          })}
+          onPress={() => navigation.navigate('PersonalizedRiskDetail', undefined)}
+        />
+      ) : null}
+    </SectionCard>
+  );
+}
+
+function ActivitySummarySection({
+  evaluations,
+  navigation,
+  referenceTime,
+}: {
+  evaluations: ActivityDomainEvaluation[];
+  navigation: TodayNavigation;
+  referenceTime: string | null;
+}) {
+  if (evaluations.length === 0) return null;
+
+  return (
+    <View style={styles.activitySection}>
+      <Text style={styles.sectionTitle}>{translate('today.activities')}</Text>
+      {evaluations.map((domain) => {
+        const previewProfiles = domain.profiles.slice(0, 2);
+        const best = domain.bestOpportunity;
+        const displayWindow =
+          best !== null
+            ? bestActivityWindowForRange(
+                best.hours,
+                best.current?.timestamp ?? referenceTime ?? '',
+                24,
+                best.minimumUsefulWindowDuration,
+              )
+            : null;
+        const primaryProfile = previewProfiles[0];
+
+        return (
+          <InsightCard
+            key={domain.id}
+            title={domain.label}
+            icon={<ActivityIcon activity={domain.id} size="inline" color={colors.muted} />}
+            accent={activityColor(
+              primaryProfile?.current?.category ?? 'insufficientData',
+              primaryProfile?.semanticType,
+            )}
+            primary={
+              primaryProfile?.current
+                ? activityCategoryLabel(
+                    primaryProfile.current.category,
+                    primaryProfile.semanticType,
+                  )
+                : translate('common.unavailable')
+            }
+            compact
+            secondary={primaryProfile?.label}
+            details={[
+              ...previewProfiles.map((profile) =>
+                profile.current
+                  ? `${profile.label}: ${activityCategoryLabel(
+                      profile.current.category,
+                      profile.semanticType,
+                    )}`
+                  : `${profile.label}: ${translate('common.unavailable')}`,
+              ),
+              best && displayWindow
+                ? `${translate('today.bestOpportunity')}: ${best.label} · ${formatActivityWindow(
+                    displayWindow,
+                    referenceTime,
+                  )}`
+                : `${translate('today.bestOpportunity')}: ${translate('common.unavailable')}`,
+            ]}
+            accessibilityLabel={translate('today.opensDetails', { label: domain.label })}
+            onPress={() => navigation.navigate('ActivityDomainDetail', { domainId: domain.id })}
+          />
+        );
+      })}
+    </View>
+  );
+}
+
+function LocationRequiredCard({
+  loading,
+  onChooseManualLocation,
+  onUseCurrentLocation,
+}: {
+  loading: boolean;
+  onChooseManualLocation: () => void;
+  onUseCurrentLocation: () => void;
+}) {
+  return (
+    <SectionCard title={translate('today.locationRequired')}>
+      <Text style={styles.body}>{translate('today.locationRequiredBody')}</Text>
+      <AppButton
+        title={translate('today.useCurrentLocation')}
+        iconName="current-location"
+        onPress={onUseCurrentLocation}
+        disabled={loading}
+      />
+      <AppButton
+        title={translate('today.chooseManualLocation')}
+        iconName="location"
+        onPress={onChooseManualLocation}
+        disabled={loading}
+      />
+    </SectionCard>
   );
 }
 
@@ -461,9 +831,7 @@ export function TodayScreen() {
 
   if (!hydrated) return <StateView loading message={t('common.loading')} />;
 
-  const headlineCategory = personalizedScore.available
-    ? personalizedScore.category
-    : environmentalScore?.category;
+  const headlineCategory = todayHeadlineCategory({ environmentalScore, personalizedScore });
   const locationLabel =
     (location.activeLocationId === CURRENT_LOCATION_ID
       ? t('settings.locations.currentLocation')
@@ -485,13 +853,13 @@ export function TodayScreen() {
   );
   const referenceTime = environment?.current.timestamp ?? environment?.fetchedAt ?? null;
   const environmentalDetails = appendAvailableWindowDetail(
-    [`${t('today.mainFactor')}: ${environmentalMainFactor.label ?? t('common.unavailable')}`],
+    [`${t('today.mainConcern')}: ${environmentalMainFactor.label ?? t('common.unavailable')}`],
     t('today.bestWindow'),
     environmentalBestOutdoorWindow,
     referenceTime,
   );
   const personalizedDetails = appendAvailableWindowDetail(
-    [`${t('today.mainFactor')}: ${personalizedMainFactor.label ?? t('common.unavailable')}`],
+    [`${t('today.mainConcern')}: ${personalizedMainFactor.label ?? t('common.unavailable')}`],
     t('today.bestWindow'),
     personalizedBestOutdoorWindow,
     referenceTime,
@@ -499,33 +867,11 @@ export function TodayScreen() {
   const thermalSignals = sortedHealthSignals(
     healthSignals.signals.filter((signal) => signal.type === 'thermal-stress'),
   );
-  const respiratorySignals = sortedHealthSignals(
-    healthSignals.signals.filter((signal) =>
-      ['influenza', 'covid-19', 'rsv'].includes(signal.type),
-    ),
+  const publicHealthSignals = sortedHealthSignals(
+    healthSignals.signals.filter((signal) => signal.type !== 'thermal-stress'),
   );
-  const wastewaterSignals = sortedHealthSignals(
-    healthSignals.signals.filter((signal) =>
-      ['wastewater-covid-19', 'wastewater-influenza', 'wastewater-rsv'].includes(signal.type),
-    ),
-  );
-  const vectorSignals = sortedHealthSignals(
-    healthSignals.signals.filter((signal) =>
-      ['dengue', 'west-nile', 'malaria', 'tick-borne-disease'].includes(signal.type),
-    ),
-  );
-  const populationSignals = sortedHealthSignals(
-    healthSignals.signals.filter((signal) => signal.domain === 'population-health'),
-  );
-  const radiologicalSignals = sortedHealthSignals(
-    healthSignals.signals.filter((signal) => signal.domain === 'radiological'),
-  );
-  const contextualHealthSignalCount =
-    respiratorySignals.length +
-    wastewaterSignals.length +
-    vectorSignals.length +
-    populationSignals.length +
-    radiologicalSignals.length;
+  const publicHealthRows = publicHealthContextRows(publicHealthSignals);
+  const contextualHealthSignalCount = publicHealthSignals.length;
   const hasHealthSignalLocationContext =
     settings.locationOnboardingComplete || location.coordinates !== null || environment !== null;
   const { shouldShowHealthSignals, shouldShowThermalSignals } = todayHealthSectionVisibility({
@@ -549,37 +895,14 @@ export function TodayScreen() {
       return next;
     });
   };
-  let respiratoryContent = (
-    <Text style={styles.body}>{healthSignals.error ?? t('today.unavailableRespiratory')}</Text>
-  );
-  if (healthSignals.loading) {
-    respiratoryContent = <Text style={styles.body}>{t('today.loadingRespiratory')}</Text>;
-  } else if (respiratorySignals.length > 0) {
-    respiratoryContent = (
-      <>
-        {respiratorySignals.map((signal) => (
-          <HealthSignalRow
-            key={signal.id}
-            expanded={expandedHealthSignalIds.has(signal.id)}
-            signal={signal}
-            onPress={openHealthSignal}
-            onToggleInline={toggleHealthSignalInline}
-          />
-        ))}
-      </>
-    );
-  }
-  const shouldShowRespiratoryGroup =
-    healthSignals.loading || respiratorySignals.length > 0 || contextualHealthSignalCount === 0;
-  const healthSectionNotice =
-    healthSignals.error &&
-    (respiratorySignals.length > 0 ||
-      wastewaterSignals.length > 0 ||
-      vectorSignals.length > 0 ||
-      populationSignals.length > 0 ||
-      radiologicalSignals.length > 0)
-      ? healthSignals.error
-      : null;
+  const healthSectionNotice = healthSignals.error;
+  const decision = todayDecisionSummary({
+    environmentalScore,
+    environmentalBestOutdoorWindow,
+    personalizedScore,
+    personalizedBestOutdoorWindow,
+    referenceTime,
+  });
 
   return (
     <>
@@ -598,250 +921,72 @@ export function TodayScreen() {
             />
             <Text style={styles.brand}>AirAware</Text>
           </View>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => setLocationSelectorVisible(true)}
-            style={({ pressed }) => [styles.placeButton, pressed ? styles.pressed : null]}
-          >
-            <AppIcon name="location" size="inline" color={colors.muted} />
-            <View style={styles.placeCopy}>
-              <Text style={styles.place}>{locationLabel}</Text>
-              {locationDetail ? <Text style={styles.placeDetail}>{locationDetail}</Text> : null}
-            </View>
-            <AppIcon name="chevron-right" size="inline" color={colors.muted} />
-          </Pressable>
         </View>
 
         {error ? <Text style={styles.notice}>{error}</Text> : null}
 
-        {environmentalScore?.available ? (
-          <ScoreCard
-            title={t('risk.environmentalBurden')}
-            score={environmentalScore.score}
-            category={environmentalScore.category}
-            details={environmentalDetails}
-            iconName="environmental-risk"
-            onPress={() => navigation.navigate('EnvironmentalBurdenDetail', undefined)}
+        {decision ? (
+          <TodayDecisionCard
+            locationLabel={locationLabel}
+            locationDetail={locationDetail}
+            decision={decision}
+            onLocationPress={() => setLocationSelectorVisible(true)}
+          />
+        ) : (
+          <LocationSelectorButton
+            locationLabel={locationLabel}
+            locationDetail={locationDetail}
+            onPress={() => setLocationSelectorVisible(true)}
+          />
+        )}
+
+        {environment && !personalizedScore.available ? (
+          <AppButton
+            title={t('today.personalizeAirAware')}
+            iconName="profile"
+            fullWidth
+            onPress={() => navigation.navigate('MainTabs', { screen: 'Profile' })}
           />
         ) : null}
 
-        {personalizedScore.available ? (
-          <ScoreCard
-            title={t('risk.personalizedRisk')}
-            score={personalizedScore.score}
-            category={personalizedScore.category}
-            details={personalizedDetails}
-            iconName="environmental-risk"
-            onPress={() => navigation.navigate('PersonalizedRiskDetail', undefined)}
-          />
-        ) : null}
+        <EnvironmentalEventsSection events={environmentalEvents} referenceTime={referenceTime} />
 
-        {environmentalEvents.length > 0 ? (
-          <View style={styles.eventSection}>
-            <Text style={styles.sectionTitle}>{t('today.environmentalEvents')}</Text>
-            {environmentalEvents.slice(0, 4).map((event) => {
-              const title = environmentalEventTitle(event);
-              const body = environmentalEventBody(event, referenceTime);
-              const category = eventSeverityLabel(event);
+        <ThermalConditionsSection
+          expandedHealthSignalIds={expandedHealthSignalIds}
+          signals={thermalSignals}
+          visible={shouldShowThermalSignals}
+          onPressSignal={openHealthSignal}
+          onToggleInline={toggleHealthSignalInline}
+        />
 
-              return (
-                <View key={event.id} style={styles.eventCard}>
-                  <View style={styles.eventRow}>
-                    <View
-                      style={[
-                        styles.eventIconContainer,
-                        { borderColor: eventSeverityColor(event) },
-                      ]}
-                    >
-                      <EnvironmentalIcon
-                        accessibilityLabel={t('today.eventIconLabel', { title })}
-                        color={eventSeverityColor(event)}
-                        name={getEventIconName(event.type)}
-                        size="event"
-                      />
-                    </View>
-                    <View style={styles.eventCopy}>
-                      <View style={styles.eventHeader}>
-                        <Text style={styles.eventTitle}>{title}</Text>
-                        <Text style={[styles.eventSeverity, { color: eventSeverityColor(event) }]}>
-                          {category}
-                        </Text>
-                      </View>
-                      <Text style={styles.eventTiming}>
-                        {eventTimingLabel(event, referenceTime)}
-                      </Text>
-                      <Text style={styles.eventBody}>{body}</Text>
-                    </View>
-                  </View>
-                </View>
-              );
-            })}
-          </View>
-        ) : null}
-
-        {shouldShowThermalSignals ? (
-          <SectionCard title={t('today.thermalStress')} subtitle={t('today.thermalSource')}>
-            {thermalSignals.map((signal) => (
-              <HealthSignalRow
-                key={signal.id}
-                expanded={expandedHealthSignalIds.has(signal.id)}
-                signal={signal}
-                onPress={openHealthSignal}
-                onToggleInline={toggleHealthSignalInline}
-              />
-            ))}
-          </SectionCard>
-        ) : null}
+        <EnvironmentalDetailsSection
+          environmentalDetails={environmentalDetails}
+          environmentalScore={environmentalScore}
+          navigation={navigation}
+          personalizedDetails={personalizedDetails}
+          personalizedScore={personalizedScore}
+          visible={environment !== null}
+        />
 
         {shouldShowHealthSignals ? (
-          <SectionCard title={t('today.healthSignals')} subtitle={t('today.healthSignalsSubtitle')}>
-            {healthSectionNotice ? <Text style={styles.notice}>{healthSectionNotice}</Text> : null}
-
-            {shouldShowRespiratoryGroup ? (
-              <HealthSignalGroup
-                title={t('today.respiratoryActivity')}
-                subtitle={healthSignals.geography?.name ?? t('today.latestSurveillance')}
-              >
-                {respiratoryContent}
-              </HealthSignalGroup>
-            ) : null}
-
-            {wastewaterSignals.length > 0 ? (
-              <HealthSignalGroup
-                title={t('today.wastewaterSurveillance')}
-                subtitle={t('today.wastewaterSource')}
-              >
-                {wastewaterSignals.map((signal) => (
-                  <HealthSignalRow
-                    key={signal.id}
-                    expanded={expandedHealthSignalIds.has(signal.id)}
-                    signal={signal}
-                    onPress={openHealthSignal}
-                    onToggleInline={toggleHealthSignalInline}
-                  />
-                ))}
-              </HealthSignalGroup>
-            ) : null}
-
-            {vectorSignals.length > 0 ? (
-              <HealthSignalGroup
-                title={t('today.vectorBorneActivity')}
-                subtitle={healthSignals.geography?.name}
-              >
-                {vectorSignals.map((signal) => (
-                  <HealthSignalRow
-                    key={signal.id}
-                    expanded={expandedHealthSignalIds.has(signal.id)}
-                    signal={signal}
-                    onPress={openHealthSignal}
-                    onToggleInline={toggleHealthSignalInline}
-                  />
-                ))}
-              </HealthSignalGroup>
-            ) : null}
-
-            {populationSignals.length > 0 ? (
-              <HealthSignalGroup
-                title={t('today.populationHealth')}
-                subtitle={healthSignals.geography?.name}
-              >
-                {populationSignals.map((signal) => (
-                  <HealthSignalRow
-                    key={signal.id}
-                    expanded={expandedHealthSignalIds.has(signal.id)}
-                    signal={signal}
-                    onPress={openHealthSignal}
-                    onToggleInline={toggleHealthSignalInline}
-                  />
-                ))}
-              </HealthSignalGroup>
-            ) : null}
-
-            {radiologicalSignals.length > 0 ? (
-              <HealthSignalGroup
-                title={t('today.radiological')}
-                subtitle={t('today.radiologicalSource')}
-              >
-                {radiologicalSignals.map((signal) => (
-                  <HealthSignalRow
-                    key={signal.id}
-                    expanded={expandedHealthSignalIds.has(signal.id)}
-                    signal={signal}
-                    onPress={openHealthSignal}
-                    onToggleInline={toggleHealthSignalInline}
-                  />
-                ))}
-              </HealthSignalGroup>
-            ) : null}
-          </SectionCard>
+          <PublicHealthContextSection
+            rows={publicHealthRows}
+            expandedHealthSignalIds={expandedHealthSignalIds}
+            healthSectionNotice={healthSectionNotice}
+            loading={healthSignals.loading}
+            onOpenDetails={() => navigation.navigate('PublicHealthContext', undefined)}
+            onPressSignal={openHealthSignal}
+            onToggleInline={toggleHealthSignalInline}
+          />
         ) : null}
 
         {environment ? (
           <>
-            {activityDomainEvaluations.length > 0 ? (
-              <View style={styles.activitySection}>
-                <Text style={styles.sectionTitle}>{t('today.activities')}</Text>
-                {activityDomainEvaluations.map((domain) => {
-                  const previewProfiles = domain.profiles.slice(0, 2);
-                  const best = domain.bestOpportunity;
-                  const displayWindow =
-                    best !== null
-                      ? bestActivityWindowForRange(
-                          best.hours,
-                          best.current?.timestamp ?? referenceTime ?? '',
-                          24,
-                          best.minimumUsefulWindowDuration,
-                        )
-                      : null;
-                  const primaryProfile = previewProfiles[0];
-
-                  return (
-                    <InsightCard
-                      key={domain.id}
-                      title={domain.label}
-                      icon={
-                        <ActivityIcon activity={domain.id} size="inline" color={colors.muted} />
-                      }
-                      accent={activityColor(
-                        primaryProfile?.current?.category ?? 'insufficientData',
-                        primaryProfile?.semanticType,
-                      )}
-                      primary={
-                        primaryProfile?.current
-                          ? activityCategoryLabel(
-                              primaryProfile.current.category,
-                              primaryProfile.semanticType,
-                            )
-                          : t('common.unavailable')
-                      }
-                      compact
-                      secondary={primaryProfile?.label}
-                      details={[
-                        ...previewProfiles.map((profile) =>
-                          profile.current
-                            ? `${profile.label}: ${activityCategoryLabel(
-                                profile.current.category,
-                                profile.semanticType,
-                              )}`
-                            : `${profile.label}: ${t('common.unavailable')}`,
-                        ),
-                        best && displayWindow
-                          ? `${t('today.bestOpportunity')}: ${best.label} · ${formatActivityWindow(
-                              displayWindow,
-                              referenceTime,
-                            )}`
-                          : `${t('today.bestOpportunity')}: ${t('common.unavailable')}`,
-                      ]}
-                      accessibilityLabel={t('today.opensDetails', { label: domain.label })}
-                      onPress={() =>
-                        navigation.navigate('ActivityDomainDetail', { domainId: domain.id })
-                      }
-                    />
-                  );
-                })}
-              </View>
-            ) : null}
-
+            <ActivitySummarySection
+              evaluations={activityDomainEvaluations}
+              navigation={navigation}
+              referenceTime={referenceTime}
+            />
             <View style={styles.actions}>
               {shareMessage ? <Text style={styles.shareMessage}>{shareMessage}</Text> : null}
               <AppButton
@@ -856,21 +1001,11 @@ export function TodayScreen() {
             </View>
           </>
         ) : (
-          <SectionCard title={t('today.locationRequired')}>
-            <Text style={styles.body}>{t('today.locationRequiredBody')}</Text>
-            <AppButton
-              title={t('today.useCurrentLocation')}
-              iconName="current-location"
-              onPress={startLocationRefresh}
-              disabled={loading}
-            />
-            <AppButton
-              title={t('today.chooseManualLocation')}
-              iconName="location"
-              onPress={openManualLocationSettings}
-              disabled={loading}
-            />
-          </SectionCard>
+          <LocationRequiredCard
+            loading={loading}
+            onUseCurrentLocation={startLocationRefresh}
+            onChooseManualLocation={openManualLocationSettings}
+          />
         )}
       </ScrollView>
       <Modal
@@ -945,6 +1080,69 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     gap: spacing.sm,
+  },
+  decisionBody: {
+    gap: spacing.xs,
+  },
+  decisionCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 12,
+    borderTopWidth: 5,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: spacing.lg,
+    marginBottom: spacing.md,
+    padding: spacing.lg,
+  },
+  decisionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  decisionInterpretation: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '600',
+    lineHeight: 22,
+  },
+  decisionLocation: {
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    borderRadius: 10,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    minHeight: 44,
+  },
+  decisionMetric: {
+    backgroundColor: colors.pressedSurface,
+    borderRadius: 8,
+    flexGrow: 1,
+    flexShrink: 1,
+    gap: spacing.xs,
+    minWidth: 132,
+    padding: spacing.md,
+  },
+  decisionMetricLabel: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  decisionMetricValue: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '800',
+    lineHeight: 20,
+  },
+  decisionPlace: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  decisionTitle: {
+    fontSize: 32,
+    fontWeight: '900',
+    lineHeight: 36,
   },
   eventBody: {
     color: colors.text,
@@ -1098,6 +1296,12 @@ const styles = StyleSheet.create({
   healthValueBlock: {
     alignItems: 'flex-end',
   },
+  healthSummary: {
+    color: colors.muted,
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: spacing.xs,
+  },
   notice: {
     backgroundColor: '#FFF3CD',
     borderRadius: 8,
@@ -1127,6 +1331,26 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 13,
     marginTop: spacing.xs,
+  },
+  publicHealthContext: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 17,
+    paddingHorizontal: spacing.xs,
+  },
+  publicHealthRowShell: {
+    borderTopColor: colors.border,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    gap: spacing.xs,
+    paddingTop: spacing.sm,
+  },
+  publicHealthScope: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0,
+    paddingHorizontal: spacing.xs,
+    textTransform: 'uppercase',
   },
   screen: {
     backgroundColor: colors.background,

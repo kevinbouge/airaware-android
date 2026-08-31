@@ -16,6 +16,7 @@ describe('navigation', () => {
       'DataDetail',
       'ActivityDomainDetail',
       'ActivityDetail',
+      'PublicHealthContext',
       'HealthSignalDetail',
     ];
     const tabScreens = mainTabs.screens;
@@ -28,6 +29,7 @@ describe('navigation', () => {
     expect(screens.DataDetail).toBe('data/:variableId');
     expect(screens.ActivityDomainDetail).toBe('activities/:domainId');
     expect(screens.ActivityDetail).toBe('activities/:domainId/:profileId');
+    expect(screens.PublicHealthContext).toBe('health-context');
     expect(screens.HealthSignalDetail).toBe('health/:signalId');
   });
 
@@ -40,6 +42,7 @@ describe('navigation', () => {
     expect(navigator).toContain('name="PersonalizedRiskDetail"');
     expect(navigator).toContain('name="DataDetail"');
     expect(navigator).toContain('name="ActivityDetail"');
+    expect(navigator).toContain('name="PublicHealthContext"');
     expect(navigator).toContain('gestureEnabled: false');
     expect(navigator).not.toContain('tabBarButton: () => null');
     expect(navigator).not.toContain("tabBarItemStyle: { display: 'none' }");
@@ -94,6 +97,8 @@ describe('navigation', () => {
   it('routes Today summary cards into contextual detail screens', () => {
     const today = fs.readFileSync('src/screens/TodayScreen.tsx', 'utf8');
 
+    expect(today).toContain('TodayDecisionCard');
+    expect(today).toContain('todayDecisionSummary({');
     expect(today).toContain("navigation.navigate('EnvironmentalBurdenDetail', undefined)");
     expect(today).toContain("navigation.navigate('PersonalizedRiskDetail', undefined)");
     expect(today).toContain("navigation.navigate('ActivityDomainDetail', { domainId: domain.id })");
@@ -187,17 +192,33 @@ describe('navigation', () => {
     expect(settings).not.toContain('title="AirAware Pro"');
     expect(settings).not.toContain('title="Activities"');
     expect(pro).toContain("title={t('pro.title')}");
+    expect(pro).toContain("t('pro.headline')");
+    expect(pro).toContain('PRO_OUTCOME_GROUPS');
+    expect(pro).toContain("t('pro.unlockWithPrice', { price: billingState.offering.priceString })");
+    expect(pro).toContain('purchaseProLifetime');
+    expect(pro).toContain('restorePurchases');
     expect(pro).toContain("title={t('today.activities')}");
     expect(pro.indexOf("title={t('pro.title')}")).toBeLessThan(
       pro.indexOf("title={t('today.activities')}"),
     );
   });
 
+  it('keeps Pro positioned around planning outcomes and lifetime purchase copy', () => {
+    const locale = fs.readFileSync('src/i18n/locales/en.ts', 'utf8');
+
+    expect(locale).toContain("headline: 'Plan ahead with AirAware Pro'");
+    expect(locale).toContain('Know before conditions change');
+    expect(locale).toContain('Find the best time');
+    expect(locale).toContain('See further ahead');
+    expect(locale).toContain('See conditions without opening AirAware');
+    expect(locale).toContain('Lifetime purchase. No subscription. No AirAware account.');
+  });
+
   it('makes Today activity cards visibly tappable', () => {
     const today = fs.readFileSync('src/screens/TodayScreen.tsx', 'utf8');
 
     expect(today).toContain('InsightCard');
-    expect(today).toContain("t('today.opensDetails'");
+    expect(today).toContain("translate('today.opensDetails'");
     expect(today).toContain('activitySection');
   });
 
@@ -213,11 +234,43 @@ describe('navigation', () => {
     expect(today).not.toContain('setSelectedEvent(event)');
   });
 
+  it('keeps Today ordered around Now, Why, and When before contextual health information', () => {
+    const today = fs.readFileSync('src/screens/TodayScreen.tsx', 'utf8');
+
+    expect(today.indexOf('<TodayDecisionCard')).toBeLessThan(
+      today.indexOf('<EnvironmentalEventsSection'),
+    );
+    expect(today.indexOf('<EnvironmentalEventsSection')).toBeLessThan(
+      today.indexOf('<ThermalConditionsSection'),
+    );
+    expect(today.indexOf('<ThermalConditionsSection')).toBeLessThan(
+      today.indexOf('<EnvironmentalDetailsSection'),
+    );
+    expect(today.indexOf('<EnvironmentalDetailsSection')).toBeLessThan(
+      today.indexOf('<PublicHealthContextSection'),
+    );
+    expect(today.indexOf('<PublicHealthContextSection')).toBeLessThan(
+      today.indexOf('<ActivitySummarySection'),
+    );
+    expect(today).toContain("title={translate('today.useCurrentLocation')}");
+    expect(today).toContain("title={translate('today.chooseManualLocation')}");
+    expect(today).toContain('LocationSelectorButton');
+    expect(today).toContain('<LocationSelectorButton');
+    expect(today).toContain('locationOnboardingComplete: true');
+    expect(today.indexOf("t('today.personalizeAirAware')")).toBeGreaterThan(
+      today.indexOf('<TodayDecisionCard'),
+    );
+  });
+
   it('keeps Today health context concise and honest about stale or unavailable signals', () => {
     const today = fs.readFileSync('src/screens/TodayScreen.tsx', 'utf8');
 
-    expect(today).toContain("title={t('today.healthSignals')}");
-    expect(today).toContain('function HealthSignalGroup');
+    expect(today).toContain('PublicHealthContextSection');
+    expect(today).toContain("title={translate('today.publicHealthContext')}");
+    expect(today).toContain('publicHealthContextRows(publicHealthSignals)');
+    expect(today).toContain("title={translate('today.publicHealthViewAll')}");
+    expect(today).toContain("navigation.navigate('PublicHealthContext', undefined)");
+    expect(today).not.toContain('function HealthSignalGroup');
     expect(today).toContain('name="apparent-temperature"');
     expect(today).toContain('size="event"');
     expect(today).toContain("translate('today.thermalMetric.utci')");
@@ -228,13 +281,25 @@ describe('navigation', () => {
     expect(today).toContain("return 'vector-borne'");
     expect(today).toContain("return 'measured-spores'");
     expect(today).toContain('function isDemotedHealthSignal(signal: HealthSignal): boolean');
-    expect(today).toContain(
-      "signal.metadata?.unavailable === true || signal.freshness.status === 'stale'",
-    );
+    expect(today).toContain('isDemotedPublicHealthSignal(signal)');
     expect(today).toContain('sortedHealthSignals(');
     expect(today).toContain('healthSignalInlineDetailRows(signal)');
     expect(today).toContain('accessibilityState={hasInlineDetail ? { expanded } : undefined}');
     expect(today).toContain("name={hasTimelineDetail ? 'chevron-right' : 'info'}");
+  });
+
+  it('routes the compact Public Health Context preview to a full signal list', () => {
+    const screen = fs.readFileSync('src/screens/PublicHealthContextScreen.tsx', 'utf8');
+
+    expect(screen).toContain('publicHealthContextRows(');
+    expect(screen).toContain("signal.type !== 'thermal-stress'");
+    expect(screen).toContain('rows.map((row)');
+    expect(screen).not.toContain('rows.slice(0, 4)');
+    expect(screen).toContain("navigation.navigate('HealthSignalDetail', { signalId: signal.id })");
+    expect(screen).toContain('row.scopeLabel');
+    expect(screen).toContain('row.contextLabel');
+    expect(screen).toContain('row.sourceLabel');
+    expect(screen).toContain('row.secondaryLabel');
   });
 
   it('keeps health-signal detail pages aligned with the pollen timeline layout', () => {
@@ -262,8 +327,8 @@ describe('navigation', () => {
   it('offers current and manual location paths from Today onboarding', () => {
     const today = fs.readFileSync('src/screens/TodayScreen.tsx', 'utf8');
 
-    expect(today).toContain("title={t('today.useCurrentLocation')}");
-    expect(today).toContain("title={t('today.chooseManualLocation')}");
+    expect(today).toContain("title={translate('today.useCurrentLocation')}");
+    expect(today).toContain("title={translate('today.chooseManualLocation')}");
     expect(today).toContain("navigation.navigate('MainTabs', { screen: 'Settings' })");
   });
 

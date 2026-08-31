@@ -14,6 +14,7 @@ import { ActivityDetailScreen } from '../screens/ActivityDetailScreen';
 import { EnvironmentalBurdenDetailScreen } from '../screens/EnvironmentalBurdenDetailScreen';
 import { PersonalizedRiskDetailScreen } from '../screens/PersonalizedRiskDetailScreen';
 import { HealthSignalDetailScreen } from '../screens/HealthSignalDetailScreen';
+import { PublicHealthContextScreen } from '../screens/PublicHealthContextScreen';
 import { TabIcon, type TabIconName } from '../components/icons/TabIcon';
 import type { EnvironmentalVariableId } from '../capabilities/types';
 import type { ActivityDomainId, ActivityProfileId } from '../models/activities';
@@ -39,6 +40,7 @@ export type RootStackParamList = {
   DataDetail: { variableId: EnvironmentalVariableId };
   ActivityDomainDetail: { domainId: ActivityDomainId };
   ActivityDetail: { profileId: ActivityProfileId; domainId?: ActivityDomainId };
+  PublicHealthContext: undefined;
   HealthSignalDetail: { signalId: string };
 };
 
@@ -126,6 +128,7 @@ export function AppNavigator() {
         />
         <Stack.Screen name="ActivityDomainDetail" component={ActivityDomainDetailScreen} />
         <Stack.Screen name="ActivityDetail" component={ActivityDetailScreen} />
+        <Stack.Screen name="PublicHealthContext" component={PublicHealthContextScreen} />
         <Stack.Screen name="HealthSignalDetail" component={HealthSignalDetailScreen} />
       </Stack.Navigator>
     </NavigationContainer>

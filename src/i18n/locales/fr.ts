@@ -105,9 +105,46 @@ export const fr = {
     previewFree: 'Aperçu gratuit',
     previewPro: 'Aperçu Pro',
     active: 'AirAware Pro est actif. Vos fonctionnalités Pro à vie sont déverrouillées.',
+    headline: 'Planifiez avec AirAware Pro',
     unlockBody:
-      'Déverrouillez des outils de planification pour des prévisions plus longues, les activités professionnelles, des widgets enrichis et les alertes avancées d’événements environnementaux.',
-    oneTime: 'Achat unique. Aucun abonnement. Aucun compte AirAware.',
+      'Anticipez les changements de conditions, trouvez de meilleurs créneaux dehors et consultez davantage d’informations sans ouvrir AirAware.',
+    oneTime: 'Achat à vie. Aucun abonnement. Aucun compte AirAware.',
+    outcomes: {
+      knowBeforeChange: {
+        title: 'Savoir avant que les conditions changent',
+        body: 'Configurez des alertes environnementales pour le lieu actif.',
+        pollen: 'Pollen',
+        airPollution: 'Pollution de l’air',
+        dust: 'Poussières sahariennes',
+        wildfire: 'Pollution particulaire liée aux feux',
+        uv: 'UV',
+        mold: 'Potentiel de moisissures',
+        overallRisk: 'Risque environnemental global',
+      },
+      findBestTime: {
+        title: 'Trouver le meilleur moment',
+        body: 'Utilisez des créneaux environnementaux propres aux activités prises en charge.',
+        agriculture: 'Agriculture',
+        droneOperations: 'Opérations de drone',
+        photography: 'Photographie',
+        astronomy: 'Astronomie',
+        outdoorWork: 'Travail en extérieur',
+      },
+      seeFurtherAhead: {
+        title: 'Voir plus loin',
+        body: 'Utilisez davantage de contexte prévisionnel pour planifier au-delà d’aujourd’hui.',
+        forecast:
+          'Jusqu’à 7 jours de prévisions environnementales au lieu de l’horizon standard de 3 jours',
+      },
+      withoutOpening: {
+        title: 'Voir les conditions sans ouvrir AirAware',
+        body: 'Utilisez le widget Android avancé pour une planification consultable d’un coup d’œil.',
+        currentCondition: 'Condition actuelle',
+        mainFactor: 'Facteur principal',
+        bestWindow: 'Meilleur créneau pour sortir',
+        compactForecast: 'Informations de prévision compactes',
+      },
+    },
     unconfigured: 'L’achat AirAware Pro n’est pas configuré dans cette version.',
     unavailable:
       'L’achat AirAware Pro nécessite une version Android de développement ou de publication.',
@@ -155,6 +192,24 @@ export const fr = {
     advancedNotifications: 'Notifications environnementales avancées',
   },
   today: {
+    decision: {
+      condition: {
+        low: 'Bonnes conditions',
+        moderate: 'Charge environnementale modérée',
+        high: 'Charge environnementale élevée',
+        veryHigh: 'Charge environnementale très élevée',
+        unavailable: 'Conditions indisponibles',
+      },
+      interpretation: {
+        low: 'Bonnes conditions pour être dehors.',
+        moderate: 'Certains facteurs environnementaux peuvent être perceptibles.',
+        high: 'La charge environnementale est élevée ; envisagez un meilleur créneau si possible.',
+        veryHigh:
+          'La charge environnementale est très élevée ; les conditions peuvent s’améliorer plus tard.',
+        unavailable: 'Les conditions environnementales locales actuelles sont indisponibles.',
+      },
+      bestWindowUnavailable: 'Aucun meilleur créneau disponible',
+    },
     thermalStress: 'Stress thermique',
     thermalSource: 'UTCI si valide, sinon température ressentie',
     thermalMetric: {
@@ -163,6 +218,14 @@ export const fr = {
     },
     healthSignals: 'Contexte santé',
     healthSignalsSubtitle: 'Signaux publics avec géographie, période et fraîcheur indiquées',
+    publicHealthContext: 'Contexte de santé publique',
+    publicHealthContextSubtitle:
+      'Surveillance et suivi publics, jamais un score de risque personnel',
+    publicHealthCurrentSignals: 'Signaux actuels : {{count}}',
+    publicHealthNoCurrentSignals:
+      'Aucun contexte de santé publique actuel disponible pour ce lieu.',
+    publicHealthViewAll: 'Voir tout le contexte de santé publique',
+    loadingPublicHealthContext: 'Chargement du contexte de santé publique...',
     respiratoryActivity: 'Activité respiratoire',
     vectorBorneActivity: 'Activité vectorielle',
     wastewaterSurveillance: 'Surveillance des eaux usées',
@@ -182,7 +245,13 @@ export const fr = {
     weather: 'météo',
     locationNotSet: 'Lieu non défini',
     mainFactor: 'Facteur principal',
+    mainConcern: 'Préoccupation principale',
     bestWindow: 'Meilleur créneau',
+    bestTimeToday: "Meilleur créneau aujourd'hui",
+    environmentalDetails: 'Détails environnementaux',
+    environmentalDetailsSubtitle:
+      'Scores et prévisions pour les conditions environnementales locales',
+    personalizeAirAware: 'Personnaliser AirAware',
     activities: 'Activités',
     bestOpportunity: 'Meilleure opportunité',
     refreshing: 'Actualisation...',
@@ -190,7 +259,7 @@ export const fr = {
     share: 'Partager',
     locationRequired: 'Localisation requise',
     locationRequiredBody:
-      'Utilisez la position actuelle ou choisissez un lieu manuel enregistré pour récupérer les conditions locales. Les coordonnées ne sont envoyées qu’aux fournisseurs qui en ont besoin.',
+      'Sachez ce qui vous attend dehors avant de sortir.\n\nAirAware vérifie le pollen, la pollution, la météo et les conditions environnementales autour de vous.\n\nAucun compte. Aucun suivi. Vos préférences restent sur cet appareil.',
     continueAndRefresh: 'Continuer et actualiser',
     useCurrentLocation: 'Utiliser la position actuelle',
     chooseManualLocation: 'Choisir un lieu manuel',
@@ -200,6 +269,7 @@ export const fr = {
     eventDataAttribution:
       'Données : API Air Quality d’Open-Meteo avec les prévisions CAMS. Conditions environnementales uniquement, pas un avis médical.',
     opensDetails: '{{label}}. Ouvre les détails.',
+    expandsDetails: '{{label}}. Affiche les détails.',
   },
   detail: {
     score: 'Score',
@@ -291,6 +361,13 @@ export const fr = {
       fresh: 'Frais',
       aging: 'Vieillissant',
       stale: 'Périmé',
+    },
+    scope: {
+      countryLevel: 'Niveau national',
+      regional: 'Régional',
+      localMonitoring: 'Suivi local',
+      localSensor: 'Capteur local',
+      publicMonitoring: 'Suivi public',
     },
     evidence: 'Éléments observés',
     about: 'À propos de ce signal',
