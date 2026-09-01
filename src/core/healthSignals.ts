@@ -22,6 +22,8 @@ export function healthSignalTypeLabel(type: HealthSignalType): string {
       return translate('health.covid19');
     case 'rsv':
       return translate('health.rsv');
+    case 'outbreak-event':
+      return translate('health.outbreakEvent');
     case 'wastewater-covid-19':
       return translate('health.wastewater.covid19');
     case 'wastewater-influenza':
@@ -30,6 +32,8 @@ export function healthSignalTypeLabel(type: HealthSignalType): string {
       return translate('health.wastewater.rsv');
     case 'dengue':
       return translate('health.vector.dengue');
+    case 'chikungunya':
+      return translate('health.vector.chikungunya');
     case 'west-nile':
       return translate('health.vector.westNile');
     case 'malaria':
@@ -108,6 +112,13 @@ export function healthSignalTrendLabel(trend: HealthSignalTrend): string {
 }
 
 export function healthSignalValueLabel(signal: HealthSignal): string {
+  if (signal.type === 'outbreak-event') {
+    const disease = signal.metadata?.disease;
+    return typeof disease === 'string' && disease.length > 0
+      ? disease
+      : translate('health.outbreakReportedEvent');
+  }
+
   if (signal.value === undefined || signal.unit === undefined) {
     if (signal.metadata?.unavailable === true) {
       return signal.type === 'ambient-dose-rate'
@@ -231,6 +242,9 @@ export function healthSignalGeographyLabel(signal: HealthSignal): string {
 
 function providerDisplayName(provider: string): string {
   if (provider === 'WHO GISRS / FluNet') return `${translate('providers.who')} GISRS / FluNet`;
+  if (provider === 'WHO Disease Outbreak News') {
+    return `${translate('providers.who')} Disease Outbreak News`;
+  }
   if (provider === 'WHO Global Health Observatory') {
     return `${translate('providers.who')} Global Health Observatory`;
   }

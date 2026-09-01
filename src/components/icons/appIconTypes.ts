@@ -28,6 +28,7 @@ export type AppIconName =
   | 'clock'
   | 'privacy'
   | 'respiratory'
+  | 'outbreak'
   | 'wastewater'
   | 'vector-borne'
   | 'measured-spores'

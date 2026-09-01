@@ -1,5 +1,10 @@
-import { differenceInMilliseconds } from 'date-fns';
-import type { HealthSignalFreshnessStatus, HealthSignalTrend } from '../models/healthSignals';
+import type {
+  HealthSignal,
+  HealthSignalFreshnessStatus,
+  HealthSignalTemporalClass,
+  HealthSignalTrend,
+} from '../models/healthSignals';
+import { millisecondsBetween } from '../utils/time';
 
 export interface HealthSignalFreshnessPolicy {
   expectedUpdateIntervalMs: number;
@@ -55,11 +60,123 @@ export const DENGUE_CLUSTER_SURVEILLANCE_FRESHNESS: HealthSignalFreshnessPolicy 
   staleAfterMs: 45 * 24 * 60 * 60 * 1000,
 };
 
-export const MEASURED_SPORE_SURVEILLANCE_FRESHNESS: HealthSignalFreshnessPolicy = {
+const MEASURED_SPORE_SURVEILLANCE_FRESHNESS: HealthSignalFreshnessPolicy = {
   expectedUpdateIntervalMs: 24 * 60 * 60 * 1000,
   agingAfterMs: 3 * 24 * 60 * 60 * 1000,
   staleAfterMs: 7 * 24 * 60 * 60 * 1000,
 };
+
+export const OUTBREAK_EVENT_FRESHNESS: HealthSignalFreshnessPolicy = {
+  expectedUpdateIntervalMs: 7 * 24 * 60 * 60 * 1000,
+  agingAfterMs: 21 * 24 * 60 * 60 * 1000,
+  staleAfterMs: 45 * 24 * 60 * 60 * 1000,
+};
+
+export function healthSignalTemporalClass(
+  signal: Pick<HealthSignal, 'temporalClass' | 'type'>,
+): HealthSignalTemporalClass {
+  if (signal.temporalClass) return signal.temporalClass;
+  if (signal.type === 'excess-mortality' || signal.type === 'malaria') return 'background';
+  return 'current';
+}
+
+export function freshnessPolicyForHealthSignal(signal: Pick<HealthSignal, 'source' | 'type'>) {
+  if (signal.type === 'thermal-stress') return THERMAL_STRESS_FRESHNESS;
+  if (signal.type === 'ambient-dose-rate') return RADIATION_MONITORING_FRESHNESS;
+  if (
+    signal.type === 'wastewater-covid-19' ||
+    signal.type === 'wastewater-influenza' ||
+    signal.type === 'wastewater-rsv'
+  ) {
+    return WASTEWATER_SURVEILLANCE_FRESHNESS;
+  }
+  if (signal.type === 'outbreak-event') return OUTBREAK_EVENT_FRESHNESS;
+  if (
+    signal.type === 'dengue' ||
+    signal.type === 'chikungunya' ||
+    signal.type === 'west-nile' ||
+    signal.type === 'tick-borne-disease'
+  ) {
+    return DENGUE_CLUSTER_SURVEILLANCE_FRESHNESS;
+  }
+  if (signal.type === 'malaria') return VECTOR_SURVEILLANCE_FRESHNESS;
+  if (signal.type === 'measured-mold-spores') return MEASURED_SPORE_SURVEILLANCE_FRESHNESS;
+  if (signal.type === 'excess-mortality') {
+    return signal.source.provider === 'Our World in Data'
+      ? OWID_EXCESS_MORTALITY_FRESHNESS
+      : EXCESS_MORTALITY_FRESHNESS;
+  }
+  return RESPIRATORY_SURVEILLANCE_FRESHNESS;
+}
+
+function healthSignalObservationTimestamp(signal: HealthSignal): string {
+  return signal.periodEnd ?? signal.observedAt ?? signal.updatedAt;
+}
+
+export function evaluateHealthSignalFreshness(signal: HealthSignal, now: string) {
+  return calculateHealthSignalFreshness({
+    updatedAt: healthSignalObservationTimestamp(signal),
+    now,
+    policy: freshnessPolicyForHealthSignal(signal),
+  });
+}
+
+export function isCurrentContextEligible(signal: HealthSignal): boolean {
+  return (
+    healthSignalTemporalClass(signal) === 'current' &&
+    signal.metadata?.unavailable !== true &&
+    signal.metadata?.providerStatus !== 'provider-error' &&
+    signal.freshness.status !== 'stale'
+  );
+}
+
+function sourceScopeRank(signal: HealthSignal): number {
+  if (signal.geography.level === 'local') return 4;
+  if (signal.geography.level === 'subregion' || signal.geography.level === 'region') return 3;
+  if (signal.source.provider === 'WHO GISRS / FluNet') return 2;
+  if (signal.source.provider === 'WHO Disease Outbreak News') return 2;
+  if (signal.geography.level === 'country') return 1;
+  return 0;
+}
+
+function freshnessRank(signal: HealthSignal): number {
+  if (signal.metadata?.unavailable === true) return 0;
+  if (signal.freshness.status === 'fresh') return 3;
+  if (signal.freshness.status === 'aging') return 2;
+  return 1;
+}
+
+function reportingTime(signal: HealthSignal): number {
+  const parsed = Date.parse(healthSignalObservationTimestamp(signal));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export function resolveBestHealthObservation(
+  left: HealthSignal,
+  right: HealthSignal,
+): HealthSignal {
+  const ranks: [number, number][] = [
+    [isCurrentContextEligible(left) ? 1 : 0, isCurrentContextEligible(right) ? 1 : 0],
+    [freshnessRank(left), freshnessRank(right)],
+    [sourceScopeRank(left), sourceScopeRank(right)],
+    [reportingTime(left), reportingTime(right)],
+  ];
+
+  for (const [leftRank, rightRank] of ranks) {
+    if (leftRank !== rightRank) return leftRank > rightRank ? left : right;
+  }
+
+  return left;
+}
+
+export function resolveBestHealthSignalCandidate(
+  signals: readonly HealthSignal[],
+): HealthSignal | null {
+  return signals.reduce<HealthSignal | null>(
+    (best, signal) => (best ? resolveBestHealthObservation(best, signal) : signal),
+    null,
+  );
+}
 
 export function calculateHealthSignalFreshness(input: {
   updatedAt: string;
@@ -72,7 +189,7 @@ export function calculateHealthSignalFreshness(input: {
     return { status: 'stale', ageMs: Number.POSITIVE_INFINITY };
   }
 
-  const ageMs = Math.max(0, differenceInMilliseconds(new Date(now), new Date(updatedAt)));
+  const ageMs = Math.max(0, millisecondsBetween(now, updatedAt));
   if (ageMs > input.policy.staleAfterMs) return { status: 'stale', ageMs };
   if (ageMs > input.policy.agingAfterMs) return { status: 'aging', ageMs };
   return { status: 'fresh', ageMs };

@@ -6,6 +6,10 @@ import { colors } from '../theme/theme';
 import { formatDistanceMeters, formatMeasurement } from '../utils/format';
 import { DATA_DETAIL_RANGES, dataDetailRange } from './dataVariableMetadata';
 import {
+  healthSignalTemporalClass,
+  isCurrentContextEligible,
+} from '../services/healthSignalFreshness';
+import {
   healthSignalCategoryLabel,
   healthSignalFreshnessDetailLabel,
   healthSignalFreshnessLabel,
@@ -106,6 +110,7 @@ export function healthSignalDetailPrimaryLabel(
 ): string {
   if (signal.type === 'thermal-stress') return translate('health.thermalStress.currentConditions');
   if (signal.domain === 'radiological') return translate('health.radiological.currentMeasurement');
+  if (signal.type === 'outbreak-event') return translate('health.outbreakSourceLabel');
   if (signal.domain === 'population-health') return translate('health.latestAvailable');
   if (signal.type === 'malaria') return translate('health.latestAnnualContext');
   if (isWastewaterSignal(signal)) return translate('health.latestWastewaterObservation');
@@ -218,22 +223,61 @@ export function isDemotedPublicHealthSignal(signal: HealthSignal): boolean {
   return signal.metadata?.unavailable === true || signal.freshness.status !== 'fresh';
 }
 
+function healthSignalUnavailableReason(signal: HealthSignal): string | null {
+  return typeof signal.metadata?.reason === 'string' ? signal.metadata.reason : null;
+}
+
+function hasNoMatchingEcdcReportingArea(signal: HealthSignal): boolean {
+  const reason = healthSignalUnavailableReason(signal);
+  return reason === 'no-ecdc-dengue-cluster' || reason === 'no-ecdc-chikungunya-cluster';
+}
+
+function unavailableOutbreakLabel(signal: HealthSignal): string | null {
+  const reason = healthSignalUnavailableReason(signal);
+  if (
+    signal.type === 'outbreak-event' &&
+    signal.metadata?.unavailable === true &&
+    reason === 'no-relevant-who-outbreak-events'
+  ) {
+    return translate('health.coverage.noRelevantOutbreakEvents');
+  }
+
+  return null;
+}
+
+function staleHealthSignalValueLabel(signal: HealthSignal): string {
+  if (signal.type === 'ambient-dose-rate') {
+    return translate('health.radiological.noRecentLocalMeasurement');
+  }
+  if (isWastewaterSignal(signal)) return translate('health.wastewater.noLocalData');
+  if (hasNoMatchingEcdcReportingArea(signal)) {
+    return translate('health.coverage.noMatchingReportingArea');
+  }
+  return translate('health.noRecentData');
+}
+
+function unavailableHealthSignalValueLabel(signal: HealthSignal): string | null {
+  if (signal.metadata?.providerStatus === 'provider-error') {
+    return translate('health.coverage.providerUnavailable');
+  }
+  if (unavailableOutbreakLabel(signal)) return unavailableOutbreakLabel(signal);
+  if (isWastewaterSignal(signal)) return translate('health.wastewater.noLocalData');
+  if (hasNoMatchingEcdcReportingArea(signal)) {
+    return translate('health.coverage.noMatchingReportingArea');
+  }
+  return null;
+}
+
 function publicHealthContextValueLabel(signal: HealthSignal): string {
-  const unavailable = signal.metadata?.unavailable === true;
-
-  if (signal.freshness.status === 'stale') {
-    if (signal.type === 'ambient-dose-rate') {
-      return translate('health.radiological.noRecentLocalMeasurement');
-    }
-    if (isWastewaterSignal(signal)) {
-      return translate('health.wastewater.noLocalData');
-    }
-    return translate('health.noRecentData');
+  if (signal.metadata?.unavailable === true) {
+    const unavailableLabel = unavailableHealthSignalValueLabel(signal);
+    if (unavailableLabel) return unavailableLabel;
+    if (signal.freshness.status === 'stale') return staleHealthSignalValueLabel(signal);
+    return healthSignalValueLabel(signal);
   }
 
-  if (unavailable && isWastewaterSignal(signal)) {
-    return translate('health.wastewater.noLocalData');
-  }
+  if (signal.freshness.status === 'stale') return staleHealthSignalValueLabel(signal);
+  if (signal.type === 'outbreak-event') return healthSignalValueLabel(signal);
 
   return healthSignalValueLabel(signal);
 }
@@ -242,6 +286,10 @@ export function publicHealthContextRow(signal: HealthSignal): PublicHealthContex
   const unavailable = signal.metadata?.unavailable === true;
   const freshness = healthSignalFreshnessDetailLabel(signal);
   const nearestSensorDistanceKm = signal.metadata?.nearestSensorDistanceKm;
+  const temporalLabel =
+    healthSignalTemporalClass(signal) === 'background'
+      ? translate('health.temporal.background')
+      : null;
   const geography =
     signal.domain === 'radiological' && typeof nearestSensorDistanceKm === 'number'
       ? [
@@ -250,17 +298,24 @@ export function publicHealthContextRow(signal: HealthSignal): PublicHealthContex
         ].join(' · ')
       : healthSignalGeographyLabel(signal);
   const value = publicHealthContextValueLabel(signal);
-  const secondary =
-    unavailable || signal.domain === 'radiological'
-      ? healthSignalCategoryLabel(signal)
-      : healthSignalTrendLabel(signal.trend);
+  let secondary: string;
+  if (signal.type === 'outbreak-event') {
+    secondary = translate('health.outbreakSourceLabel');
+  } else if (unavailable || signal.domain === 'radiological') {
+    secondary = healthSignalCategoryLabel(signal);
+  } else {
+    secondary = healthSignalTrendLabel(signal.trend);
+  }
 
   return {
     signal,
-    label: healthSignalTypeLabel(signal.type),
+    label:
+      signal.type === 'outbreak-event' && typeof signal.metadata?.title === 'string'
+        ? signal.metadata.title
+        : healthSignalTypeLabel(signal.type),
     value,
     scopeLabel: healthSignalReportingScopeLabel(signal),
-    contextLabel: [geography, healthSignalPeriodLabel(signal), freshness]
+    contextLabel: [temporalLabel, geography, healthSignalPeriodLabel(signal), freshness]
       .filter(Boolean)
       .join(' · '),
     sourceLabel: healthSignalSourceLabel(signal),
@@ -269,26 +324,73 @@ export function publicHealthContextRow(signal: HealthSignal): PublicHealthContex
   };
 }
 
-export function publicHealthContextRows(signals: HealthSignal[]): PublicHealthContextRow[] {
-  return [...signals]
-    .sort((left, right) => {
-      const leftRank = isDemotedPublicHealthSignal(left) ? 1 : 0;
-      const rightRank = isDemotedPublicHealthSignal(right) ? 1 : 0;
-      if (leftRank !== rightRank) return leftRank - rightRank;
-      if (left.freshness.status !== right.freshness.status) {
-        return left.freshness.status.localeCompare(right.freshness.status);
-      }
-      return healthSignalTypeLabel(left.type).localeCompare(healthSignalTypeLabel(right.type));
-    })
-    .map(publicHealthContextRow);
+function publicHealthRowSort(left: PublicHealthContextRow, right: PublicHealthContextRow): number {
+  const leftRank = left.demoted ? 1 : 0;
+  const rightRank = right.demoted ? 1 : 0;
+  if (leftRank !== rightRank) return leftRank - rightRank;
+  if (left.signal.freshness.status !== right.signal.freshness.status) {
+    return left.signal.freshness.status.localeCompare(right.signal.freshness.status);
+  }
+  return left.label.localeCompare(right.label);
+}
+
+export function currentPublicHealthContextRows(signals: HealthSignal[]): PublicHealthContextRow[] {
+  return signals
+    .filter(isCurrentContextEligible)
+    .map(publicHealthContextRow)
+    .sort(publicHealthRowSort);
+}
+
+export function backgroundPublicHealthContextRows(
+  signals: HealthSignal[],
+): PublicHealthContextRow[] {
+  return signals
+    .filter(
+      (signal) =>
+        healthSignalTemporalClass(signal) === 'background' &&
+        signal.metadata?.unavailable !== true &&
+        signal.metadata?.providerStatus !== 'provider-error',
+    )
+    .map(publicHealthContextRow)
+    .sort(publicHealthRowSort);
+}
+
+function hasCoverageAvailabilityState(signal: HealthSignal): boolean {
+  const unavailableOrErrored =
+    signal.metadata?.unavailable === true || signal.metadata?.providerStatus === 'provider-error';
+  if (healthSignalTemporalClass(signal) === 'background') {
+    return signal.type !== 'thermal-stress' && unavailableOrErrored;
+  }
+
+  return (
+    signal.type !== 'thermal-stress' &&
+    (unavailableOrErrored || signal.freshness.status === 'stale')
+  );
+}
+
+export function coveragePublicHealthContextRows(signals: HealthSignal[]): PublicHealthContextRow[] {
+  return signals
+    .filter(hasCoverageAvailabilityState)
+    .map(publicHealthContextRow)
+    .sort(publicHealthRowSort);
 }
 
 export function publicHealthContextSummary(rows: PublicHealthContextRow[]): string {
-  const currentCount = rows.filter(
-    (row) => !row.demoted && row.signal.metadata?.unavailable !== true,
-  ).length;
+  const currentCount = rows.filter((row) => isCurrentContextEligible(row.signal)).length;
   if (currentCount === 0) return translate('today.publicHealthNoCurrentSignals');
   return translate('today.publicHealthCurrentSignals', { count: currentCount });
+}
+
+export function publicHealthBackgroundSummary(rows: PublicHealthContextRow[]): string {
+  const backgroundCount = rows.length;
+  if (backgroundCount === 0) return '';
+  return translate('today.publicHealthBackgroundSignals', { count: backgroundCount });
+}
+
+export function publicHealthCoverageSummary(rows: PublicHealthContextRow[]): string {
+  const coverageCount = rows.length;
+  if (coverageCount === 0) return '';
+  return translate('today.publicHealthCoverageSignals', { count: coverageCount });
 }
 
 export function healthSignalDetailMetadataRows(signal: HealthSignal): HealthSignalDetailRow[] {
@@ -418,7 +520,9 @@ export function healthTimelineFillStyle(input: {
 }
 
 export function todayHealthSectionVisibility(input: {
+  backgroundSignalCount: number;
   contextualHealthSignalCount: number;
+  coverageSignalCount: number;
   hasHealthSignalLocationContext: boolean;
   healthSignalsError: string | null;
   healthSignalsLoading: boolean;
@@ -429,7 +533,9 @@ export function todayHealthSectionVisibility(input: {
       input.hasHealthSignalLocationContext &&
       (input.healthSignalsLoading ||
         input.healthSignalsError !== null ||
-        input.contextualHealthSignalCount > 0),
+        input.contextualHealthSignalCount > 0 ||
+        input.backgroundSignalCount > 0 ||
+        input.coverageSignalCount > 0),
     shouldShowThermalSignals: input.hasHealthSignalLocationContext && input.thermalSignalCount > 0,
   };
 }

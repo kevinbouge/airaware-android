@@ -46,6 +46,8 @@ const PHAC_WASTEWATER_MEASURES: PhacWastewaterMeasure[] = [
   },
 ];
 
+const PHAC_WASTEWATER_SIGNAL_TYPES = PHAC_WASTEWATER_MEASURES.map((measure) => measure.signalType);
+
 const phacTrendRowSchema = z
   .object({
     Location: z.string(),
@@ -168,6 +170,7 @@ function unavailableSignal(input: {
       measure: input.measure.label,
     },
     freshness: { status: 'stale', ageMs: Number.POSITIVE_INFINITY },
+    temporalClass: 'current',
     metadata: {
       unavailable: true,
       reason: 'no-phac-wastewater-observation',
@@ -225,6 +228,7 @@ export function normalizePhacWastewaterSignals(input: {
         now: input.now,
         policy: WASTEWATER_SURVEILLANCE_FRESHNESS,
       }),
+      temporalClass: 'current',
       metadata: {
         providerCategory: current.Viral_Activity_Level ?? current.latestLevel,
         surveillanceBasis: 'wastewater viral activity',
@@ -241,6 +245,10 @@ export const phacWastewaterProvider: HealthSignalProvider = {
   id: 'phac-wastewater',
   access: 'anonymous',
   coverage: 'regional',
+  authority: 'national-authority',
+  regions: ['americas'],
+  signals: PHAC_WASTEWATER_SIGNAL_TYPES,
+  temporalClasses: ['current'],
   documentationUrl: 'https://health-infobase.canada.ca/wastewater/',
   supports: (context: HealthSignalProviderContext) => context.geography?.countryCode === 'CA',
   fetchSignals: async (context) => {
@@ -304,7 +312,3 @@ export const phacWastewaterProvider: HealthSignalProvider = {
     };
   },
 };
-
-export const PHAC_WASTEWATER_SIGNAL_TYPES = PHAC_WASTEWATER_MEASURES.map(
-  (measure) => measure.signalType,
-);

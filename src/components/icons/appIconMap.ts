@@ -29,6 +29,7 @@ import RotateCcw from 'lucide-react-native/icons/rotate-ccw';
 import Settings from 'lucide-react-native/icons/settings';
 import Share2 from 'lucide-react-native/icons/share-2';
 import Shield from 'lucide-react-native/icons/shield';
+import Siren from 'lucide-react-native/icons/siren';
 import Sprout from 'lucide-react-native/icons/sprout';
 import Telescope from 'lucide-react-native/icons/telescope';
 import Trash2 from 'lucide-react-native/icons/trash-2';
@@ -74,6 +75,7 @@ export const APP_ICON_MAP: Record<AppIconName, AppIconDefinition> = {
   clock: { component: Clock, libraryName: 'Clock' },
   privacy: { component: Shield, libraryName: 'Shield' },
   respiratory: { component: HeartPulse, libraryName: 'HeartPulse' },
+  outbreak: { component: Siren, libraryName: 'Siren' },
   wastewater: { component: Droplets, libraryName: 'Droplets' },
   'vector-borne': { component: Bug, libraryName: 'Bug' },
   'measured-spores': { component: Flower2, libraryName: 'Flower2' },

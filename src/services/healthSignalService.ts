@@ -1,17 +1,15 @@
-import { cdcWastewaterProvider, CDC_WASTEWATER_SIGNAL_TYPES } from '../api/health/cdcWastewater';
-import { ecdcDengueProvider, ECDC_DENGUE_SIGNAL_TYPES } from '../api/health/ecdcDengue';
+import { cdcWastewaterProvider } from '../api/health/cdcWastewater';
+import { ecdcChikungunyaProvider, ecdcDengueProvider } from '../api/health/ecdcVectorSurveillance';
 import { eurostatExcessMortalityProvider } from '../api/health/eurostatExcessMortality';
 import { owidExcessMortalityProvider } from '../api/health/owidExcessMortality';
-import { phacWastewaterProvider, PHAC_WASTEWATER_SIGNAL_TYPES } from '../api/health/phacWastewater';
+import { phacWastewaterProvider } from '../api/health/phacWastewater';
 import {
   radiologicalSpatialCacheKey,
   safecastRadiologicalProvider,
 } from '../api/health/safecastRadiological';
-import { RIVM_WASTEWATER_SIGNAL_TYPES, rivmWastewaterProvider } from '../api/health/rivmWastewater';
-import {
-  SUMEAU_WASTEWATER_SIGNAL_TYPES,
-  sumeauWastewaterProvider,
-} from '../api/health/sumeauWastewater';
+import { rivmWastewaterProvider } from '../api/health/rivmWastewater';
+import { sumeauWastewaterProvider } from '../api/health/sumeauWastewater';
+import { whoOutbreakProvider } from '../api/health/whoOutbreaks';
 import { RESPIRATORY_SIGNAL_TYPES, whoRespiratoryProvider } from '../api/health/whoRespiratory';
 import { whoVectorDiseaseProvider } from '../api/health/whoVectorDisease';
 import { thermalStressSignalFromEnvironment } from '../core/thermalStress';
@@ -27,24 +25,20 @@ import type {
 import { loadHealthSignalsCacheForGeography, saveHealthSignalsCache } from '../storage/storage';
 import { healthCacheKey, resolveHealthGeography } from './healthGeography';
 import {
-  EXCESS_MORTALITY_FRESHNESS,
-  OWID_EXCESS_MORTALITY_FRESHNESS,
-  RADIATION_MONITORING_FRESHNESS,
-  RESPIRATORY_SURVEILLANCE_FRESHNESS,
-  THERMAL_STRESS_FRESHNESS,
-  MEASURED_SPORE_SURVEILLANCE_FRESHNESS,
-  VECTOR_SURVEILLANCE_FRESHNESS,
-  WASTEWATER_SURVEILLANCE_FRESHNESS,
-  calculateHealthSignalFreshness,
+  evaluateHealthSignalFreshness,
+  freshnessPolicyForHealthSignal,
+  resolveBestHealthObservation,
 } from './healthSignalFreshness';
 
 const HEALTH_SIGNAL_PROVIDERS: HealthSignalProvider[] = [
   whoRespiratoryProvider,
+  whoOutbreakProvider,
   cdcWastewaterProvider,
   phacWastewaterProvider,
   sumeauWastewaterProvider,
   rivmWastewaterProvider,
   ecdcDengueProvider,
+  ecdcChikungunyaProvider,
   whoVectorDiseaseProvider,
   eurostatExcessMortalityProvider,
   owidExcessMortalityProvider,
@@ -81,54 +75,36 @@ function sortSignals(signals: HealthSignal[]): HealthSignal[] {
     influenza: 0,
     'covid-19': 1,
     rsv: 2,
-    'thermal-stress': 3,
-    'wastewater-covid-19': 4,
-    'wastewater-influenza': 5,
-    'wastewater-rsv': 6,
-    dengue: 7,
-    'west-nile': 8,
-    malaria: 9,
-    'tick-borne-disease': 10,
-    'measured-mold-spores': 11,
-    'excess-mortality': 12,
-    'ambient-dose-rate': 13,
+    'outbreak-event': 3,
+    'thermal-stress': 4,
+    'wastewater-covid-19': 5,
+    'wastewater-influenza': 6,
+    'wastewater-rsv': 7,
+    dengue: 8,
+    chikungunya: 9,
+    'west-nile': 10,
+    malaria: 11,
+    'tick-borne-disease': 12,
+    'measured-mold-spores': 13,
+    'excess-mortality': 14,
+    'ambient-dose-rate': 15,
   };
 
   return [...signals].sort((left, right) => order[left.type] - order[right.type]);
 }
 
 function providerOwnsSignal(providerId: string, signal: HealthSignal): boolean {
-  if (providerId === whoRespiratoryProvider.id) {
-    return RESPIRATORY_SIGNAL_TYPES.some((type) => type === signal.type);
-  }
-  if (providerId === cdcWastewaterProvider.id) {
-    return CDC_WASTEWATER_SIGNAL_TYPES.some((type) => type === signal.type);
-  }
-  if (providerId === phacWastewaterProvider.id) {
-    return PHAC_WASTEWATER_SIGNAL_TYPES.some((type) => type === signal.type);
-  }
-  if (providerId === sumeauWastewaterProvider.id) {
-    return SUMEAU_WASTEWATER_SIGNAL_TYPES.some((type) => type === signal.type);
-  }
-  if (providerId === rivmWastewaterProvider.id) {
-    return RIVM_WASTEWATER_SIGNAL_TYPES.some((type) => type === signal.type);
-  }
-  if (providerId === ecdcDengueProvider.id) {
-    return ECDC_DENGUE_SIGNAL_TYPES.some((type) => type === signal.type);
-  }
-  if (providerId === whoVectorDiseaseProvider.id) {
-    return signal.type === 'malaria';
-  }
   if (providerId === eurostatExcessMortalityProvider.id) {
     return signal.type === 'excess-mortality' && signal.source.provider === 'Eurostat';
   }
   if (providerId === owidExcessMortalityProvider.id) {
     return signal.type === 'excess-mortality' && signal.source.provider === 'Our World in Data';
   }
-  if (providerId === safecastRadiologicalProvider.id) {
-    return signal.type === 'ambient-dose-rate';
-  }
-  return false;
+  return providerSignalTypes(providerId).some((type) => type === signal.type);
+}
+
+function signalAvailabilityRank(signal: HealthSignal): number {
+  return signal.metadata?.unavailable === true ? 0 : 1;
 }
 
 function signalFreshnessRank(signal: HealthSignal): number {
@@ -136,10 +112,6 @@ function signalFreshnessRank(signal: HealthSignal): number {
   if (signal.freshness.status === 'fresh') return 3;
   if (signal.freshness.status === 'aging') return 2;
   return 1;
-}
-
-function signalAvailabilityRank(signal: HealthSignal): number {
-  return signal.metadata?.unavailable === true ? 0 : 1;
 }
 
 function signalProviderRank(signal: HealthSignal): number {
@@ -187,50 +159,19 @@ function betterSignal(left: HealthSignal, right: HealthSignal): HealthSignal {
     return betterMortalitySignal(left, right);
   }
 
-  return (
-    rankedSignal(left, right, signalFreshnessRank) ??
-    rankedSignal(left, right, signalReportingTime) ??
-    rankedSignal(left, right, signalProviderRank) ??
-    left
-  );
+  return resolveBestHealthObservation(left, right);
 }
 
 function dedupeSignalsByType(signals: HealthSignal[]): HealthSignal[] {
-  const byType = new Map<HealthSignal['type'], HealthSignal>();
+  const byType = new Map<string, HealthSignal>();
 
   signals.forEach((signal) => {
-    const existing = byType.get(signal.type);
-    byType.set(signal.type, existing ? betterSignal(existing, signal) : signal);
+    const key = signal.type === 'outbreak-event' ? signal.id : signal.type;
+    const existing = byType.get(key);
+    byType.set(key, existing ? betterSignal(existing, signal) : signal);
   });
 
   return [...byType.values()];
-}
-
-function freshnessPolicyForSignal(signal: HealthSignal) {
-  if (signal.type === 'thermal-stress') return THERMAL_STRESS_FRESHNESS;
-  if (signal.type === 'ambient-dose-rate') return RADIATION_MONITORING_FRESHNESS;
-  if (
-    signal.type === 'wastewater-covid-19' ||
-    signal.type === 'wastewater-influenza' ||
-    signal.type === 'wastewater-rsv'
-  ) {
-    return WASTEWATER_SURVEILLANCE_FRESHNESS;
-  }
-  if (
-    signal.type === 'dengue' ||
-    signal.type === 'west-nile' ||
-    signal.type === 'malaria' ||
-    signal.type === 'tick-borne-disease'
-  ) {
-    return VECTOR_SURVEILLANCE_FRESHNESS;
-  }
-  if (signal.type === 'measured-mold-spores') return MEASURED_SPORE_SURVEILLANCE_FRESHNESS;
-  if (signal.type === 'excess-mortality') {
-    return signal.source.provider === 'Our World in Data'
-      ? OWID_EXCESS_MORTALITY_FRESHNESS
-      : EXCESS_MORTALITY_FRESHNESS;
-  }
-  return RESPIRATORY_SURVEILLANCE_FRESHNESS;
 }
 
 function cachedSignalForNow(
@@ -241,7 +182,7 @@ function cachedSignalForNow(
   if (signalHasProviderError(signal)) return null;
 
   if (signal.metadata?.unavailable === true) {
-    const policy = freshnessPolicyForSignal(signal);
+    const policy = freshnessPolicyForHealthSignal(signal);
     if (cacheSavedAt && cacheSavedAtWithin(cacheSavedAt, now, policy.expectedUpdateIntervalMs)) {
       return signal;
     }
@@ -249,11 +190,7 @@ function cachedSignalForNow(
     return null;
   }
 
-  const freshness = calculateHealthSignalFreshness({
-    updatedAt: signal.periodEnd ?? signal.updatedAt,
-    now,
-    policy: freshnessPolicyForSignal(signal),
-  });
+  const freshness = evaluateHealthSignalFreshness(signal, now);
   if (freshness.status === 'stale') return null;
 
   return { ...signal, freshness };
@@ -295,7 +232,11 @@ function cacheKeyForProvider(
     return coordinates ? radiologicalSpatialCacheKey(coordinates) : null;
   }
 
-  if (provider.id === phacWastewaterProvider.id || provider.id === ecdcDengueProvider.id) {
+  if (
+    provider.id === phacWastewaterProvider.id ||
+    provider.id === ecdcDengueProvider.id ||
+    provider.id === ecdcChikungunyaProvider.id
+  ) {
     if (!geography?.countryCode) return null;
     const normalizedLocation = normalizedProviderLocationName(locationName);
     return normalizedLocation
@@ -366,7 +307,7 @@ function providerHasFreshCache(input: {
     cacheSavedWithin(
       input.cache,
       input.now,
-      freshnessPolicyForSignal(signal).expectedUpdateIntervalMs,
+      freshnessPolicyForHealthSignal(signal).expectedUpdateIntervalMs,
     ) && cachedSignalForNow(signal, input.now, input.cache?.savedAt) !== null;
 
   if (expectedTypes.length === 0) return ownedSignals.some(cachedResultUsable);
@@ -377,21 +318,8 @@ function providerHasFreshCache(input: {
 }
 
 function providerSignalTypes(providerId: string): HealthSignal['type'][] {
-  if (providerId === whoRespiratoryProvider.id) return [...RESPIRATORY_SIGNAL_TYPES];
-  if (providerId === cdcWastewaterProvider.id) return [...CDC_WASTEWATER_SIGNAL_TYPES];
-  if (providerId === phacWastewaterProvider.id) return [...PHAC_WASTEWATER_SIGNAL_TYPES];
-  if (providerId === sumeauWastewaterProvider.id) return [...SUMEAU_WASTEWATER_SIGNAL_TYPES];
-  if (providerId === rivmWastewaterProvider.id) return [...RIVM_WASTEWATER_SIGNAL_TYPES];
-  if (providerId === ecdcDengueProvider.id) return [...ECDC_DENGUE_SIGNAL_TYPES];
-  if (providerId === whoVectorDiseaseProvider.id) return ['malaria'];
-  if (
-    providerId === eurostatExcessMortalityProvider.id ||
-    providerId === owidExcessMortalityProvider.id
-  ) {
-    return ['excess-mortality'];
-  }
-  if (providerId === safecastRadiologicalProvider.id) return ['ambient-dose-rate'];
-  return [];
+  const provider = HEALTH_SIGNAL_PROVIDERS.find((candidate) => candidate.id === providerId);
+  return [...(provider?.signals ?? [])];
 }
 
 function providerFailuresAffectDisplayedState(input: {
@@ -413,6 +341,7 @@ function providerErrorTypesAffectDisplayedState(input: {
   signals: HealthSignal[];
 }): boolean {
   return [...input.providerErrorTypes].some((type) => {
+    if (type === 'outbreak-event' || type === 'dengue' || type === 'chikungunya') return false;
     const signal = input.signals.find((item) => item.type === type);
     return !signal || signal.metadata?.unavailable === true || signal.freshness.status === 'stale';
   });
@@ -420,6 +349,13 @@ function providerErrorTypesAffectDisplayedState(input: {
 
 function signalHasProviderError(signal: HealthSignal): boolean {
   return signal.metadata?.providerStatus === 'provider-error';
+}
+
+function signalProviderErrorAffectsSummary(signal: HealthSignal): boolean {
+  if (!signalHasProviderError(signal)) return false;
+  return (
+    signal.type !== 'outbreak-event' && signal.type !== 'dengue' && signal.type !== 'chikungunya'
+  );
 }
 
 async function saveSignalCaches(input: {
@@ -611,7 +547,7 @@ export async function refreshHealthSignalsForLocation(input: {
       signals,
     }) ||
     providerErrorCacheFallbackUsed ||
-    signals.some(signalHasProviderError);
+    signals.some(signalProviderErrorAffectsSummary);
   const respiratoryUnavailable = !signals.some((signal) =>
     RESPIRATORY_SIGNAL_TYPES.some((type) => type === signal.type),
   );

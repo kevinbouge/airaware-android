@@ -197,6 +197,7 @@ export function normalizeEurostatExcessMortality(
       now: input.now,
       policy: EXCESS_MORTALITY_FRESHNESS,
     }),
+    temporalClass: 'background',
     history: observations.slice(-24),
     metadata: {
       provisional: latest.status === 'p',
@@ -207,6 +208,13 @@ export function normalizeEurostatExcessMortality(
 
 export const eurostatExcessMortalityProvider: HealthSignalProvider = {
   id: 'eurostat-excess-mortality',
+  access: 'anonymous',
+  coverage: 'regional',
+  authority: 'regional-authority',
+  regions: ['europe'],
+  signals: ['excess-mortality'],
+  temporalClasses: ['background'],
+  documentationUrl: 'https://ec.europa.eu/eurostat/web/user-guides/data-browser/api-data-access',
   supports: (context: HealthSignalProviderContext) =>
     context.geography !== null && Boolean(eurostatExcessMortalityUrl(context.geography)),
   fetchSignals: async (context) => {

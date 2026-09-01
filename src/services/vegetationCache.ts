@@ -1,4 +1,3 @@
-import { differenceInMilliseconds } from 'date-fns';
 import {
   NEARBY_VEGETATION_RADIUS_METERS,
   VEGETATION_CACHE_SCHEMA_VERSION,
@@ -6,6 +5,7 @@ import {
 } from '../core/constants';
 import type { Coordinates } from '../models/environment';
 import type { CachedVegetationContext, NormalizedVegetationContext } from '../models/vegetation';
+import { millisecondsBetween } from '../utils/time';
 
 function roundedCoordinate(value: number): string {
   return value.toFixed(5);
@@ -46,7 +46,7 @@ export function vegetationCacheExpired(cache: CachedVegetationContext, now = new
   const savedAt = Date.parse(cache.metadata.savedAt);
   if (!Number.isFinite(savedAt)) return true;
 
-  return differenceInMilliseconds(now, new Date(savedAt)) > VEGETATION_CACHE_STALE_AFTER_MS;
+  return millisecondsBetween(now, savedAt) > VEGETATION_CACHE_STALE_AFTER_MS;
 }
 
 export function vegetationCacheForRequest(

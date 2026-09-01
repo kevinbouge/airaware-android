@@ -688,6 +688,9 @@ function isHealthSignal(value: unknown): value is HealthSignal {
       object.trend === 'stable' ||
       object.trend === 'rising' ||
       object.trend === 'unknown') &&
+    (object.temporalClass === 'current' ||
+      object.temporalClass === 'background' ||
+      object.temporalClass === undefined) &&
     source !== undefined &&
     typeof source === 'object' &&
     typeof source.provider === 'string' &&

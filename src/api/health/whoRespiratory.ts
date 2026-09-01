@@ -301,6 +301,7 @@ function unavailableSignal(input: {
       measure: 'Country-level respiratory virological surveillance',
     },
     freshness: { status: 'stale' },
+    temporalClass: 'current',
     metadata: {
       unavailable: true,
       semantics: 'Missing surveillance data is not interpreted as low activity.',
@@ -382,6 +383,7 @@ function signalFromWeeks(input: {
       now: input.now,
       policy: RESPIRATORY_SURVEILLANCE_FRESHNESS,
     }),
+    temporalClass: 'current',
     history: observations,
     evidence: [evidence],
     metadata: {
@@ -441,6 +443,13 @@ export function normalizeWhoRespiratorySignals(
 
 export const whoRespiratoryProvider: HealthSignalProvider = {
   id: 'who-respiratory',
+  access: 'anonymous',
+  coverage: 'global',
+  authority: 'global-authority',
+  regions: ['global'],
+  signals: RESPIRATORY_SIGNAL_TYPES,
+  temporalClasses: ['current'],
+  documentationUrl: 'https://www.who.int/tools/RespiMart',
   supports: (context: HealthSignalProviderContext) =>
     context.geography !== null && Boolean(whoRespiratoryUrl(context.geography)),
   fetchSignals: async (context) => {

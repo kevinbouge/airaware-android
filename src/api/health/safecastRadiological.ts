@@ -219,6 +219,7 @@ function noRecentRadiologicalSignal(input: {
       measure: 'Nearby calibrated ambient dose-rate measurements',
     },
     freshness: { status: 'fresh', ageMs: 0 },
+    temporalClass: 'current',
     metadata: {
       unavailable: true,
       reason: 'no-recent-local-radiological-measurement',
@@ -310,6 +311,7 @@ export function radiologicalSignalFromSafecast(input: {
       measure: 'Nearby calibrated ambient dose-rate measurements',
     },
     freshness,
+    temporalClass: 'current',
     history: [...input.observations]
       .sort((left, right) => Date.parse(right.measuredAt) - Date.parse(left.measuredAt))
       .slice(0, 24)
@@ -329,6 +331,13 @@ export function radiologicalSignalFromSafecast(input: {
 
 export const safecastRadiologicalProvider: HealthSignalProvider = {
   id: 'safecast-radiological',
+  access: 'anonymous',
+  coverage: 'local',
+  authority: 'local-network',
+  regions: ['global'],
+  signals: ['ambient-dose-rate'],
+  temporalClasses: ['current'],
+  documentationUrl: 'https://simplemap.safecast.org/map-api/index.html',
   supports: (context: HealthSignalProviderContext) =>
     Boolean(context.coordinates) &&
     (context.signalTypes === undefined ||

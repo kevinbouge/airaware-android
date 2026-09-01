@@ -1,5 +1,29 @@
 import { isFiniteNumber } from './number';
 
+const MINUTE_MS = 60 * 1000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
+
+export function millisecondsBetween(later: Date | number, earlier: Date | number): number {
+  const laterTime = typeof later === 'number' ? later : later.getTime();
+  const earlierTime = typeof earlier === 'number' ? earlier : earlier.getTime();
+  return laterTime - earlierTime;
+}
+
+export function addHours(time: Date | number, hours: number): number {
+  const baseTime = typeof time === 'number' ? time : time.getTime();
+  return baseTime + hours * HOUR_MS;
+}
+
+export function subtractHours(time: Date | number, hours: number): number {
+  return addHours(time, -hours);
+}
+
+export function subtractDays(time: Date | number, days: number): number {
+  const baseTime = typeof time === 'number' ? time : time.getTime();
+  return baseTime - days * DAY_MS;
+}
+
 function utcOffsetSuffix(value: unknown): string | null {
   if (!isFiniteNumber(value)) return null;
 

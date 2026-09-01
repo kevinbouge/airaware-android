@@ -257,8 +257,8 @@ describe('navigation', () => {
     expect(today).toContain('LocationSelectorButton');
     expect(today).toContain('<LocationSelectorButton');
     expect(today).toContain('locationOnboardingComplete: true');
-    expect(today.indexOf("t('today.personalizeAirAware')")).toBeGreaterThan(
-      today.indexOf('<TodayDecisionCard'),
+    expect(today.indexOf('<PersonalizePromptRow')).toBeGreaterThan(
+      today.indexOf('<PublicHealthContextSection'),
     );
   });
 
@@ -267,7 +267,9 @@ describe('navigation', () => {
 
     expect(today).toContain('PublicHealthContextSection');
     expect(today).toContain("title={translate('today.publicHealthContext')}");
-    expect(today).toContain('publicHealthContextRows(publicHealthSignals)');
+    expect(today).toContain('currentPublicHealthContextRows(publicHealthSignals)');
+    expect(today).toContain('coveragePublicHealthContextRows(publicHealthSignals)');
+    expect(today).toContain('coverageSignalCount');
     expect(today).toContain("title={translate('today.publicHealthViewAll')}");
     expect(today).toContain("navigation.navigate('PublicHealthContext', undefined)");
     expect(today).not.toContain('function HealthSignalGroup');
@@ -277,9 +279,8 @@ describe('navigation', () => {
     expect(today).toContain("translate('today.thermalMetric.apparentTemperature')");
     expect(today).toContain('const healthSectionNotice =');
     expect(today).toContain('healthSectionNotice ? <Text style={styles.notice}>');
-    expect(today).toContain("return 'wastewater'");
-    expect(today).toContain("return 'vector-borne'");
-    expect(today).toContain("return 'measured-spores'");
+    expect(today).toContain('getHealthSignalIconName(signal)');
+    expect(today).not.toContain('function healthSignalIcon');
     expect(today).toContain('function isDemotedHealthSignal(signal: HealthSignal): boolean');
     expect(today).toContain('isDemotedPublicHealthSignal(signal)');
     expect(today).toContain('sortedHealthSignals(');
@@ -291,9 +292,14 @@ describe('navigation', () => {
   it('routes the compact Public Health Context preview to a full signal list', () => {
     const screen = fs.readFileSync('src/screens/PublicHealthContextScreen.tsx', 'utf8');
 
-    expect(screen).toContain('publicHealthContextRows(');
+    expect(screen).toContain('currentPublicHealthContextRows(contextualSignals)');
+    expect(screen).toContain('backgroundPublicHealthContextRows(contextualSignals)');
+    expect(screen).toContain('coveragePublicHealthContextRows(contextualSignals)');
     expect(screen).toContain("signal.type !== 'thermal-stress'");
-    expect(screen).toContain('rows.map((row)');
+    expect(screen).toContain('currentRows.map((row)');
+    expect(screen).toContain('backgroundRows.map((row)');
+    expect(screen).toContain('coverageRows.map((row)');
+    expect(screen).toContain("translate('health.temporal.coverage')");
     expect(screen).not.toContain('rows.slice(0, 4)');
     expect(screen).toContain("navigation.navigate('HealthSignalDetail', { signalId: signal.id })");
     expect(screen).toContain('row.scopeLabel');

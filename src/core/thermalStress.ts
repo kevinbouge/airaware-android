@@ -479,6 +479,7 @@ export function thermalStressSignalFromEnvironment(input: {
       now: input.now,
       policy: THERMAL_STRESS_FRESHNESS,
     }),
+    temporalClass: 'current',
     history,
     metadata: {
       metric: metric.metric,

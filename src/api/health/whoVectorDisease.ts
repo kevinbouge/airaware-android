@@ -105,6 +105,7 @@ function noMalariaContextSignal(input: { geography: HealthGeography; now: string
       measure: 'Estimated malaria incidence per 1,000 population at risk',
     },
     freshness: { status: 'stale', ageMs: Number.POSITIVE_INFINITY },
+    temporalClass: 'background',
     metadata: {
       unavailable: true,
       reason: 'no-malaria-context-observation',
@@ -155,6 +156,7 @@ export function normalizeWhoMalariaContext(input: {
       now: input.now,
       policy: VECTOR_SURVEILLANCE_FRESHNESS,
     }),
+    temporalClass: 'background',
     history,
     metadata: {
       surveillanceBasis: 'annual incidence context',
@@ -166,6 +168,13 @@ export function normalizeWhoMalariaContext(input: {
 
 export const whoVectorDiseaseProvider: HealthSignalProvider = {
   id: 'who-vector-disease',
+  access: 'anonymous',
+  coverage: 'global',
+  authority: 'global-authority',
+  regions: ['global'],
+  signals: ['malaria'],
+  temporalClasses: ['background'],
+  documentationUrl: 'https://www.who.int/data/gho/info/gho-odata-api',
   supports: (context: HealthSignalProviderContext) =>
     Boolean(context.geography?.providerCodes?.who),
   fetchSignals: async (context) => {

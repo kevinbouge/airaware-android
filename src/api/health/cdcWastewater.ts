@@ -41,6 +41,8 @@ const CDC_WASTEWATER_DATASETS: WastewaterDataset[] = [
   },
 ];
 
+const CDC_WASTEWATER_SIGNAL_TYPES = CDC_WASTEWATER_DATASETS.map((dataset) => dataset.signalType);
+
 const CDC_WASTEWATER_HISTORY_LIMIT = 120;
 
 const cdcWastewaterRowSchema = z
@@ -122,6 +124,7 @@ function unavailableSignal(input: {
       measure: input.dataset.label,
     },
     freshness: { status: 'stale', ageMs: Number.POSITIVE_INFINITY },
+    temporalClass: 'current',
     metadata: {
       unavailable: true,
       reason: 'cdc-wastewater-aggregation-unavailable',
@@ -175,6 +178,13 @@ export function normalizeCdcWastewaterSignal(input: {
 
 export const cdcWastewaterProvider: HealthSignalProvider = {
   id: 'cdc-wastewater',
+  access: 'anonymous',
+  coverage: 'national',
+  authority: 'national-authority',
+  regions: ['americas'],
+  signals: CDC_WASTEWATER_SIGNAL_TYPES,
+  temporalClasses: ['current'],
+  documentationUrl: 'https://www.cdc.gov/nwss/',
   supports: (context: HealthSignalProviderContext) => context.geography?.countryCode === 'US',
   fetchSignals: async (context) => {
     if (!context.geography) {
@@ -224,7 +234,3 @@ export const cdcWastewaterProvider: HealthSignalProvider = {
     };
   },
 };
-
-export const CDC_WASTEWATER_SIGNAL_TYPES = CDC_WASTEWATER_DATASETS.map(
-  (dataset) => dataset.signalType,
-);

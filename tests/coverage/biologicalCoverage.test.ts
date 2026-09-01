@@ -8,6 +8,7 @@ import {
 } from './coverageAssertions';
 import {
   biologicalSignalsForLocation,
+  chikungunyaSignalForLocation,
   dengueSignalForLocation,
   malariaSignalForLocation,
   wastewaterSignalsForLocation,
@@ -295,6 +296,12 @@ describe('global biological coverage contracts', () => {
       domain: 'biological',
       signalName: 'dengue',
     })).toMatchObject({ status: 'unsupported' });
+    expect(healthSignalCoverageResult({
+      location: location!,
+      signal: undefined,
+      domain: 'biological',
+      signalName: 'chikungunya',
+    })).toMatchObject({ status: 'unsupported' });
   });
 
   it('uses ECDC dengue clusters only for matching EU/EEA locations', () => {
@@ -325,6 +332,40 @@ describe('global biological coverage contracts', () => {
     });
     expect(parisSignal).toMatchObject({
       type: 'dengue',
+      category: 'unknown',
+      metadata: expect.objectContaining({ unavailable: true }),
+    });
+    expectUnavailableIsNotLowOrNormal(parisSignal!);
+  });
+
+  it('uses ECDC chikungunya clusters only for matching EU/EEA locations', () => {
+    const prignac = {
+      id: 'prignac',
+      name: 'Prignac-et-Marcamps',
+      country: 'FR',
+      continent: 'europe',
+      latitude: 45.033,
+      longitude: -0.492,
+      coverageTags: ['europe', 'chikungunya-cluster'],
+    } as const;
+    const paris = GLOBAL_TEST_LOCATIONS.find((entry) => entry.id === 'paris');
+    expect(paris).toBeDefined();
+
+    const prignacSignal = chikungunyaSignalForLocation(prignac);
+    const parisSignal = chikungunyaSignalForLocation(paris!);
+
+    expect(prignacSignal).toMatchObject({
+      domain: 'biological',
+      type: 'chikungunya',
+      geography: { level: 'subregion', name: 'Prignac-et-Marcamps', countryCode: 'FR' },
+      category: 'unknown',
+      metadata: expect.objectContaining({
+        providerCategory: 'Active',
+        noPersonalRiskInference: true,
+      }),
+    });
+    expect(parisSignal).toMatchObject({
+      type: 'chikungunya',
       category: 'unknown',
       metadata: expect.objectContaining({ unavailable: true }),
     });

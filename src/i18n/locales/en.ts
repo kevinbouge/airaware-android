@@ -217,6 +217,12 @@ export const en = {
     publicHealthContextSubtitle: 'Public surveillance and monitoring, never a personal risk score',
     publicHealthCurrentSignals: 'Current signals: {{count}}',
     publicHealthNoCurrentSignals: 'No current public-health context available for this location.',
+    publicHealthNoCurrentSignalsWithBackground:
+      'No recent public-health signals · Long-term context available.',
+    publicHealthNoCurrentSignalsWithCoverage:
+      'No recent public-health signals · Coverage details available.',
+    publicHealthBackgroundSignals: 'Background context: {{count}}',
+    publicHealthCoverageSignals: 'Coverage notes: {{count}}',
     publicHealthViewAll: 'View all public-health context',
     loadingPublicHealthContext: 'Loading public-health context...',
     respiratoryActivity: 'Respiratory activity',
@@ -308,8 +314,16 @@ export const en = {
     influenza: 'Influenza',
     covid19: 'COVID-19',
     rsv: 'RSV',
+    outbreakEvent: 'WHO outbreak event',
+    outbreakReportedEvent: 'Reported outbreak event',
+    outbreakSourceLabel: 'WHO event publication',
     excessMortality: 'Excess mortality',
     ambientDoseRate: 'Ambient radiation',
+    temporal: {
+      current: 'Current',
+      background: 'Background context',
+      coverage: 'Coverage & availability',
+    },
     trend: {
       rising: 'Rising',
       falling: 'Falling',
@@ -369,6 +383,11 @@ export const en = {
     atBaseline: 'At baseline',
     noRecentData: 'No recent data',
     categoryUnknown: 'Category unavailable',
+    coverage: {
+      noMatchingReportingArea: 'Regional surveillance available; no matching reporting area',
+      noRelevantOutbreakEvents: 'No recent relevant outbreak events in available surveillance',
+      providerUnavailable: 'Provider temporarily unavailable',
+    },
     countrySurveillance: 'Country-level respiratory virological surveillance',
     whoCategoryUnavailable:
       'WHO FluNet does not provide a universal country-level Low/High category.',
@@ -416,6 +435,7 @@ export const en = {
     },
     vector: {
       dengue: 'Dengue',
+      chikungunya: 'Chikungunya',
       westNile: 'West Nile virus',
       malaria: 'Malaria context',
       tickBorneDisease: 'Tick-borne disease',

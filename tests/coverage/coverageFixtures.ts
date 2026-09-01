@@ -4,10 +4,12 @@ import {
   type WastewaterDataset,
 } from '../../src/api/health/cdcWastewater';
 import { normalizeEcdcDengueSignal } from '../../src/api/health/ecdcDengue';
+import { normalizeEcdcChikungunyaSignal } from '../../src/api/health/ecdcVectorSurveillance';
 import { normalizePhacWastewaterSignals } from '../../src/api/health/phacWastewater';
 import { normalizeRivmWastewaterSignal } from '../../src/api/health/rivmWastewater';
 import { normalizeSumeauWastewaterSignal } from '../../src/api/health/sumeauWastewater';
 import { normalizeOwidExcessMortality } from '../../src/api/health/owidExcessMortality';
+import { normalizeWhoOutbreakSignals } from '../../src/api/health/whoOutbreaks';
 import {
   normalizeSafecastRadiationMeasurements,
   radiologicalSignalFromSafecast,
@@ -202,6 +204,35 @@ export function biologicalSignalsForLocation(
   return normalizeWhoRespiratorySignals(whoRespiratoryFixture(rows), { geography, now });
 }
 
+export function outbreakSignalsForLocation(
+  location: GlobalTestLocation,
+  options: { irrelevant?: boolean | undefined; stale?: boolean | undefined } = {},
+) {
+  const geography = resolveHealthGeography({ location: locationInfoFromGlobalLocation(location) });
+  if (!geography) return [];
+  const now = options.stale ? '2027-12-01T00:00:00Z' : COVERAGE_NOW;
+  return normalizeWhoOutbreakSignals({
+    payload: {
+      value: [
+        {
+          Id: 'coverage-don',
+          DonId: '2026-DON-COVERAGE',
+          PublicationDateAndTime: '2026-08-24T00:00:00Z',
+          Title: options.irrelevant
+            ? 'Dengue - Brazil'
+            : `Public health event - ${geography.countryName ?? geography.name}`,
+          ItemDefaultUrl: '/2026-DON-COVERAGE',
+          Summary: options.irrelevant
+            ? 'Reported outbreak event in Brazil.'
+            : `Reported outbreak event in ${geography.countryName ?? geography.name}.`,
+        },
+      ],
+    },
+    geography,
+    now,
+  });
+}
+
 function cdcWastewaterRows(target: string, state = 'TX') {
   return [
     {
@@ -344,6 +375,28 @@ export function dengueSignalForLocation(
         ? []
         : [
             '"France","FR-2026-002","Bouches-du-Rhône","Marseille","Active","2026-08-02","2026-08-05","3"',
+          ]),
+    ].join('\n'),
+    geography,
+    locationName: location.name,
+    now: COVERAGE_NOW,
+  });
+}
+
+export function chikungunyaSignalForLocation(
+  location: GlobalTestLocation,
+  options: { noObservation?: boolean | undefined } = {},
+) {
+  const geography = resolveHealthGeography({ location: locationInfoFromGlobalLocation(location) });
+  if (!geography) return null;
+
+  return normalizeEcdcChikungunyaSignal({
+    csv: [
+      '"CountryName","ClusterId","Nuts3Name","LAUName","Status","DateOfOnsetFirst","DateOfOnsetLast","NCases"',
+      ...(options.noObservation === true
+        ? []
+        : [
+            '"France","2026-CHIK-33-PRIGNAC-ET-MARCAMPS","Gironde","Prignac-et-Marcamps","Active","2026-07-20","2026-08-19","19"',
           ]),
     ].join('\n'),
     geography,

@@ -3,7 +3,9 @@ import {
   getActivityIconDefinition,
   getAppIconDefinition,
 } from '../src/components/icons/appIconResolver';
+import { getHealthSignalIconName } from '../src/components/icons/healthSignalIconResolver';
 import { APP_ICON_SIZES, APP_ICON_STROKE_WIDTH } from '../src/components/icons/appIconTypes';
+import { createHealthSignal } from './fixtures/healthSignals';
 
 describe('app icon system', () => {
   it('resolves Activity identities to canonical Lucide icons', () => {
@@ -36,6 +38,33 @@ describe('app icon system', () => {
     expect(getAppIconDefinition('trend-stable')).toMatchObject({
       libraryName: 'TrendingUpDown',
     });
+  });
+
+  it('resolves health signal presentation groups to canonical app icons', () => {
+    expect(getHealthSignalIconName(createHealthSignal({ type: 'influenza' }))).toBe('respiratory');
+    expect(getHealthSignalIconName(createHealthSignal({ type: 'outbreak-event' }))).toBe(
+      'outbreak',
+    );
+    expect(getHealthSignalIconName(createHealthSignal({ type: 'wastewater-covid-19' }))).toBe(
+      'wastewater',
+    );
+    expect(getHealthSignalIconName(createHealthSignal({ type: 'dengue' }))).toBe('vector-borne');
+    expect(getHealthSignalIconName(createHealthSignal({ type: 'chikungunya' }))).toBe(
+      'vector-borne',
+    );
+    expect(getHealthSignalIconName(createHealthSignal({ type: 'measured-mold-spores' }))).toBe(
+      'measured-spores',
+    );
+    expect(
+      getHealthSignalIconName(
+        createHealthSignal({ domain: 'population-health', type: 'excess-mortality' }),
+      ),
+    ).toBe('population-health');
+    expect(
+      getHealthSignalIconName(
+        createHealthSignal({ domain: 'radiological', type: 'ambient-dose-rate' }),
+      ),
+    ).toBe('radiological');
   });
 
   it('keeps unknown generic icon names from crashing the app', () => {

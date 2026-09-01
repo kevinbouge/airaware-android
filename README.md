@@ -16,7 +16,9 @@ primary product surface. Biological, population-health, wastewater, vector-borne
 signals are presented as secondary **Public Health Context** rather than a synthetic score. Sparse or
 delayed surveillance data is shown with its real geography, reporting period, freshness, and source;
 coverage gaps and missing observations are presented as unavailable rather than synthetic Low,
-Normal, or zero values.
+Normal, or zero values. When no current public-health signal qualifies for Today, the section still
+appears if long-term context or meaningful coverage notes are available, and routes users to details
+instead of silently hiding sparse provider coverage.
 
 ## Technology
 
@@ -87,6 +89,9 @@ nvm use 22.13.1
   signals, with available, regional, deferred, stale, and no-data states kept distinct
 - Global country-level respiratory surveillance through WHO GISRS / FluNet public FluMart OData
   where suitable influenza, COVID-19, and RSV data exists
+- Provider resolution uses authoritative global surveillance as a baseline and may prefer compatible
+  regional public sources when they provide fresher or more geographically relevant observations;
+  availability varies by region
 - Country-level population-health signal support for excess mortality, using Our World in Data as
   the preferred global source when its country observation is current, while allowing Eurostat to
   supply a fresher country observation where OWID is delayed
@@ -104,6 +109,8 @@ nvm use 22.13.1
   evidence until a documented stable national, state, or site aggregation is integrated
 - Optional Netherlands SARS-CoV-2 wastewater evidence through RIVM's public national wastewater JSON
   feed where suitable recent samples exist
+- Regional ECDC dengue and chikungunya weekly cluster surveillance for matching EU/EEA locations,
+  preserving cluster geography and no-data semantics
 - Annual malaria context from WHO Global Health Observatory where the selected country reports
   estimated malaria incidence; this is not presented as current outbreak activity
 - Typed vector-borne and measured mold/spore signal architecture with explicit deferred/no-data
@@ -194,9 +201,9 @@ source label.
   environmental condition, short environmental interpretation, main concern, and best outdoor
   window. Secondary sections follow the product hierarchy: Environmental Events, thermal
   conditions, environmental detail entry points, compact Public Health Context, and enabled Activity
-  summary cards. Stale, aging, unavailable, or unsupported Public Health Context rows are visually
-  demoted and keep their reporting scope, geography, latest period, freshness, and source
-  discoverable.
+  summary cards. Public Health Context shows concise current signals when available; if only
+  background context or coverage notes exist, it shows an honest empty-current state with a detail
+  entry point instead of filling Today with stale values.
 - **Context detail screens**: Environmental burden, Personalized risk, and Activity details with
   Daily forecast graphs, current-to-next-24-hour forecast graphs, and tappable environmental
   measurements. Detail headers are safe-area aware on Android devices with status bars or display
@@ -207,6 +214,10 @@ source label.
 - **Health signal details**: source, geography, reporting period or measurement time, freshness,
   trend, provider measure, radiological sensor distance/baseline where available, and
   domain-specific non-medical-risk explanations.
+- **Public Health Context detail**: grouped Current, Background context, and Coverage &
+  availability sections. Coverage rows expose meaningful unavailable states such as no compatible
+  public feed, no recent observation, unsupported region, provider failures, and background-only
+  coverage without dumping every theoretical unsupported signal.
 - **Profile**: local Personal Allergy Profile toggles, including Mold potential and UV index
 - **Pro**: outcome-oriented AirAware Pro purchase/restore status, development capability preview,
   planning-depth benefits, advanced alert/widget benefits, and Activity toggles
@@ -348,13 +359,12 @@ viral activity.
 
 Vector-borne disease support is conservative. WHO GHO `MALARIA_EST_INCIDENCE` is used only as
 annual malaria context where reported. It is not displayed as current malaria activity or an
-outbreak alert. ECDC seasonal dengue surveillance is integrated for EU/EEA locally acquired dengue
-clusters using the official linked `case_summary.csv`; AirAware preserves cluster geography, status,
-onset dates, and case count, and it does not turn cluster surveillance into personal infection risk.
-PAHO dengue remains deferred after provider review: PAHO documents weekly reporting, but a stable
-filtered operational API suitable for AirAware was not verified, and the documented Core Indicators
-download is annual bulk data rather than current surveillance. No vector data is not interpreted as
-no vector, no disease, or Low activity.
+outbreak alert. ECDC seasonal dengue and chikungunya surveillance is integrated for EU/EEA locally
+acquired clusters using official linked `case_summary.csv` feeds; AirAware preserves cluster
+geography, status, onset dates, and case count, and it does not turn cluster surveillance into
+personal infection risk. West Nile virus, PAHO ARBO, and other vector providers remain deferred
+unless a stable mobile-suitable structured endpoint is verified. No vector data is not interpreted
+as no vector, no disease, or Low activity.
 
 Official-warning and enrichment providers remain separate from AirAware-derived Environmental
 Events. NOAA/NWS alerts satisfy keyless machine-readable access for the United States and are a
@@ -446,8 +456,9 @@ Supported domains are:
   numerator and denominator data. COVID-19 is modeled as SARS-CoV-2 surveillance and remains an
   explicit no-data signal unless supported SARS-CoV-2 country rows are present in the public WHO
   feed. US wastewater evidence is represented separately from WHO respiratory surveillance. Malaria
-  uses annual WHO GHO incidence context when available; dengue, West Nile virus, and tick-borne
-  disease remain provider-ready but unavailable unless a suitable public source is integrated.
+  uses annual WHO GHO incidence context when available; ECDC dengue and chikungunya cluster
+  surveillance may enrich matching EU/EEA locations; West Nile virus and tick-borne disease remain
+  provider-ready but unavailable unless a suitable public source is integrated.
   AirAware does not scrape dashboards or use private dashboard calls.
 - **Population health**: excess mortality is implemented as a country-level population-health
   signal. Our World in Data's global P-score dataset is preferred when its country observation is
@@ -1150,9 +1161,9 @@ checks in event detection.
   Netherlands. CDC NWSS raw US sample datasets are reviewed but unavailable for display until a
   documented stable national, state, or site aggregation is integrated. Wastewater surveillance is
   community-level evidence, not diagnosed clinical cases or individual infection probability.
-- ECDC dengue support is cluster surveillance for locally acquired cases in EU/EEA reporting areas.
-  It is not a personal-risk prediction. PAHO annual dengue indicators are not presented as current
-  dengue surveillance.
+- ECDC dengue and chikungunya support is cluster surveillance for locally acquired cases in EU/EEA
+  reporting areas. It is not a personal-risk prediction. PAHO annual dengue indicators are not
+  presented as current dengue surveillance.
 - Malaria is presented as annual WHO incidence context where available, not current malaria
   activity, outbreak detection, or travel/medical advice.
 - Measured mold/spore surveillance is provider-ready but deferred; no monitoring-station provider
@@ -1177,8 +1188,9 @@ checks in event detection.
   country-level baseline where suitable data is reported. COVID-19 remains explicit no-data when
   the public WHO feed does not expose SARS-CoV-2 country rows for the selected geography. CDC
   wastewater sample access is reviewed but not displayed as national US evidence without stable
-  documented aggregation. ECDC / ERVISS enrichment is not implemented in this milestone because it
-  is optional and must use stable documented anonymous machine-readable sources.
+  documented aggregation. ECDC dengue and chikungunya vector-cluster feeds may appear for matching
+  EU/EEA locations. ECDC / ERVISS respiratory enrichment is not implemented because its public
+  downloadable data remains paused/inconsistent and WHO remains the production respiratory fallback.
 - Excess mortality is delayed country-level population context from OWID's global P-score dataset or
   Eurostat. OWID is preferred when its country observation is current; a fresher Eurostat observation
   may be shown for supported countries when OWID lags. It is not live monitoring and is not an

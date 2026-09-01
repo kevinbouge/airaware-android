@@ -1,4 +1,7 @@
 import {
+  backgroundPublicHealthContextRows,
+  coveragePublicHealthContextRows,
+  currentPublicHealthContextRows,
   healthSignalDetailDefaultRange,
   healthSignalDetailMetadataRows,
   healthSignalDetailPrimaryLabel,
@@ -11,6 +14,8 @@ import {
   isDemotedPublicHealthSignal,
   publicHealthContextRow,
   publicHealthContextSummary,
+  publicHealthBackgroundSummary,
+  publicHealthCoverageSummary,
   healthTimelineFillStyle,
   healthTimelinePointsForRange,
   healthTimelinePointValueLabel,
@@ -19,23 +24,7 @@ import {
 } from '../src/core/healthSignalPresentation';
 import { colors } from '../src/theme/theme';
 import type { HealthSignal } from '../src/models/healthSignals';
-
-function healthSignal(overrides: Partial<HealthSignal>): HealthSignal {
-  return {
-    id: 'signal',
-    domain: 'biological',
-    type: 'influenza',
-    geography: { level: 'country', code: 'CZ', name: 'Czech Republic', countryCode: 'CZ' },
-    updatedAt: '2026-08-25T00:00:00Z',
-    value: 4.2,
-    unit: '%',
-    category: 'unknown',
-    trend: 'unknown',
-    source: { provider: 'WHO GISRS / FluNet' },
-    freshness: { status: 'fresh' },
-    ...overrides,
-  };
-}
+import { createHealthSignal as healthSignal } from './fixtures/healthSignals';
 
 function point(time: string, period?: HealthSignal['reportingPeriod']) {
   return {
@@ -48,7 +37,9 @@ describe('health signal presentation behavior', () => {
   it('shows thermal stress when it is the only health-context signal', () => {
     expect(
       todayHealthSectionVisibility({
+        backgroundSignalCount: 0,
         contextualHealthSignalCount: 0,
+        coverageSignalCount: 0,
         hasHealthSignalLocationContext: true,
         healthSignalsError: null,
         healthSignalsLoading: false,
@@ -63,7 +54,9 @@ describe('health signal presentation behavior', () => {
   it('hides health-context sections when location context is unavailable', () => {
     expect(
       todayHealthSectionVisibility({
+        backgroundSignalCount: 0,
         contextualHealthSignalCount: 1,
+        coverageSignalCount: 1,
         hasHealthSignalLocationContext: false,
         healthSignalsError: 'Provider unavailable',
         healthSignalsLoading: true,
@@ -73,6 +66,31 @@ describe('health signal presentation behavior', () => {
       shouldShowHealthSignals: false,
       shouldShowThermalSignals: false,
     });
+  });
+
+  it('shows Today health context when only background or coverage states exist', () => {
+    expect(
+      todayHealthSectionVisibility({
+        backgroundSignalCount: 1,
+        contextualHealthSignalCount: 0,
+        coverageSignalCount: 0,
+        hasHealthSignalLocationContext: true,
+        healthSignalsError: null,
+        healthSignalsLoading: false,
+        thermalSignalCount: 0,
+      }).shouldShowHealthSignals,
+    ).toBe(true);
+    expect(
+      todayHealthSectionVisibility({
+        backgroundSignalCount: 0,
+        contextualHealthSignalCount: 0,
+        coverageSignalCount: 1,
+        hasHealthSignalLocationContext: true,
+        healthSignalsError: null,
+        healthSignalsLoading: false,
+        thermalSignalCount: 0,
+      }).shouldShowHealthSignals,
+    ).toBe(true);
   });
 
   it('defaults weekly, monthly, and yearly health signals to a year timeline', () => {
@@ -385,6 +403,80 @@ describe('health signal presentation behavior', () => {
     ).toBe(true);
   });
 
+  it('separates current summary rows from background context rows', () => {
+    const influenza = healthSignal({
+      id: 'influenza:fresh',
+      type: 'influenza',
+      temporalClass: 'current',
+      freshness: { status: 'fresh' },
+    });
+    const staleRsv = healthSignal({
+      id: 'rsv:stale',
+      type: 'rsv',
+      temporalClass: 'current',
+      freshness: { status: 'stale' },
+    });
+    const mortality = healthSignal({
+      id: 'mortality:background',
+      domain: 'population-health',
+      type: 'excess-mortality',
+      temporalClass: 'background',
+      reportingPeriod: { type: 'month', year: 2026, month: 6 },
+    });
+    const malaria = healthSignal({
+      id: 'malaria:background',
+      type: 'malaria',
+      temporalClass: 'background',
+      reportingPeriod: { type: 'year', year: 2025 },
+    });
+    const unavailableMalaria = healthSignal({
+      id: 'malaria:unavailable',
+      type: 'malaria',
+      temporalClass: 'background',
+      value: undefined,
+      unit: undefined,
+      metadata: { unavailable: true, reason: 'no-malaria-context-observation' },
+    });
+    const erroredMortality = healthSignal({
+      id: 'mortality:error',
+      domain: 'population-health',
+      type: 'excess-mortality',
+      temporalClass: 'background',
+      value: undefined,
+      unit: undefined,
+      metadata: { unavailable: true, providerStatus: 'provider-error' },
+    });
+
+    const signals = [influenza, staleRsv, mortality, malaria, unavailableMalaria, erroredMortality];
+    const currentRows = currentPublicHealthContextRows(signals);
+    const backgroundRows = backgroundPublicHealthContextRows([
+      influenza,
+      staleRsv,
+      mortality,
+      malaria,
+      unavailableMalaria,
+      erroredMortality,
+    ]);
+    const coverageRows = coveragePublicHealthContextRows(signals);
+
+    expect(currentRows.map((row) => row.signal.id)).toEqual(['influenza:fresh']);
+    expect(backgroundRows.map((row) => row.signal.id).sort()).toEqual([
+      'malaria:background',
+      'mortality:background',
+    ]);
+    expect(coverageRows.map((row) => row.signal.id).sort()).toEqual([
+      'malaria:unavailable',
+      'mortality:error',
+      'rsv:stale',
+    ]);
+    expect(
+      coverageRows.find((row) => row.signal.id === 'malaria:unavailable')?.contextLabel,
+    ).toContain('Background context');
+    expect(publicHealthContextSummary(currentRows)).toBe('Current signals: 1');
+    expect(publicHealthBackgroundSummary(backgroundRows)).toBe('Background context: 2');
+    expect(publicHealthCoverageSummary(coverageRows)).toBe('Coverage notes: 3');
+  });
+
   it('keeps unavailable Public Health Context rows from becoming reassuring values', () => {
     const unavailableSignals = [
       healthSignal({
@@ -422,7 +514,35 @@ describe('health signal presentation behavior', () => {
         value: undefined,
         unit: undefined,
         category: 'unknown',
-        metadata: { unavailable: true },
+        metadata: { unavailable: true, reason: 'no-ecdc-dengue-cluster' },
+      }),
+      healthSignal({
+        type: 'chikungunya',
+        value: undefined,
+        unit: undefined,
+        category: 'unknown',
+        metadata: { unavailable: true, reason: 'no-ecdc-chikungunya-cluster' },
+      }),
+      healthSignal({
+        type: 'dengue',
+        value: undefined,
+        unit: undefined,
+        category: 'unknown',
+        metadata: { unavailable: true, reason: 'no-relevant-who-outbreak-events' },
+      }),
+      healthSignal({
+        type: 'outbreak-event',
+        value: undefined,
+        unit: undefined,
+        category: 'unknown',
+        metadata: { unavailable: true, reason: 'no-relevant-who-outbreak-events' },
+      }),
+      healthSignal({
+        type: 'outbreak-event',
+        value: undefined,
+        unit: undefined,
+        category: 'unknown',
+        metadata: { unavailable: true, providerStatus: 'provider-error' },
       }),
     ];
     const labels = unavailableSignals.map((signal) => publicHealthContextRow(signal).value);
@@ -432,10 +552,14 @@ describe('health signal presentation behavior', () => {
       'No recent data',
       'No recent local measurement',
       'No local wastewater data',
+      'Regional surveillance available; no matching reporting area',
+      'Regional surveillance available; no matching reporting area',
       'No recent data',
+      'No recent relevant outbreak events in available surveillance',
+      'Provider temporarily unavailable',
     ]);
     labels.forEach((label) => {
-      expect(label).not.toMatch(/Low|Normal|background|No dengue|no disease/i);
+      expect(label).not.toMatch(/Low|Normal background|No dengue|No chikungunya|no disease/i);
     });
   });
 

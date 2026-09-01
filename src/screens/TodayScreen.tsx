@@ -14,6 +14,7 @@ import { APP_ICON_SIZES } from '../components/icons/appIconTypes';
 import { ENVIRONMENTAL_ICON_SIZES } from '../components/icons/environmentalIconTypes';
 import { GasMaskIcon } from '../components/icons/GasMaskIcon';
 import { getEventIconName } from '../components/icons/environmentalIconResolver';
+import { getHealthSignalIconName } from '../components/icons/healthSignalIconResolver';
 import {
   environmentalEventBody,
   environmentalEventCategoryLabel,
@@ -31,10 +32,13 @@ import {
 import {
   healthSignalHasTimelineDetail,
   healthSignalInlineDetailRows,
+  backgroundPublicHealthContextRows,
+  coveragePublicHealthContextRows,
+  currentPublicHealthContextRows,
   isDemotedPublicHealthSignal,
-  publicHealthContextRows,
   publicHealthContextSummary,
   todayHealthSectionVisibility,
+  type PublicHealthContextRow,
 } from '../core/healthSignalPresentation';
 import { todayDecisionSummary } from '../core/todayDecision';
 import { categoryLabel } from '../core/categories';
@@ -216,36 +220,6 @@ function eventDataValueLabel(event: EnvironmentalEvent): string | null {
   return formatMeasurement(value, unit);
 }
 
-function healthSignalIcon(
-  signal: HealthSignal,
-):
-  | 'respiratory'
-  | 'wastewater'
-  | 'vector-borne'
-  | 'measured-spores'
-  | 'population-health'
-  | 'radiological' {
-  if (signal.domain === 'radiological') return 'radiological';
-  if (signal.domain === 'population-health') return 'population-health';
-  if (
-    signal.type === 'wastewater-covid-19' ||
-    signal.type === 'wastewater-influenza' ||
-    signal.type === 'wastewater-rsv'
-  ) {
-    return 'wastewater';
-  }
-  if (
-    signal.type === 'dengue' ||
-    signal.type === 'west-nile' ||
-    signal.type === 'malaria' ||
-    signal.type === 'tick-borne-disease'
-  ) {
-    return 'vector-borne';
-  }
-  if (signal.type === 'measured-mold-spores') return 'measured-spores';
-  return 'respiratory';
-}
-
 function healthTrendIcon(signal: HealthSignal): 'trend-rising' | 'trend-falling' | 'trend-stable' {
   if (signal.trend === 'rising') return 'trend-rising';
   if (signal.trend === 'falling') return 'trend-falling';
@@ -298,7 +272,7 @@ function HealthSignalVisualIcon({ demoted, signal }: { demoted: boolean; signal:
     return <EnvironmentalIcon name="apparent-temperature" size="event" color={color} />;
   }
 
-  return <AppIcon name={healthSignalIcon(signal)} size="inline" color={color} />;
+  return <AppIcon name={getHealthSignalIconName(signal)} size="inline" color={color} />;
 }
 
 function HealthSignalTrendIndicator({
@@ -483,23 +457,35 @@ function TodayDecisionCard({
   );
 }
 
-function PublicHealthContextSection({
+export function PublicHealthContextSection({
   rows,
   expandedHealthSignalIds,
   healthSectionNotice,
+  backgroundSignalCount,
+  coverageSignalCount,
   loading,
   onOpenDetails,
   onPressSignal,
   onToggleInline,
 }: {
-  rows: ReturnType<typeof publicHealthContextRows>;
+  rows: PublicHealthContextRow[];
   expandedHealthSignalIds: Set<string>;
   healthSectionNotice: string | null;
+  backgroundSignalCount: number;
+  coverageSignalCount: number;
   loading: boolean;
   onOpenDetails: () => void;
   onPressSignal: (signal: HealthSignal) => void;
   onToggleInline: (signal: HealthSignal) => void;
 }) {
+  let emptyStateLabel = translate('today.publicHealthNoCurrentSignals');
+  if (coverageSignalCount > 0) {
+    emptyStateLabel = translate('today.publicHealthNoCurrentSignalsWithCoverage');
+  }
+  if (backgroundSignalCount > 0) {
+    emptyStateLabel = translate('today.publicHealthNoCurrentSignalsWithBackground');
+  }
+
   return (
     <SectionCard
       title={translate('today.publicHealthContext')}
@@ -509,9 +495,7 @@ function PublicHealthContextSection({
       {loading ? (
         <Text style={styles.body}>{translate('today.loadingPublicHealthContext')}</Text>
       ) : null}
-      {!loading && rows.length === 0 ? (
-        <Text style={styles.body}>{translate('today.publicHealthNoCurrentSignals')}</Text>
-      ) : null}
+      {!loading && rows.length === 0 ? <Text style={styles.body}>{emptyStateLabel}</Text> : null}
       {rows.slice(0, 4).map((row) => (
         <View
           key={row.signal.id}
@@ -532,7 +516,7 @@ function PublicHealthContextSection({
       {rows.length > 0 ? (
         <Text style={styles.healthSummary}>{publicHealthContextSummary(rows)}</Text>
       ) : null}
-      {rows.length > 0 ? (
+      {rows.length > 0 || backgroundSignalCount > 0 || coverageSignalCount > 0 ? (
         <AppButton
           title={translate('today.publicHealthViewAll')}
           iconName="chevron-right"
@@ -541,6 +525,22 @@ function PublicHealthContextSection({
         />
       ) : null}
     </SectionCard>
+  );
+}
+
+function PersonalizePromptRow({ onPress, visible }: { onPress: () => void; visible: boolean }) {
+  if (!visible) return null;
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [styles.personalizeRow, pressed ? styles.pressed : null]}
+    >
+      <AppIcon name="profile" size="inline" color={colors.muted} />
+      <Text style={styles.personalizeText}>{translate('today.personalizeAirAware')}</Text>
+      <AppIcon name="chevron-right" size="inline" color={colors.muted} />
+    </Pressable>
   );
 }
 
@@ -870,12 +870,16 @@ export function TodayScreen() {
   const publicHealthSignals = sortedHealthSignals(
     healthSignals.signals.filter((signal) => signal.type !== 'thermal-stress'),
   );
-  const publicHealthRows = publicHealthContextRows(publicHealthSignals);
-  const contextualHealthSignalCount = publicHealthSignals.length;
+  const publicHealthRows = currentPublicHealthContextRows(publicHealthSignals);
+  const contextualHealthSignalCount = publicHealthRows.length;
+  const backgroundSignalCount = backgroundPublicHealthContextRows(publicHealthSignals).length;
+  const coverageSignalCount = coveragePublicHealthContextRows(publicHealthSignals).length;
   const hasHealthSignalLocationContext =
     settings.locationOnboardingComplete || location.coordinates !== null || environment !== null;
   const { shouldShowHealthSignals, shouldShowThermalSignals } = todayHealthSectionVisibility({
+    backgroundSignalCount,
     contextualHealthSignalCount,
+    coverageSignalCount,
     hasHealthSignalLocationContext,
     healthSignalsError: healthSignals.error,
     healthSignalsLoading: healthSignals.loading,
@@ -940,15 +944,6 @@ export function TodayScreen() {
           />
         )}
 
-        {environment && !personalizedScore.available ? (
-          <AppButton
-            title={t('today.personalizeAirAware')}
-            iconName="profile"
-            fullWidth
-            onPress={() => navigation.navigate('MainTabs', { screen: 'Profile' })}
-          />
-        ) : null}
-
         <EnvironmentalEventsSection events={environmentalEvents} referenceTime={referenceTime} />
 
         <ThermalConditionsSection
@@ -973,6 +968,8 @@ export function TodayScreen() {
             rows={publicHealthRows}
             expandedHealthSignalIds={expandedHealthSignalIds}
             healthSectionNotice={healthSectionNotice}
+            backgroundSignalCount={backgroundSignalCount}
+            coverageSignalCount={coverageSignalCount}
             loading={healthSignals.loading}
             onOpenDetails={() => navigation.navigate('PublicHealthContext', undefined)}
             onPressSignal={openHealthSignal}
@@ -982,6 +979,10 @@ export function TodayScreen() {
 
         {environment ? (
           <>
+            <PersonalizePromptRow
+              visible={!personalizedScore.available}
+              onPress={() => navigation.navigate('MainTabs', { screen: 'Profile' })}
+            />
             <ActivitySummarySection
               evaluations={activityDomainEvaluations}
               navigation={navigation}
@@ -1331,6 +1332,22 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 13,
     marginTop: spacing.xs,
+  },
+  personalizeRow: {
+    alignItems: 'center',
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  personalizeText: {
+    color: colors.muted,
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
   },
   publicHealthContext: {
     color: colors.muted,

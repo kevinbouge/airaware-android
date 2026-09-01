@@ -1,4 +1,3 @@
-import { differenceInMilliseconds } from 'date-fns';
 import { forecastDayLimit } from '../capabilities/forecast';
 import {
   ENVIRONMENT_PROVIDER_FRESHNESS_MS,
@@ -10,6 +9,7 @@ import type { AppCapabilities } from '../capabilities/types';
 import type { ActivityDomainId } from '../models/activities';
 import type { Coordinates, NormalizedEnvironment } from '../models/environment';
 import { coordinatesWithin } from '../utils/geo';
+import { millisecondsBetween } from '../utils/time';
 
 type EnvironmentalProviderKind = 'airQuality' | 'weather';
 
@@ -49,7 +49,7 @@ function providerDataIsFresh(
   const fetchedTime = Date.parse(fetchedAt);
   if (!Number.isFinite(fetchedTime)) return false;
 
-  return differenceInMilliseconds(now, new Date(fetchedTime)) <= ENVIRONMENT_PROVIDER_FRESHNESS_MS;
+  return millisecondsBetween(now, fetchedTime) <= ENVIRONMENT_PROVIDER_FRESHNESS_MS;
 }
 
 function providerRequiredVariables(

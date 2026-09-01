@@ -14,6 +14,10 @@ Implement the smallest reasonable change. Preserve externally observable behavio
 
 Do not create documentation unless requested. Update existing docs only when the change makes them materially wrong and docs are in scope.
 
+Use native `Date` plus `src/utils/time.ts` for simple timestamp arithmetic, freshness windows, and cache expiry. Add a date dependency only when it clearly replaces complex calendar logic.
+
+Health-signal UI grouping is presentation logic. Use the component-layer health icon resolver for respiratory, wastewater, vector-borne, measured-spore, population-health, and radiological icon categories instead of duplicating signal-type switches in screens.
+
 ## Toolchain
 
 Use the repo Node version (`nvm use` / `.nvmrc`) before Node/npm commands.
@@ -50,6 +54,7 @@ Use these references when touching the related integration. Verify current provi
 - [WHO GISRS](https://www.who.int/initiatives/global-influenza-surveillance-and-response-system)
 - [WHO RespiMart](https://www.who.int/tools/respimart)
 - [WHO influenza / COVID-19 data reporting](https://www.who.int/teams/global-influenza-programme/influenza-covid19/data-reporting)
+- [WHO Disease Outbreak News Sitefinity API](https://www.who.int/api/emergencies/diseaseoutbreaknews/sfhelp)
 - [WHO Global Health Observatory OData API](https://www.who.int/data/gho/info/gho-odata-api)
 - [WHO Athena API examples](https://www.who.int/data/gho/info/athena-api-examples)
 - [CDC NWSS](https://www.cdc.gov/nwss/)
@@ -67,10 +72,53 @@ Use these references when touching the related integration. Verify current provi
 - [RIVM national wastewater JSON](https://data.rivm.nl/covid-19/COVID-19_rioolwaterdata_landelijk.json)
 - [ECDC seasonal dengue weekly report](https://dengue-weekly.ecdc.europa.eu/)
 - [ECDC dengue case summary CSV](https://dengue-weekly.ecdc.europa.eu/case_summary.csv)
+- [ECDC seasonal chikungunya weekly report](https://chik-weekly.ecdc.europa.eu/)
+- [ECDC chikungunya case summary CSV](https://chik-weekly.ecdc.europa.eu/case_summary.csv)
+- [ECDC West Nile virus weekly report](https://wnv-weekly.ecdc.europa.eu/)
+- [ECDC West Nile virus monthly report](https://wnv-monthly.ecdc.europa.eu/)
+- [ECDC ERVISS](https://erviss.org/)
+- [ECDC respiratory viruses weekly data repository](https://github.com/EU-ECDC/Respiratory_viruses_weekly_data)
+- [EU Wastewater Observatory](https://wastewater-observatory.jrc.ec.europa.eu/)
 - [PAHO dengue indicators](https://opendata.paho.org/en/dengue-indicators)
 - [PAHO Core Indicators dataset](https://opendata.paho.org/en/core-indicators/download-dataset)
+- [Africa CDC outbreaks page](https://www.africacdc.org/outbreaks/)
 
-PAHO dengue weekly surveillance is not currently integrated: PAHO documents weekly reporting, but a stable filtered operational API suitable for AirAware was not verified. Do not substitute the annual Core Indicators bulk download for current dengue surveillance.
+#### Public-health provider status
+
+GLOBAL
+
+- production: WHO RespiMart/GISRS/FluNet; signals influenza, RSV, SARS-CoV-2 where rows exist; coverage global country-level; API `https://xmart-api-public.who.int/FLUMART/odata/VIW_FNT`.
+- production: WHO Disease Outbreak News; signals outbreak-event; coverage global/country/region event context; API `https://www.who.int/api/emergencies/diseaseoutbreaknews`.
+- background-only: WHO GHO malaria; signal malaria; coverage global country annual context; API `https://ghoapi.azureedge.net/api/MALARIA_EST_INCIDENCE`.
+- background-only: OWID/HMD excess mortality; signal excess-mortality; coverage global where OWID reports; API `https://ourworldindata.org/grapher/excess-mortality-p-scores-average-baseline.csv`.
+- production: Safecast; signal ambient-dose-rate; coverage local sensor search; API `https://simplemap.safecast.org`.
+
+EUROPE
+
+- production: ECDC dengue; signal dengue; coverage EU/EEA matching locally acquired clusters; API `https://dengue-weekly.ecdc.europa.eu/case_summary.csv`.
+- production: ECDC chikungunya; signal chikungunya; coverage EU/EEA matching locally acquired clusters; API `https://chik-weekly.ecdc.europa.eu/case_summary.csv`.
+- deferred: ECDC West Nile virus; signal west-nile; reason weekly/monthly reports expose dashboard-generated downloads and no stable direct CSV endpoint was verified.
+- deferred: ECDC ERVISS respiratory; signals influenza/RSV/SARS-CoV-2/ILI/ARI/SARI; reason public dashboard/repository route remains unsuitable until current documented structured downloads are stable.
+- deferred: EU Wastewater Observatory; signals SARS-CoV-2/influenza/RSV wastewater; reason public site is dashboard-oriented and no documented anonymous mobile-suitable data API was verified.
+
+AMERICAS
+
+- regional: CDC NWSS; signals wastewater SARS-CoV-2/influenza/RSV; coverage United States; Socrata datasets are integrated conservatively as unavailable until stable aggregation semantics are added.
+- regional: PHAC wastewater; signals wastewater SARS-CoV-2/influenza/RSV; coverage Canada matched reporting areas; CSV trend feed.
+- deferred: PAHO ARBO; signals dengue/chikungunya/Zika; reason no stable filtered operational public API verified; do not substitute annual Core Indicators for current surveillance.
+- deferred: PAHO AMart; signals respiratory surveillance; reason no distinct stable structured feed verified that materially improves over WHO GISRS/RespiMart.
+
+AFRICA
+
+- deferred: Africa CDC; signals outbreak/event surveillance; reason structured mobile-suitable public feed not verified; do not parse PDFs or scrape report pages.
+
+SOUTHEAST ASIA
+
+- deferred: ASEAN BioDiaspora / ABVC; signals outbreak/event surveillance; reason official structured public feed not verified.
+
+WHO REGIONAL OFFICES
+
+- reference/deferred: WPRO, SEARO, EMRO, and other regional bulletins; reason many outputs are HTML/PDF/report publications and must not be parsed in production without a stable documented structured feed.
 
 ### Population health
 
@@ -134,7 +182,9 @@ NASA FIRMS requires a MAP_KEY. OpenAQ v3 requires an API key. Keep both out of t
 - [RevenueCat SDK configuration](https://www.revenuecat.com/docs/getting-started/configuring-sdk)
 - [RevenueCat SDK reference](https://www.revenuecat.com/docs/platform-resources/sdk-reference)
 
-For future warning, wastewater, dengue, radiological, bathing-water, pollen, or measured-spore providers, add the exact official API documentation here only after the provider is verified as public, anonymous or explicitly key-classified, stable, documented, and machine-readable.
+Current public-health provider roles are listed in the provider-status matrix above. Use that matrix before adding or changing provider behavior.
+
+For future warning, wastewater, vector-borne, radiological, bathing-water, pollen, or measured-spore providers, add the exact official API documentation here only after the provider is verified as public, anonymous or explicitly key-classified, stable, documented, and machine-readable.
 
 ## Expo / React Native
 
@@ -165,6 +215,8 @@ Providers must be public, anonymous, keyless, stable, and machine-readable.
 Never scrape HTML/dashboard pages, use undocumented/private dashboard endpoints, reverse-engineer map XHR calls, add provider credentials, or introduce a backend to hide credentials.
 
 Preserve true reporting geography and period; regional/country surveillance must not appear GPS-local.
+
+Public Health Context uses `HealthSignal.temporalClass` to separate current signals from background context. Current-summary eligibility belongs in domain/service selectors, not React screens; background-only signals such as excess mortality and annual malaria must not fill the current Today summary.
 
 Radiological measurements represent ambient radiation only. Never infer incident/source/cause/safety/personal dose.
 

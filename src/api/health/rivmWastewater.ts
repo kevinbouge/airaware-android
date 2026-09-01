@@ -21,6 +21,8 @@ import {
 const RIVM_WASTEWATER_NATIONAL_URL =
   'https://data.rivm.nl/covid-19/COVID-19_rioolwaterdata_landelijk.json';
 
+const RIVM_WASTEWATER_SIGNAL_TYPES = ['wastewater-covid-19'] as const;
+
 const RIVM_HISTORY_LIMIT = 12;
 
 const rivmWastewaterRowSchema = z
@@ -98,6 +100,7 @@ function unavailableSignal(input: { geography: HealthGeography; now: string }): 
       measure: 'SARS-CoV-2 national wastewater viral load',
     },
     freshness: { status: 'stale', ageMs: Number.POSITIVE_INFINITY },
+    temporalClass: 'current',
     metadata: {
       unavailable: true,
       reason: 'no-rivm-wastewater-observation',
@@ -150,6 +153,7 @@ export function normalizeRivmWastewaterSignal(input: {
       now: input.now,
       policy: WASTEWATER_SURVEILLANCE_FRESHNESS,
     }),
+    temporalClass: 'current',
     history,
     metadata: {
       surveillanceBasis: 'national wastewater concentration',
@@ -161,6 +165,13 @@ export function normalizeRivmWastewaterSignal(input: {
 
 export const rivmWastewaterProvider: HealthSignalProvider = {
   id: 'rivm-wastewater',
+  access: 'anonymous',
+  coverage: 'national',
+  authority: 'national-authority',
+  regions: ['europe'],
+  signals: RIVM_WASTEWATER_SIGNAL_TYPES,
+  temporalClasses: ['current'],
+  documentationUrl: 'https://data.rivm.nl/covid-19/',
   supports: (context) => context.geography?.countryCode === 'NL',
   fetchSignals: async (context) => {
     if (!context.geography) {
@@ -206,5 +217,3 @@ export const rivmWastewaterProvider: HealthSignalProvider = {
     };
   },
 };
-
-export const RIVM_WASTEWATER_SIGNAL_TYPES = ['wastewater-covid-19'] as const;

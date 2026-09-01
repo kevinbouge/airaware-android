@@ -40,10 +40,13 @@ export interface SignalCoverageDefinition {
 
 export interface CoverageResult {
   locationId: string;
+  region?: string | undefined;
   domain: CoverageDomain;
   signal: string;
   expectation: CoverageExpectation;
   status: CoverageStatus;
+  freshness?: string | undefined;
+  temporalClass?: 'current' | 'background' | undefined;
   provider?: string | undefined;
   observedAt?: string | undefined;
   updatedAt?: string | undefined;

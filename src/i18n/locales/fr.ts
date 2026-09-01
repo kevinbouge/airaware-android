@@ -224,6 +224,12 @@ export const fr = {
     publicHealthCurrentSignals: 'Signaux actuels : {{count}}',
     publicHealthNoCurrentSignals:
       'Aucun contexte de santé publique actuel disponible pour ce lieu.',
+    publicHealthNoCurrentSignalsWithBackground:
+      'Aucun signal de santé publique récent · Contexte de long terme disponible.',
+    publicHealthNoCurrentSignalsWithCoverage:
+      'Aucun signal de santé publique récent · Détails de couverture disponibles.',
+    publicHealthBackgroundSignals: 'Contexte de fond : {{count}}',
+    publicHealthCoverageSignals: 'Notes de couverture : {{count}}',
     publicHealthViewAll: 'Voir tout le contexte de santé publique',
     loadingPublicHealthContext: 'Chargement du contexte de santé publique...',
     respiratoryActivity: 'Activité respiratoire',
@@ -316,8 +322,16 @@ export const fr = {
     influenza: 'Grippe',
     covid19: 'COVID-19',
     rsv: 'VRS',
+    outbreakEvent: 'Événement d’épidémie OMS',
+    outbreakReportedEvent: 'Événement d’épidémie signalé',
+    outbreakSourceLabel: 'Publication d’événement OMS',
     excessMortality: 'Surmortalité',
     ambientDoseRate: 'Rayonnement ambiant',
+    temporal: {
+      current: 'Actuel',
+      background: 'Contexte de fond',
+      coverage: 'Couverture et disponibilité',
+    },
     trend: {
       rising: 'En hausse',
       falling: 'En baisse',
@@ -378,6 +392,13 @@ export const fr = {
     atBaseline: 'Au niveau de référence',
     noRecentData: 'Aucune donnée récente',
     categoryUnknown: 'Catégorie indisponible',
+    coverage: {
+      noMatchingReportingArea:
+        'Surveillance régionale disponible ; aucune zone de déclaration correspondante',
+      noRelevantOutbreakEvents:
+        'Aucun événement épidémique récent pertinent dans la surveillance disponible',
+      providerUnavailable: 'Fournisseur temporairement indisponible',
+    },
     countrySurveillance: 'Surveillance virologique respiratoire au niveau national',
     whoCategoryUnavailable:
       'WHO FluNet ne fournit pas de catégorie universelle faible/élevée au niveau national.',
@@ -426,6 +447,7 @@ export const fr = {
     },
     vector: {
       dengue: 'Dengue',
+      chikungunya: 'Chikungunya',
       westNile: 'Virus du Nil occidental',
       malaria: 'Contexte du paludisme',
       tickBorneDisease: 'Maladie transmise par les tiques',

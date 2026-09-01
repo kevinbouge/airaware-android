@@ -167,6 +167,7 @@ function unavailableSignal(input: { geography: HealthGeography; now: string }): 
       measure: 'Excess mortality P-score using a 5-year average baseline',
     },
     freshness: { status: 'stale' },
+    temporalClass: 'background',
     metadata: {
       unavailable: true,
       semantics: 'Missing mortality data is not interpreted as normal mortality.',
@@ -225,6 +226,7 @@ export function normalizeOwidExcessMortality(
       now: input.now,
       policy: OWID_EXCESS_MORTALITY_FRESHNESS,
     }),
+    temporalClass: 'background',
     history: observations.slice(-24),
     metadata: {
       originalCountryCode: iso3,
@@ -237,6 +239,13 @@ export function normalizeOwidExcessMortality(
 
 export const owidExcessMortalityProvider: HealthSignalProvider = {
   id: 'owid-excess-mortality',
+  access: 'anonymous',
+  coverage: 'global',
+  authority: 'global-authority',
+  regions: ['global'],
+  signals: ['excess-mortality'],
+  temporalClasses: ['background'],
+  documentationUrl: 'https://ourworldindata.org/faqs',
   supports: (context: HealthSignalProviderContext) =>
     context.geography !== null &&
     (context.signalTypes === undefined ||

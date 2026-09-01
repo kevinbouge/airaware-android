@@ -1,6 +1,7 @@
 import type { NormalizedEnvironment } from '../../src/models/environment';
 import type { HealthSignal } from '../../src/models/healthSignals';
 import { thermalStressSignalFromEnvironment } from '../../src/core/thermalStress';
+import { healthSignalTemporalClass } from '../../src/services/healthSignalFreshness';
 import type { CoverageResult, CoverageStatus, GlobalTestLocation } from './coverageTypes';
 import { expectationForSignal, GLOBAL_CORE_ENVIRONMENTAL_SIGNALS } from './coverageExpectations';
 
@@ -60,6 +61,7 @@ export function environmentalCoverageResults(input: {
       isThermalSignal && typeof thermalMetric === 'string' ? thermalMetric : undefined;
     return {
       locationId: input.location.id,
+      region: input.location.continent,
       domain: 'environmental',
       signal,
       expectation: expectationForSignal({
@@ -135,6 +137,7 @@ export function healthSignalCoverageResult(input: {
 }): CoverageResult {
   return {
     locationId: input.location.id,
+    region: input.location.continent,
     domain: input.domain,
     signal: input.signalName,
     expectation: expectationForSignal({
@@ -143,6 +146,8 @@ export function healthSignalCoverageResult(input: {
       location: input.location,
     }),
     status: signalCoverageStatus(input.signal),
+    freshness: input.signal?.freshness.status,
+    temporalClass: input.signal ? healthSignalTemporalClass(input.signal) : undefined,
     provider: input.signal?.source.provider,
     observedAt: input.signal?.observedAt,
     updatedAt: input.signal?.updatedAt,

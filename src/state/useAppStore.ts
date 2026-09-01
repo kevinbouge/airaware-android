@@ -1,5 +1,4 @@
 import { Share } from 'react-native';
-import { differenceInMilliseconds } from 'date-fns';
 import { create } from 'zustand';
 import { capabilitiesForEntitlement } from '../capabilities/config';
 import {
@@ -109,6 +108,7 @@ import {
 import { settingsForProfileState } from './settingsPolicy';
 import { enabledActivityIds } from '../core/activityDefinitions';
 import { setAppLanguagePreference, translate } from '../i18n';
+import { millisecondsBetween } from '../utils/time';
 
 interface AppStore {
   hydrated: boolean;
@@ -192,9 +192,7 @@ function staleFrom(savedAt: string | null): boolean {
   if (!savedAt) return false;
   const savedAtTime = Date.parse(savedAt);
   if (!Number.isFinite(savedAtTime)) return true;
-  return (
-    differenceInMilliseconds(new Date(), new Date(savedAtTime)) > ENVIRONMENT_PROVIDER_FRESHNESS_MS
-  );
+  return millisecondsBetween(Date.now(), savedAtTime) > ENVIRONMENT_PROVIDER_FRESHNESS_MS;
 }
 
 async function persistSuccessfulEnvironment(environment: NormalizedEnvironment) {

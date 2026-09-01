@@ -5,9 +5,11 @@ import { loadHealthSignalsCacheForGeography } from '../../src/storage/storage';
 import { radiologicalSpatialCacheKey } from '../../src/api/health/safecastRadiological';
 import {
   biologicalSignalsForLocation,
+  chikungunyaSignalForLocation,
   environmentFixtureForLocation,
   eurostatFixture,
   malariaSignalForLocation,
+  outbreakSignalsForLocation,
   radiologicalSignalForLocation,
   wastewaterSignalsForLocation,
   whoRespiratoryFixture,
@@ -138,7 +140,7 @@ describe('global cross-domain coverage behavior', () => {
   });
 
   it('constructs a valid cross-domain Today state for representative locations', () => {
-    ['prague', 'tokyo', 'austin', 'nairobi'].forEach((locationId) => {
+    ['prague', 'paris', 'tokyo', 'austin', 'nairobi'].forEach((locationId) => {
       const location = GLOBAL_TEST_LOCATIONS.find((entry) => entry.id === locationId);
       expect(location).toBeDefined();
       const environment = environmentFixtureForLocation(location!);
@@ -150,11 +152,25 @@ describe('global cross-domain coverage behavior', () => {
         zeroContext: locationId !== 'nairobi',
         noObservation: locationId === 'tokyo',
       });
+      const outbreaks = outbreakSignalsForLocation(location!, {
+        irrelevant: locationId === 'tokyo',
+        stale: locationId === 'austin',
+      });
+      const chikungunya = chikungunyaSignalForLocation(location!, {
+        noObservation: locationId !== 'paris',
+      });
       const radiation = radiologicalSignalForLocation(location!, []);
       const state = {
         location: locationInfoFromGlobalLocation(location!),
         environment,
-        healthSignals: [...biological, ...wastewater, ...(malaria ? [malaria] : []), radiation],
+        healthSignals: [
+          ...biological,
+          ...outbreaks,
+          ...wastewater,
+          ...(chikungunya ? [chikungunya] : []),
+          ...(malaria ? [malaria] : []),
+          radiation,
+        ],
       };
 
       expect(state.environment.current.timestamp).toBeTruthy();
@@ -172,7 +188,19 @@ describe('global cross-domain coverage behavior', () => {
       }
       if (locationId === 'nairobi') {
         expect(state.healthSignals.find((signal) => signal.type === 'malaria')).toMatchObject({
+          temporalClass: 'background',
           metadata: expect.objectContaining({ notCurrentActivity: true }),
+        });
+      }
+      expect(state.healthSignals.find((signal) => signal.type === 'outbreak-event')).toMatchObject(
+        locationId === 'tokyo'
+          ? { metadata: expect.objectContaining({ unavailable: true }) }
+          : { temporalClass: 'current' },
+      );
+      if (locationId === 'paris') {
+        expect(state.healthSignals.find((signal) => signal.type === 'chikungunya')).toMatchObject({
+          source: { provider: 'ECDC' },
+          temporalClass: 'current',
         });
       }
       state.healthSignals

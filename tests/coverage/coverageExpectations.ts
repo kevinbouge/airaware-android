@@ -114,6 +114,12 @@ const BIOLOGICAL_COVERAGE_DEFINITIONS: readonly SignalCoverageDefinition[] = [
   },
   {
     domain: 'biological',
+    signal: 'chikungunya',
+    defaultExpectation: 'optional',
+    noDataBehavior: 'unavailable',
+  },
+  {
+    domain: 'biological',
     signal: 'west-nile',
     defaultExpectation: 'optional',
     expectations: {
@@ -161,6 +167,12 @@ const BIOLOGICAL_COVERAGE_DEFINITIONS: readonly SignalCoverageDefinition[] = [
     domain: 'biological',
     signal: 'rsv',
     defaultExpectation: 'expected',
+    noDataBehavior: 'unavailable',
+  },
+  {
+    domain: 'biological',
+    signal: 'outbreak-event',
+    defaultExpectation: 'optional',
     noDataBehavior: 'unavailable',
   },
 ];

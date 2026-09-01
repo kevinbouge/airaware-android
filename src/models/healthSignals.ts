@@ -35,7 +35,11 @@ export type WastewaterSignalType =
 type VectorDiseaseSignalType = 'dengue' | 'west-nile' | 'malaria' | 'tick-borne-disease';
 
 export type BiologicalSignalType =
-  RespiratorySignalType | WastewaterSignalType | VectorDiseaseSignalType;
+  | RespiratorySignalType
+  | WastewaterSignalType
+  | VectorDiseaseSignalType
+  | 'chikungunya'
+  | 'outbreak-event';
 
 type RadiologicalSignalType = 'ambient-dose-rate';
 
@@ -49,9 +53,23 @@ export type HealthSignalType =
 
 export type HealthSignalFreshnessStatus = 'fresh' | 'aging' | 'stale';
 
+export type HealthSignalTemporalClass = 'current' | 'background';
+
 type ProviderAccess = 'anonymous' | 'key-required' | 'unsupported';
 
 type ProviderCoverage = 'global' | 'regional' | 'national' | 'local';
+
+export type ProviderRegion =
+  | 'global'
+  | 'europe'
+  | 'americas'
+  | 'africa'
+  | 'south-east-asia'
+  | 'western-pacific'
+  | 'eastern-mediterranean';
+
+type ProviderAuthority =
+  'global-authority' | 'regional-authority' | 'national-authority' | 'local-network';
 
 export type ReportingPeriod =
   | {
@@ -160,6 +178,7 @@ export interface HealthSignal {
     status: HealthSignalFreshnessStatus;
     ageMs?: number | undefined;
   };
+  temporalClass?: HealthSignalTemporalClass | undefined;
   history?: HealthSignalObservation[] | undefined;
   evidence?: (BiologicalEvidence | RadiologicalEvidence)[] | undefined;
   metadata?: Record<string, unknown> | undefined;
@@ -194,6 +213,10 @@ export interface HealthSignalProvider {
   id: string;
   access?: ProviderAccess | undefined;
   coverage?: ProviderCoverage | undefined;
+  authority?: ProviderAuthority | undefined;
+  regions?: readonly ProviderRegion[] | undefined;
+  signals?: readonly HealthSignalType[] | undefined;
+  temporalClasses?: readonly HealthSignalTemporalClass[] | undefined;
   documentationUrl?: string | undefined;
   supports: (context: HealthSignalProviderContext) => boolean;
   fetchSignals: (context: HealthSignalProviderContext) => Promise<HealthSignalProviderResult>;

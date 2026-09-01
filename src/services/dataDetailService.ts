@@ -1,4 +1,3 @@
-import { differenceInMilliseconds, subDays, subHours } from 'date-fns';
 import type { EnvironmentalVariableId } from '../capabilities/types';
 import {
   DATA_DETAIL_CACHE_SCHEMA_VERSION,
@@ -10,7 +9,7 @@ import type { DataDetailRangeId, DataDetailTimeline } from '../models/dataDetail
 import type { Coordinates } from '../models/environment';
 import { fetchDataDetailSourceQuery } from './dataDetailQueries';
 import { loadDataDetailCache, saveDataDetailCache } from '../storage/storage';
-import { providerLocalDate } from '../utils/time';
+import { millisecondsBetween, providerLocalDate, subtractDays, subtractHours } from '../utils/time';
 import { translate } from '../i18n';
 
 const TIMESTAMP_OFFSET_PATTERN = /(Z|[+-]\d{2}:\d{2})$/;
@@ -74,7 +73,7 @@ export function dataDetailHistoryDatesForNow(
 ): { startDate: string; endDate: string } {
   const nowTime = Date.parse(now);
   const safeNow = Number.isFinite(nowTime) ? nowTime : Date.now();
-  const historyStart = subDays(subHours(new Date(safeNow), historyHours), 1).getTime();
+  const historyStart = subtractDays(subtractHours(safeNow, historyHours), 1);
   return {
     startDate: dateKeyInReferenceOffset(historyStart, now),
     endDate: dataDetailLocalDateKey(now),
@@ -101,7 +100,7 @@ async function cachedTimeline(cacheKey: string): Promise<DataDetailTimeline | nu
   const savedAt = Date.parse(cache.savedAt);
   const cacheExpired =
     !Number.isFinite(savedAt) ||
-    differenceInMilliseconds(new Date(), new Date(savedAt)) > DATA_DETAIL_CACHE_STALE_AFTER_MS;
+    millisecondsBetween(Date.now(), savedAt) > DATA_DETAIL_CACHE_STALE_AFTER_MS;
 
   return {
     ...cache.data,

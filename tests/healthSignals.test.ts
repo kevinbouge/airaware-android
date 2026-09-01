@@ -10,6 +10,12 @@ import {
   type WastewaterDataset,
 } from '../src/api/health/cdcWastewater';
 import { ecdcDengueProvider, normalizeEcdcDengueSignal } from '../src/api/health/ecdcDengue';
+import {
+  ecdcChikungunyaProvider,
+  ecdcChikungunyaUrl,
+  ecdcDengueUrl,
+  normalizeEcdcChikungunyaSignal,
+} from '../src/api/health/ecdcVectorSurveillance';
 import { fetchHealthJson } from '../src/api/health/providerFetch';
 import {
   normalizePhacWastewaterSignals,
@@ -887,6 +893,45 @@ describe('health signal domain and geography', () => {
     });
   });
 
+  it('normalizes ECDC chikungunya clusters through the shared vector provider semantics', () => {
+    const signal = normalizeEcdcChikungunyaSignal({
+      csv: ecdcDengueCsv([
+        '"France","2026-CHIK-33-PRIGNAC-ET-MARCAMPS","Gironde","Prignac-et-Marcamps","Active","2026-07-20","2026-08-19","19"',
+      ]),
+      geography: {
+        level: 'country',
+        code: 'FR',
+        name: 'France',
+        countryCode: 'FR',
+        countryName: 'France',
+      },
+      locationName: 'Prignac-et-Marcamps',
+      now: '2026-08-22T00:00:00Z',
+    });
+
+    expect(signal).toMatchObject({
+      domain: 'biological',
+      type: 'chikungunya',
+      geography: {
+        level: 'subregion',
+        code: '2026-CHIK-33-PRIGNAC-ET-MARCAMPS',
+        name: 'Prignac-et-Marcamps',
+        countryCode: 'FR',
+      },
+      value: 19,
+      unit: 'cases',
+      category: 'unknown',
+      trend: 'rising',
+      freshness: expect.objectContaining({ status: 'fresh' }),
+      temporalClass: 'current',
+      metadata: expect.objectContaining({
+        providerCategory: 'Active',
+        surveillanceBasis: 'locally acquired chikungunya cluster surveillance',
+        noPersonalRiskInference: true,
+      }),
+    });
+  });
+
   it('keeps missing ECDC dengue clusters unavailable rather than Low activity', () => {
     const signal = normalizeEcdcDengueSignal({
       csv: ecdcDengueCsv([
@@ -915,6 +960,27 @@ describe('health signal domain and geography', () => {
         now: '2026-08-22T00:00:00Z',
       }),
     ).toBe(true);
+  });
+
+  it('declares production ECDC vector provider capabilities without WNV overclaiming', () => {
+    expect(ecdcDengueUrl()).toBe('https://dengue-weekly.ecdc.europa.eu/case_summary.csv');
+    expect(ecdcChikungunyaUrl()).toBe('https://chik-weekly.ecdc.europa.eu/case_summary.csv');
+    expect(ecdcDengueProvider).toMatchObject({
+      access: 'anonymous',
+      coverage: 'regional',
+      authority: 'regional-authority',
+      regions: ['europe'],
+      signals: ['dengue'],
+      temporalClasses: ['current'],
+    });
+    expect(ecdcChikungunyaProvider).toMatchObject({
+      access: 'anonymous',
+      coverage: 'regional',
+      authority: 'regional-authority',
+      regions: ['europe'],
+      signals: ['chikungunya'],
+      temporalClasses: ['current'],
+    });
   });
 
   it('resolves global locations to country-level surveillance geography', () => {
@@ -1516,6 +1582,42 @@ describe('health providers and caches', () => {
         type: 'dengue',
         status: 'provider-error',
         reason: 'ecdc-dengue-provider-error',
+        providerErrorKind: 'schema',
+      }),
+    ]);
+  });
+
+  it('returns explicit provider-error signals for ECDC chikungunya schema failures', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      text: async () => 'not,the,expected,schema\n1,2,3,4',
+    } as Response);
+
+    const result = await ecdcChikungunyaProvider.fetchSignals({
+      geography: {
+        level: 'country',
+        code: 'FR',
+        name: 'France',
+        countryCode: 'FR',
+        countryName: 'France',
+      },
+      now: '2026-08-22T00:00:00Z',
+    });
+
+    expect(result.signals).toHaveLength(1);
+    expect(result.signals[0]).toMatchObject({
+      type: 'chikungunya',
+      metadata: expect.objectContaining({
+        providerStatus: 'provider-error',
+        reason: 'ecdc-chikungunya-provider-error',
+        providerErrorKind: 'schema',
+      }),
+    });
+    expect(result.signalStatuses).toEqual([
+      expect.objectContaining({
+        type: 'chikungunya',
+        status: 'provider-error',
+        reason: 'ecdc-chikungunya-provider-error',
         providerErrorKind: 'schema',
       }),
     ]);

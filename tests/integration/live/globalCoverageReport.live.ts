@@ -8,12 +8,14 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { cdcWastewaterProvider } from '../../../src/api/health/cdcWastewater';
 import { ecdcDengueProvider } from '../../../src/api/health/ecdcDengue';
+import { ecdcChikungunyaProvider } from '../../../src/api/health/ecdcVectorSurveillance';
 import { eurostatExcessMortalityProvider } from '../../../src/api/health/eurostatExcessMortality';
 import { owidExcessMortalityProvider } from '../../../src/api/health/owidExcessMortality';
 import { phacWastewaterProvider } from '../../../src/api/health/phacWastewater';
 import { rivmWastewaterProvider } from '../../../src/api/health/rivmWastewater';
 import { safecastRadiologicalProvider } from '../../../src/api/health/safecastRadiological';
 import { sumeauWastewaterProvider } from '../../../src/api/health/sumeauWastewater';
+import { whoOutbreakProvider } from '../../../src/api/health/whoOutbreaks';
 import { whoRespiratoryProvider } from '../../../src/api/health/whoRespiratory';
 import { whoVectorDiseaseProvider } from '../../../src/api/health/whoVectorDisease';
 import { buildAirQualityUrl, normalizeAirQuality } from '../../../src/api/openMeteoAirQuality';
@@ -88,6 +90,7 @@ async function liveFetch(url: string | URL, init?: RequestInit): Promise<LiveRes
 function providerError(input: {
   provider: string;
   locationId: string;
+  region?: string | undefined;
   domain: CoverageResult['domain'];
   signal: string;
   expectation: CoverageResult['expectation'];
@@ -102,6 +105,7 @@ function providerError(input: {
 
   return {
     locationId: input.locationId,
+    region: input.region,
     domain: input.domain,
     signal: input.signal,
     expectation: input.expectation,
@@ -156,6 +160,7 @@ async function environmentalLiveResults(location: (typeof GLOBAL_TEST_LOCATIONS)
       providerError({
         provider: 'Open-Meteo',
         locationId: location.id,
+        region: location.continent,
         domain: 'environmental',
         signal: 'core-environmental',
         expectation: 'required',
@@ -165,10 +170,14 @@ async function environmentalLiveResults(location: (typeof GLOBAL_TEST_LOCATIONS)
   }
 }
 
-function unsupportedProviderResult(providerId: string, locationId: string): CoverageResult {
+function unsupportedProviderResult(
+  providerId: string,
+  location: (typeof GLOBAL_TEST_LOCATIONS)[number],
+): CoverageResult {
   if (providerId === 'eurostat-excess-mortality' || providerId === 'owid-excess-mortality') {
     return {
-      locationId,
+      locationId: location.id,
+      region: location.continent,
       domain: 'population-health',
       signal: 'excess-mortality',
       expectation: 'unsupported',
@@ -177,11 +186,24 @@ function unsupportedProviderResult(providerId: string, locationId: string): Cove
     };
   }
 
-  if (providerId === 'ecdc-dengue') {
+  if (providerId === 'ecdc-dengue' || providerId === 'ecdc-chikungunya') {
     return {
-      locationId,
+      locationId: location.id,
+      region: location.continent,
       domain: 'biological',
-      signal: 'dengue',
+      signal: providerId === 'ecdc-dengue' ? 'dengue' : 'chikungunya',
+      expectation: 'unsupported',
+      status: 'unsupported',
+      provider: providerId,
+    };
+  }
+
+  if (providerId === 'who-outbreaks') {
+    return {
+      locationId: location.id,
+      region: location.continent,
+      domain: 'biological',
+      signal: 'outbreak-event',
       expectation: 'unsupported',
       status: 'unsupported',
       provider: providerId,
@@ -195,7 +217,8 @@ function unsupportedProviderResult(providerId: string, locationId: string): Cove
     providerId === 'rivm-wastewater'
   ) {
     return {
-      locationId,
+      locationId: location.id,
+      region: location.continent,
       domain: 'biological',
       signal: 'wastewater',
       expectation: 'unsupported',
@@ -205,7 +228,8 @@ function unsupportedProviderResult(providerId: string, locationId: string): Cove
   }
 
   return {
-    locationId,
+    locationId: location.id,
+    region: location.continent,
     domain: 'biological',
     signal: 'provider',
     expectation: 'unsupported',
@@ -237,11 +261,13 @@ async function healthProviderLiveResults(location: (typeof GLOBAL_TEST_LOCATIONS
   const results: CoverageResult[] = [];
   const providers = [
     whoRespiratoryProvider,
+    whoOutbreakProvider,
     cdcWastewaterProvider,
     phacWastewaterProvider,
     sumeauWastewaterProvider,
     rivmWastewaterProvider,
     ecdcDengueProvider,
+    ecdcChikungunyaProvider,
     whoVectorDiseaseProvider,
     eurostatExcessMortalityProvider,
     owidExcessMortalityProvider,
@@ -250,7 +276,7 @@ async function healthProviderLiveResults(location: (typeof GLOBAL_TEST_LOCATIONS
 
   for (const provider of providers) {
     if (!provider.supports(context)) {
-      results.push(unsupportedProviderResult(provider.id, location.id));
+      results.push(unsupportedProviderResult(provider.id, location));
       continue;
     }
 
@@ -271,6 +297,7 @@ async function healthProviderLiveResults(location: (typeof GLOBAL_TEST_LOCATIONS
         providerError({
           provider: provider.id,
           locationId: location.id,
+          region: location.continent,
           domain: providerDomain(provider.id),
           signal: provider.id,
           expectation: providerExpectation(provider.id),

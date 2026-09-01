@@ -21,6 +21,8 @@ import {
 const SUMEAU_WASTEWATER_URL =
   'https://odisse.santepubliquefrance.fr/api/explore/v2.1/catalog/datasets/sum-eau-indicateurs/records?order_by=date_complet%20desc&limit=12';
 
+const SUMEAU_WASTEWATER_SIGNAL_TYPES = ['wastewater-covid-19'] as const;
+
 const sumeauResponseSchema = z
   .object({
     results: z.array(z.record(z.string(), z.unknown())),
@@ -115,6 +117,7 @@ function unavailableSignal(input: { geography: HealthGeography; now: string }): 
       measure: 'SARS-CoV-2 national wastewater indicator',
     },
     freshness: { status: 'stale', ageMs: Number.POSITIVE_INFINITY },
+    temporalClass: 'current',
     metadata: {
       unavailable: true,
       reason: 'no-sumeau-wastewater-observation',
@@ -161,6 +164,7 @@ export function normalizeSumeauWastewaterSignal(input: {
       now: input.now,
       policy: WASTEWATER_SURVEILLANCE_FRESHNESS,
     }),
+    temporalClass: 'current',
     history,
     metadata: {
       surveillanceBasis: 'national wastewater concentration',
@@ -175,6 +179,10 @@ export const sumeauWastewaterProvider: HealthSignalProvider = {
   id: 'sumeau-wastewater',
   access: 'anonymous',
   coverage: 'national',
+  authority: 'national-authority',
+  regions: ['europe'],
+  signals: SUMEAU_WASTEWATER_SIGNAL_TYPES,
+  temporalClasses: ['current'],
   documentationUrl:
     'https://www.data.gouv.fr/datasets/surveillance-du-sars-cov-2-dans-les-eaux-usees-sumeau',
   supports: (context) => context.geography?.countryCode === 'FR',
@@ -220,5 +228,3 @@ export const sumeauWastewaterProvider: HealthSignalProvider = {
     };
   },
 };
-
-export const SUMEAU_WASTEWATER_SIGNAL_TYPES = ['wastewater-covid-19'] as const;

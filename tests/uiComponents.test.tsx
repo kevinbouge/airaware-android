@@ -12,6 +12,39 @@ import { SectionCard } from '../src/components/SectionCard';
 import { SummaryMetricGrid } from '../src/components/ui/SummaryMetricGrid';
 import { FREE_CAPABILITIES } from '../src/capabilities/config';
 import { visibleCurrentDataDetailValue } from '../src/core/dataDetailCurrentValue';
+import { publicHealthContextRow } from '../src/core/healthSignalPresentation';
+import { PublicHealthContextSignalGroups } from '../src/screens/PublicHealthContextScreen';
+import { PublicHealthContextSection } from '../src/screens/TodayScreen';
+import { createHealthSignal } from './fixtures/healthSignals';
+
+jest.mock('expo-notifications', () => ({
+  AndroidImportance: { DEFAULT: 'default' },
+  setNotificationHandler: jest.fn(),
+  setNotificationChannelAsync: jest.fn(),
+  getPermissionsAsync: jest.fn(),
+  requestPermissionsAsync: jest.fn(),
+  scheduleNotificationAsync: jest.fn(),
+}));
+
+function renderedText(node: unknown): string {
+  if (node === null || node === undefined || typeof node === 'boolean') return '';
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(renderedText).join(' ');
+  if (!React.isValidElement(node)) return '';
+
+  if (typeof node.type === 'function') {
+    const component = node.type as {
+      (props: unknown): unknown;
+      prototype?: { isReactComponent?: unknown };
+    };
+    if (!component.prototype?.isReactComponent) {
+      return renderedText(component(node.props));
+    }
+  }
+
+  const props = node.props as { children?: unknown; title?: unknown };
+  return [props.title, props.children].map(renderedText).filter(Boolean).join(' ');
+}
 
 describe('shared UI components', () => {
   it('does not add header spacing to untitled section cards', () => {
@@ -146,6 +179,96 @@ describe('shared UI components', () => {
 
     expect(section.type).toBe(ForecastBarSection);
     expect(section.props.emptyLabel).toBe('Forecast data is unavailable.');
+  });
+
+  it('renders Today Public Health Context when only background context is available', () => {
+    const section = PublicHealthContextSection({
+      backgroundSignalCount: 1,
+      coverageSignalCount: 0,
+      expandedHealthSignalIds: new Set(),
+      healthSectionNotice: null,
+      loading: false,
+      rows: [],
+      onOpenDetails: jest.fn(),
+      onPressSignal: jest.fn(),
+      onToggleInline: jest.fn(),
+    }) as React.ReactElement;
+    const text = renderedText(section);
+
+    expect(text).toContain('No recent public-health signals · Long-term context available.');
+    expect(text).toContain('View all public-health context');
+  });
+
+  it('renders Today Public Health Context coverage-only states without reassuring copy', () => {
+    const section = PublicHealthContextSection({
+      backgroundSignalCount: 0,
+      coverageSignalCount: 1,
+      expandedHealthSignalIds: new Set(),
+      healthSectionNotice: null,
+      loading: false,
+      rows: [],
+      onOpenDetails: jest.fn(),
+      onPressSignal: jest.fn(),
+      onToggleInline: jest.fn(),
+    }) as React.ReactElement;
+    const text = renderedText(section);
+
+    expect(text).toContain('No recent public-health signals · Coverage details available.');
+    expect(text).toContain('View all public-health context');
+    expect(text).not.toMatch(/Low|No dengue|no disease/i);
+  });
+
+  it('renders Public Health Context detail groups with current, background, and coverage rows', () => {
+    const section = PublicHealthContextSignalGroups({
+      currentRows: [
+        publicHealthContextRow(
+          createHealthSignal({
+            id: 'influenza:current',
+            type: 'influenza',
+            category: 'moderate',
+            trend: 'rising',
+          }),
+        ),
+      ],
+      backgroundRows: [
+        publicHealthContextRow(
+          createHealthSignal({
+            id: 'mortality:background',
+            domain: 'population-health',
+            type: 'excess-mortality',
+            temporalClass: 'background',
+            value: 1.8,
+            unit: '%',
+            reportingPeriod: { type: 'month', year: 2026, month: 6 },
+            source: { provider: 'OWID / HMD' },
+          }),
+        ),
+      ],
+      coverageRows: [
+        publicHealthContextRow(
+          createHealthSignal({
+            id: 'dengue:coverage',
+            type: 'dengue',
+            value: undefined,
+            unit: undefined,
+            metadata: { unavailable: true, reason: 'no-ecdc-dengue-cluster' },
+          }),
+        ),
+      ],
+      expandedSignalIds: new Set(),
+      onPressSignal: jest.fn(),
+      onToggleInline: jest.fn(),
+    }) as React.ReactElement;
+    const text = renderedText(section);
+
+    expect(text).toContain('Current');
+    expect(text).toContain('Influenza');
+    expect(text).toContain('Background context');
+    expect(text).toContain('Excess mortality');
+    expect(text).toContain('Coverage & availability');
+    expect(text).toContain('Regional surveillance available; no matching reporting area');
+    expect(text).not.toContain('Thermal stress');
+    expect(text).not.toMatch(/Low|Normal background|No dengue|no disease/i);
   });
 
   it('falls back to the timeline current value on variable detail pages', () => {

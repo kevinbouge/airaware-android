@@ -1,4 +1,3 @@
-import { addHours, differenceInMilliseconds } from 'date-fns';
 import { categoryLabel } from './categories';
 import { calculateEnvironmentalScore } from './scoring';
 import { calculatePersonalizedScore } from './profileScoring';
@@ -27,6 +26,7 @@ import { translate } from '../i18n';
 import { formatShortTime, formatTimeRangeWithTomorrow } from '../utils/format';
 import { isFiniteNumber, normalizeByThresholds } from '../utils/number';
 import { pollenLabel, pollutantLabel } from '../utils/readingLabels';
+import { addHours, millisecondsBetween } from '../utils/time';
 
 const DETECTION_HORIZON_HOURS = 24;
 const MAX_EPISODE_GAP_MS = 90 * 60 * 1000;
@@ -182,7 +182,7 @@ function forecastWindow(
   const reference = environment.current.timestamp ?? environment.fetchedAt;
   const start = Date.parse(reference);
   if (!Number.isFinite(start)) return environment.hourly.slice(0, horizonHours);
-  const end = addHours(new Date(start), horizonHours).getTime();
+  const end = addHours(start, horizonHours);
 
   return environment.hourly.filter((hour) => {
     const timestamp = Date.parse(hour.timestamp);
@@ -201,7 +201,7 @@ function groupEpisodes(points: EpisodePoint[]): Episode[] {
     const previousPoint = previousGroup?.[previousGroup.length - 1];
     if (
       previousPoint &&
-      differenceInMilliseconds(new Date(point.timestamp), new Date(previousPoint.timestamp)) <=
+      millisecondsBetween(Date.parse(point.timestamp), Date.parse(previousPoint.timestamp)) <=
         MAX_EPISODE_GAP_MS
     ) {
       previousGroup.push(point);

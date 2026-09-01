@@ -3,11 +3,15 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { DetailHeader } from '../components/DetailHeader';
 import { AppIcon } from '../components/icons/AppIcon';
-import type { AppIconName } from '../components/icons/appIconTypes';
+import { getHealthSignalIconName } from '../components/icons/healthSignalIconResolver';
 import {
+  backgroundPublicHealthContextRows,
+  coveragePublicHealthContextRows,
+  currentPublicHealthContextRows,
   healthSignalHasTimelineDetail,
   healthSignalInlineDetailRows,
-  publicHealthContextRows,
+  publicHealthBackgroundSummary,
+  publicHealthCoverageSummary,
   publicHealthContextSummary,
   type PublicHealthContextRow,
 } from '../core/healthSignalPresentation';
@@ -16,28 +20,6 @@ import type { HealthSignal } from '../models/healthSignals';
 import { goBackOrToday, type DetailBackNavigation } from '../navigation/detailNavigation';
 import { useAppStore } from '../state/useAppStore';
 import { colors, spacing } from '../theme/theme';
-
-function publicHealthIconName(signal: HealthSignal): AppIconName {
-  if (signal.domain === 'radiological') return 'radiological';
-  if (signal.domain === 'population-health') return 'population-health';
-  if (
-    signal.type === 'wastewater-covid-19' ||
-    signal.type === 'wastewater-influenza' ||
-    signal.type === 'wastewater-rsv'
-  ) {
-    return 'wastewater';
-  }
-  if (
-    signal.type === 'dengue' ||
-    signal.type === 'west-nile' ||
-    signal.type === 'malaria' ||
-    signal.type === 'tick-borne-disease'
-  ) {
-    return 'vector-borne';
-  }
-  if (signal.type === 'measured-mold-spores') return 'measured-spores';
-  return 'respiratory';
-}
 
 function PublicHealthSignalRow({
   expanded,
@@ -74,7 +56,7 @@ function PublicHealthSignalRow({
         style={({ pressed }) => [styles.signalButton, pressed ? styles.pressed : null]}
       >
         <View style={[styles.iconShell, { borderColor: color }]}>
-          <AppIcon name={publicHealthIconName(row.signal)} size="action" color={color} />
+          <AppIcon name={getHealthSignalIconName(row.signal)} size="action" color={color} />
         </View>
         <View style={styles.signalCopy}>
           <Text style={styles.scope}>{row.scopeLabel}</Text>
@@ -114,13 +96,83 @@ function PublicHealthSignalRow({
   );
 }
 
+export function PublicHealthContextSignalGroups({
+  coverageRows,
+  currentRows,
+  backgroundRows,
+  expandedSignalIds,
+  onPressSignal,
+  onToggleInline,
+}: {
+  coverageRows: PublicHealthContextRow[];
+  currentRows: PublicHealthContextRow[];
+  backgroundRows: PublicHealthContextRow[];
+  expandedSignalIds: Set<string>;
+  onPressSignal: (signal: HealthSignal) => void;
+  onToggleInline: (signal: HealthSignal) => void;
+}) {
+  return (
+    <>
+      {currentRows.length > 0 ? (
+        <>
+          <Text style={styles.sectionLabel}>{translate('health.temporal.current')}</Text>
+          <Text style={styles.summary}>{publicHealthContextSummary(currentRows)}</Text>
+          {currentRows.map((row) => (
+            <PublicHealthSignalRow
+              key={row.signal.id}
+              expanded={expandedSignalIds.has(row.signal.id)}
+              row={row}
+              onPress={onPressSignal}
+              onToggleInline={onToggleInline}
+            />
+          ))}
+        </>
+      ) : null}
+      {backgroundRows.length > 0 ? (
+        <>
+          <Text style={styles.sectionLabel}>{translate('health.temporal.background')}</Text>
+          <Text style={styles.summary}>{publicHealthBackgroundSummary(backgroundRows)}</Text>
+          {backgroundRows.map((row) => (
+            <PublicHealthSignalRow
+              key={row.signal.id}
+              expanded={expandedSignalIds.has(row.signal.id)}
+              row={row}
+              onPress={onPressSignal}
+              onToggleInline={onToggleInline}
+            />
+          ))}
+        </>
+      ) : null}
+      {coverageRows.length > 0 ? (
+        <>
+          <Text style={styles.sectionLabel}>{translate('health.temporal.coverage')}</Text>
+          <Text style={styles.summary}>{publicHealthCoverageSummary(coverageRows)}</Text>
+          {coverageRows.map((row) => (
+            <PublicHealthSignalRow
+              key={row.signal.id}
+              expanded={expandedSignalIds.has(row.signal.id)}
+              row={row}
+              onPress={onPressSignal}
+              onToggleInline={onToggleInline}
+            />
+          ))}
+        </>
+      ) : null}
+    </>
+  );
+}
+
 export function PublicHealthContextScreen() {
   const navigation = useNavigation<DetailBackNavigation>();
   const healthSignals = useAppStore((state) => state.healthSignals);
   const [expandedSignalIds, setExpandedSignalIds] = useState<Set<string>>(() => new Set());
-  const rows = publicHealthContextRows(
-    healthSignals.signals.filter((signal) => signal.type !== 'thermal-stress'),
+  const contextualSignals = healthSignals.signals.filter(
+    (signal) => signal.type !== 'thermal-stress',
   );
+  const currentRows = currentPublicHealthContextRows(contextualSignals);
+  const backgroundRows = backgroundPublicHealthContextRows(contextualSignals);
+  const coverageRows = coveragePublicHealthContextRows(contextualSignals);
+  const rows = [...currentRows, ...backgroundRows, ...coverageRows];
   const handleBack = () => goBackOrToday(navigation);
   const openSignal = (signal: HealthSignal) => {
     navigation.navigate('HealthSignalDetail', { signalId: signal.id });
@@ -153,18 +205,14 @@ export function PublicHealthContextScreen() {
         {!healthSignals.loading && rows.length === 0 ? (
           <Text style={styles.body}>{translate('today.publicHealthNoCurrentSignals')}</Text>
         ) : null}
-        {rows.length > 0 ? (
-          <Text style={styles.summary}>{publicHealthContextSummary(rows)}</Text>
-        ) : null}
-        {rows.map((row) => (
-          <PublicHealthSignalRow
-            key={row.signal.id}
-            expanded={expandedSignalIds.has(row.signal.id)}
-            row={row}
-            onPress={openSignal}
-            onToggleInline={toggleInline}
-          />
-        ))}
+        <PublicHealthContextSignalGroups
+          coverageRows={coverageRows}
+          currentRows={currentRows}
+          backgroundRows={backgroundRows}
+          expandedSignalIds={expandedSignalIds}
+          onPressSignal={openSignal}
+          onToggleInline={toggleInline}
+        />
       </ScrollView>
     </View>
   );
@@ -233,6 +281,13 @@ const styles = StyleSheet.create({
   scope: {
     color: colors.muted,
     fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0,
+    textTransform: 'uppercase',
+  },
+  sectionLabel: {
+    color: colors.muted,
+    fontSize: 12,
     fontWeight: '900',
     letterSpacing: 0,
     textTransform: 'uppercase',
